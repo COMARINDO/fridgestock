@@ -76,20 +76,20 @@ function HomeInner() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[15px] text-[#1f1f1f]">Location</div>
-              <div className="text-[18px] font-extrabold leading-tight">
+              <div className="text-[18px] font-extrabold leading-tight text-[#1a1a1a]">
                 {activeParent?.parent.name ?? "…"}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Link
                 href="/overview"
-                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold"
+                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold text-[#1a1a1a]"
               >
                 Überblick
               </Link>
               <button
                 onClick={() => logout()}
-                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold"
+                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold text-[#1a1a1a]"
               >
                 Wechseln
               </button>
@@ -112,7 +112,7 @@ function HomeInner() {
             Location nicht gefunden. Bitte erneut einloggen.
           </div>
         ) : (
-          <div className="mt-2 grid gap-3">
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[activeParent].map(({ parent, children }) => {
               const sections = {
                 "Kühlschrank": children.filter((c) => sectionLabel(c.name) === "Kühlschrank"),

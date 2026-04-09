@@ -271,10 +271,14 @@ function LocationInner() {
         await html5.start(
           { facingMode: "environment" },
           {
-            fps: 12,
-            qrbox: { width: 280, height: 180 },
+            fps: 15,
+            // Wide rectangle improves barcode scanning performance on phones.
+            qrbox: { width: 320, height: 140 },
+            useBarCodeDetectorIfSupported: true,
             formatsToSupport: [
               Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.CODE_128,
             ],
           },
           async (decodedText: string) => {
@@ -345,7 +349,7 @@ function LocationInner() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[15px] text-[#1f1f1f]">Location</div>
-              <div className="text-xl font-extrabold leading-tight">
+            <div className="text-xl font-extrabold leading-tight text-[#1a1a1a]">
                 {inventoryLoc && location?.parent_id
                   ? `${inventoryLoc.name} – ${location.name}`
                   : (location?.name ?? "…")}
@@ -357,7 +361,7 @@ function LocationInner() {
               ) : null}
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/" className="text-[15px] font-semibold text-[#2c2c2c]">
+              <Link href="/" className="text-[15px] font-semibold text-[#1a1a1a]">
                 Home
               </Link>
             </div>
@@ -375,7 +379,7 @@ function LocationInner() {
       </header>
 
       <main className="w-full px-4 py-4 pb-28">
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleProducts.map((p) => {
             const qty = quantities[p.id] ?? 0;
             const state = saveState[p.id] ?? "idle";

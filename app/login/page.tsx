@@ -60,14 +60,14 @@ export default function LoginPage() {
         <h1 className="text-3xl font-extrabold tracking-tight">
           Penzi Sachen Zähler
         </h1>
-        <p className="mt-2 text-[15px] text-[#2c2c2c]/80">
+        <p className="mt-2 text-[15px] text-[#1a1a1a]/80">
           Location wählen, Passwort eingeben, los.
         </p>
       </div>
 
       <div className="w-full px-4 pt-6">
         <div className="rounded-3xl border border-black/10 bg-white p-5 shadow-sm">
-          <div className="text-[15px] font-semibold text-[#2c2c2c]">
+          <div className="text-[15px] font-semibold text-[#1a1a1a]">
             Location
           </div>
           <div className="mt-3 grid gap-2">
@@ -97,7 +97,7 @@ export default function LoginPage() {
             ) : null}
           </div>
 
-          <label className="mt-4 block text-[15px] font-semibold text-[#2c2c2c]">
+          <label className="mt-4 block text-[15px] font-semibold text-[#1a1a1a]">
             Passwort
           </label>
           <Input

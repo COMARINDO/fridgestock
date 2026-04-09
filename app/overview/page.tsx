@@ -54,7 +54,7 @@ function OverviewInner() {
               <div className="text-[15px] text-[#1f1f1f]">Global</div>
               <div className="text-xl font-extrabold leading-tight">Überblick</div>
             </div>
-            <Link href="/" className="text-[15px] font-semibold text-[#2c2c2c]">
+            <Link href="/" className="text-[15px] font-semibold text-[#1a1a1a]">
               Home
             </Link>
           </div>
@@ -80,7 +80,7 @@ function OverviewInner() {
         ) : visible.length === 0 ? (
           <div className="mt-6 text-[#1f1f1f]">Keine Produkte.</div>
         ) : (
-          <div className="mt-2 grid gap-3">
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visible.map((r) => (
               <div
                 key={r.id}
