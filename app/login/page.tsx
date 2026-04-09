@@ -56,20 +56,18 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="w-full px-4 pt-10">
-        <h1 className="text-3xl font-extrabold tracking-tight">
+      <div className="w-full px-4 pt-8">
+        <h1 className="text-3xl font-black tracking-tight text-black">
           Penzi Sachen Zähler
         </h1>
-        <p className="mt-2 text-[15px] text-[#1a1a1a]">
+        <p className="mt-2 text-[15px] text-black">
           Location wählen, Passwort eingeben, los.
         </p>
       </div>
 
       <div className="w-full px-4 pt-6">
-        <div className="rounded-3xl border border-black/10 bg-white p-5 shadow-sm">
-          <div className="text-[15px] font-semibold text-[#1a1a1a]">
-            Location
-          </div>
+        <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm">
+          <div className="text-[15px] font-extrabold text-black">Location</div>
           <div className="mt-3 grid gap-2">
             {sorted.map((l) => {
               const active = selected?.id === l.id;
@@ -79,11 +77,11 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setSelected(l)}
                   className={[
-                    "w-full rounded-3xl border px-4 py-4 text-left text-[18px] font-extrabold",
+                    "w-full rounded-2xl border-2 px-4 py-4 text-left text-[18px] font-black",
                     "active:scale-[0.99]",
                     active
-                      ? "border-black/20 bg-[#f5efe6]"
-                      : "border-black/10 bg-white",
+                      ? "border-black bg-black text-white"
+                      : "border-black bg-white text-black",
                   ].join(" ")}
                 >
                   {l.name}
@@ -97,7 +95,7 @@ export default function LoginPage() {
             ) : null}
           </div>
 
-          <label className="mt-4 block text-[15px] font-semibold text-[#1a1a1a]">
+          <label className="mt-5 block text-[15px] font-extrabold text-black">
             Passwort
           </label>
           <Input
@@ -123,7 +121,7 @@ export default function LoginPage() {
             onClick={onLogin}
             disabled={busy || !selected || !password}
           >
-            {busy ? "Login..." : "Login"}
+            {busy ? "Login…" : "Login"}
           </Button>
         </div>
       </div>

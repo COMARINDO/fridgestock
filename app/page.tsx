@@ -71,25 +71,25 @@ function HomeInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 bg-[var(--background)]/90 backdrop-blur border-b border-black/10">
+      <header className="sticky top-0 z-10 bg-white border-b-2 border-black">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#1f1f1f]">Location</div>
-              <div className="text-[18px] font-extrabold leading-tight text-[#1a1a1a]">
+              <div className="text-[13px] text-black">Location</div>
+              <div className="text-[20px] font-black leading-tight text-black">
                 {activeParent?.parent.name ?? "…"}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Link
                 href="/overview"
-                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold text-[#1a1a1a]"
+                className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
               >
                 Überblick
               </Link>
               <button
                 onClick={() => logout()}
-                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold text-[#1a1a1a]"
+                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
               >
                 Wechseln
               </button>
@@ -106,9 +106,9 @@ function HomeInner() {
         ) : null}
 
         {busy ? (
-          <div className="mt-6 text-[#1f1f1f]">Lade…</div>
+          <div className="mt-6 text-black">Lade…</div>
         ) : !activeParent ? (
-          <div className="mt-6 text-[#1f1f1f]">
+          <div className="mt-6 text-black">
             Location nicht gefunden. Bitte erneut einloggen.
           </div>
         ) : (
@@ -125,12 +125,14 @@ function HomeInner() {
               return (
                 <div
                   key={parent.id}
-                  className="block w-full max-w-full rounded-3xl border border-black/10 bg-white p-4 shadow-sm"
+                  className="block w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[18px] font-extrabold truncate">{parent.name}</div>
-                      <div className="mt-1 text-[15px] text-[#1f1f1f]">
+                      <div className="text-[18px] font-black truncate text-black">
+                        {parent.name}
+                      </div>
+                      <div className="mt-1 text-[15px] text-black">
                         Haupt-Location (Bestand hier)
                       </div>
                     </div>
@@ -138,7 +140,7 @@ function HomeInner() {
                     {!hasChildren ? (
                       <Link
                         href={`/location/${parent.id}`}
-                        className="h-11 px-4 inline-flex items-center rounded-2xl bg-[#c8a27a] text-[#1a1a1a] text-[15px] font-semibold active:scale-[0.99]"
+                        className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
                       >
                         Öffnen
                       </Link>
@@ -152,7 +154,7 @@ function HomeInner() {
                         if (items.length === 0) return null;
                         return (
                           <div key={s}>
-                            <div className="text-[15px] font-extrabold text-[#1f1f1f]">
+                            <div className="text-[15px] font-black text-black">
                               {s}
                             </div>
                             <div className="mt-2 grid gap-2">
@@ -160,7 +162,7 @@ function HomeInner() {
                                 <Link
                                   key={c.id}
                                   href={`/location/${c.id}`}
-                                  className="block w-full rounded-3xl border border-black/10 bg-[#f5efe6] px-4 py-4 text-[17px] font-semibold active:scale-[0.99]"
+                                  className="block w-full rounded-3xl border-2 border-black bg-white px-4 py-4 text-[17px] font-black text-black active:scale-[0.99]"
                                 >
                                   {c.name}
                                 </Link>

@@ -323,10 +323,10 @@ function LocationInner() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
-        <header className="sticky top-0 z-10 border-b border-black/10 bg-[var(--background)]/90 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
           <div className="w-full px-4 py-4 flex items-center justify-between">
-            <div className="text-xl font-extrabold">Location</div>
-            <Link href="/" className="text-sm font-semibold text-[#1a1a1a]">
+            <div className="text-xl font-black text-black">Location</div>
+            <Link href="/" className="text-sm font-black text-black">
               Home
             </Link>
           </div>
@@ -340,24 +340,24 @@ function LocationInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b border-black/10 bg-[var(--background)]/90 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#1a1a1a]">Location</div>
-            <div className="text-xl font-extrabold leading-tight text-[#1a1a1a]">
+              <div className="text-[13px] text-black">Location</div>
+            <div className="text-xl font-black leading-tight text-black">
                 {inventoryLoc && location?.parent_id
                   ? `${inventoryLoc.name} – ${location.name}`
                   : (location?.name ?? "…")}
               </div>
               {inventoryLoc && location?.parent_id ? (
-                <div className="mt-1 text-[14px] text-[#1a1a1a]">
-                  Bestand von: <span className="font-semibold">{inventoryLoc.name}</span>
+                <div className="mt-1 text-[14px] text-black">
+                  Bestand von: <span className="font-black">{inventoryLoc.name}</span>
                 </div>
               ) : null}
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/" className="text-[15px] font-semibold text-[#1a1a1a]">
+              <Link href="/" className="text-[15px] font-black text-black">
                 Home
               </Link>
             </div>
@@ -384,8 +384,7 @@ function LocationInner() {
               <div
                 key={p.id}
                 className={[
-                  "w-full max-w-full rounded-3xl border bg-white p-4 shadow-sm",
-                  "border-black/10",
+                  "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
                   highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                 ].join(" ")}
                 onClick={(e) => {
@@ -399,13 +398,13 @@ function LocationInner() {
               >
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0">
-                    <div className="text-lg font-extrabold">{p.name}</div>
+                    <div className="text-lg font-black text-black">{p.name}</div>
                   </div>
 
                   <div
                     className={[
-                      "h-9 px-4 rounded-full text-[15px] font-bold flex items-center",
-                      "bg-black/5 text-[#2c2c2c]",
+                      "h-10 px-4 rounded-full text-[15px] font-black flex items-center",
+                      state === "error" ? "bg-white text-black border-2 border-black" : "bg-black text-white",
                     ].join(" ")}
                   >
                     {state === "saving"
@@ -421,7 +420,7 @@ function LocationInner() {
                 {!p.barcode ? (
                   <div className="mt-3">
                     <button
-                      className="w-full rounded-3xl border border-black/10 bg-white px-4 py-4 text-[17px] font-semibold"
+                      className="w-full rounded-2xl border-2 border-black bg-white px-4 py-4 text-[17px] font-black text-black active:scale-[0.99]"
                       onClick={() => {
                         setBarcodeModal({ productId: p.id, productName: p.name });
                         setShortName((p.short_name ?? "").trim());
@@ -436,7 +435,7 @@ function LocationInner() {
 
                 <div className="mt-4 flex items-center gap-3">
                   <button
-                    className="h-14 w-14 rounded-3xl border border-black/10 bg-white text-2xl font-extrabold active:scale-[0.99]"
+                    className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
                     onClick={() => {
                       const next = Math.max(0, qty - 1);
                       setQuantities((m) => ({ ...m, [p.id]: next }));
@@ -470,12 +469,12 @@ function LocationInner() {
                     ref={(el) => {
                       qtyInputs.current[p.id] = el;
                     }}
-                    className="h-14 flex-1 rounded-3xl border border-black/10 bg-[#f5efe6] px-4 text-center text-3xl font-extrabold outline-none focus:border-black/30"
+                    className="h-14 flex-1 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                     aria-label="quantity"
                   />
 
                   <button
-                    className="h-14 w-14 rounded-3xl bg-[#c8a27a] text-[#1a1a1a] text-2xl font-extrabold active:scale-[0.99]"
+                    className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
                     onClick={() => {
                       const next = qty + 1;
                       setQuantities((m) => ({ ...m, [p.id]: next }));
@@ -499,7 +498,7 @@ function LocationInner() {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-black/10 bg-[var(--background)]/95 backdrop-blur">
+      <div className="fixed bottom-0 left-0 right-0 border-t-2 border-black bg-white">
         <div className="w-full px-4 py-3 flex gap-2">
           <Button className="h-14 text-lg" onClick={() => setScannerOpen(true)}>
             SCAN PRODUKT
@@ -509,10 +508,10 @@ function LocationInner() {
 
       {scannerOpen ? (
         <div className="fixed inset-0 z-50 bg-black">
-          <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-white border-b border-black/10">
-            <div className="font-extrabold text-[#1a1a1a]">Barcode Scan</div>
+          <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-white border-b-2 border-black">
+            <div className="font-black text-black">Barcode Scan</div>
             <button
-              className="h-10 px-3 rounded-xl bg-white text-[#1a1a1a] text-sm font-semibold"
+              className="h-10 px-3 rounded-xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
               onClick={() => setScannerOpen(false)}
             >
               Schließen
@@ -533,7 +532,7 @@ function LocationInner() {
             </div>
           </div>
           {scanError ? (
-            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-white p-4 text-[#1a1a1a]">
+            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-white p-4 text-black border-2 border-black">
               {scanError}
             </div>
           ) : null}
@@ -542,35 +541,35 @@ function LocationInner() {
 
       {unknownBarcode ? (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5">
-            <div className="text-lg font-extrabold">Produkt nicht gefunden</div>
-              <div className="mt-1 text-sm text-[#1a1a1a] font-mono">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="text-lg font-black text-black">Produkt nicht gefunden</div>
+              <div className="mt-1 text-sm text-black font-mono">
               {unknownBarcode}
             </div>
 
-            <div className="mt-3 rounded-2xl border border-black/10 bg-white p-4">
-              <div className="text-sm font-extrabold">Vorschlag (Open Food Facts)</div>
+            <div className="mt-3 rounded-2xl border-2 border-black bg-white p-4">
+              <div className="text-sm font-black text-black">Vorschlag (Open Food Facts)</div>
               {offLoading ? (
-                <div className="mt-1 text-sm text-[#1a1a1a]">Suche…</div>
+                <div className="mt-1 text-sm text-black">Suche…</div>
               ) : offSuggestion ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold">{offSuggestion}</div>
+                  <div className="text-sm font-black text-black">{offSuggestion}</div>
                   <button
-                    className="h-10 px-3 rounded-xl bg-[#c8a27a] text-[#1a1a1a] text-sm font-semibold"
+                    className="h-10 px-3 rounded-xl bg-black text-white text-sm font-black active:scale-[0.99]"
                     onClick={() => setNewProductName(offSuggestion)}
                   >
                     Übernehmen
                   </button>
                 </div>
               ) : (
-                <div className="mt-1 text-sm text-[#1a1a1a]">
+                <div className="mt-1 text-sm text-black">
                   {offError ?? "Kein Vorschlag."}
                 </div>
               )}
             </div>
 
             <div className="mt-4">
-                <div className="text-sm font-semibold text-[#1a1a1a]">Name</div>
+                <div className="text-sm font-black text-black">Name</div>
               <Input
                 value={newProductName}
                 onChange={(ev) => setNewProductName(ev.target.value)}
@@ -636,16 +635,16 @@ function LocationInner() {
 
       {scanSheet ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs text-[#1f1f1f]">Produkt erkannt</div>
-                <div className="text-2xl font-extrabold leading-tight">
+                <div className="text-xs text-black">Produkt erkannt</div>
+                <div className="text-2xl font-black leading-tight text-black">
                   {scanSheet.productName}
                 </div>
               </div>
               <button
-                className="h-10 px-3 rounded-2xl bg-black/5 text-sm font-semibold"
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
                 onClick={() => setScanSheet(null)}
               >
                 Schließen
@@ -671,7 +670,7 @@ function LocationInner() {
 
             {scanMode === "set" ? (
               <div className="mt-5 grid gap-3">
-                <div className="text-sm font-semibold text-[#1a1a1a]">
+                <div className="text-sm font-black text-black">
                   Gesamtanzahl
                 </div>
                 <input
@@ -681,7 +680,7 @@ function LocationInner() {
                   onChange={(ev) =>
                     setSetQty(ev.target.value.replace(/[^\d]/g, ""))
                   }
-                  className="h-14 w-full rounded-3xl border border-black/10 bg-[#f5efe6] px-4 text-center text-3xl font-extrabold outline-none focus:border-black/30"
+                  className="h-14 w-full rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                   autoFocus
                 />
                 <Button
@@ -708,9 +707,9 @@ function LocationInner() {
 
             {scanMode === "add" ? (
               <div className="mt-5 grid gap-3">
-                <div className="text-sm text-[#1f1f1f]">
+                <div className="text-sm text-black">
                   Aktuell:{" "}
-                  <span className="font-extrabold">
+                  <span className="font-black">
                     {quantities[scanSheet.productId] ?? 0}
                   </span>
                 </div>
@@ -731,7 +730,7 @@ function LocationInner() {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold text-[#1a1a1a]">+X</div>
+                  <div className="text-sm font-black text-black">+X</div>
                   <input
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -739,7 +738,7 @@ function LocationInner() {
                     onChange={(ev) =>
                       setAddQty(ev.target.value.replace(/[^\d]/g, ""))
                     }
-                    className="mt-2 h-14 w-full rounded-3xl border border-black/10 bg-white px-4 text-center text-2xl font-extrabold outline-none focus:border-black/30"
+                    className="mt-2 h-14 w-full rounded-2xl border-2 border-black bg-white px-4 text-center text-2xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                   />
                 </div>
 
@@ -772,16 +771,16 @@ function LocationInner() {
 
       {barcodeModal ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-[#1f1f1f]">Barcode Label</div>
-                <div className="text-2xl font-extrabold leading-tight truncate">
+                <div className="text-xs text-black">Barcode Label</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
                   {barcodeModal.productName}
                 </div>
               </div>
               <button
-                className="h-10 px-3 rounded-2xl bg-black/5 text-sm font-semibold"
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
                 onClick={() => setBarcodeModal(null)}
               >
                 Schließen
@@ -789,7 +788,7 @@ function LocationInner() {
             </div>
 
             <div className="mt-4">
-              <div className="text-sm font-semibold text-[#1f1f1f]">
+              <div className="text-sm font-black text-black">
                 Kurzname (Label)
               </div>
               <Input
@@ -800,8 +799,8 @@ function LocationInner() {
               />
             </div>
 
-            <div className="mt-4 rounded-3xl border border-black/10 bg-white p-4">
-              <div className="text-sm font-semibold text-[#1f1f1f]">
+            <div className="mt-4 rounded-3xl border-2 border-black bg-white p-4">
+              <div className="text-sm font-black text-black">
                 Vorschau (3cm × 1,5cm)
               </div>
               <div className="mt-3 flex justify-center">
@@ -837,7 +836,7 @@ function LocationInner() {
                 </div>
               </div>
               {genBarcode ? (
-                <div className="mt-2 text-center text-xs font-mono text-[#1f1f1f]">
+                <div className="mt-2 text-center text-xs font-mono text-black">
                   {genBarcode}
                 </div>
               ) : null}

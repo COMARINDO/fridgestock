@@ -47,14 +47,14 @@ function OverviewInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b border-black/10 bg-[var(--background)]/90 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#1f1f1f]">Global</div>
-              <div className="text-xl font-extrabold leading-tight">Überblick</div>
+              <div className="text-[13px] text-black">Global</div>
+              <div className="text-xl font-black leading-tight text-black">Überblick</div>
             </div>
-            <Link href="/" className="text-[15px] font-semibold text-[#1a1a1a]">
+            <Link href="/" className="text-[15px] font-black text-black">
               Home
             </Link>
           </div>
@@ -76,21 +76,23 @@ function OverviewInner() {
         ) : null}
 
         {busy ? (
-          <div className="mt-6 text-[#1f1f1f]">Lade…</div>
+          <div className="mt-6 text-black">Lade…</div>
         ) : visible.length === 0 ? (
-          <div className="mt-6 text-[#1f1f1f]">Keine Produkte.</div>
+          <div className="mt-6 text-black">Keine Produkte.</div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visible.map((r) => (
               <div
                 key={r.id}
-                className="w-full max-w-full rounded-3xl border border-black/10 bg-white p-4 shadow-sm"
+                className="w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0">
-                    <div className="text-[18px] font-extrabold truncate">{r.name}</div>
+                    <div className="text-[18px] font-black truncate text-black">
+                      {r.name}
+                    </div>
                   </div>
-                  <div className="h-9 px-4 rounded-full bg-black/5 text-[#2c2c2c] text-[15px] font-extrabold flex items-center">
+                  <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
                     {r.quantity}
                   </div>
                 </div>
