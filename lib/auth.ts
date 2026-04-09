@@ -1,8 +1,8 @@
-export type SessionUser = { id: string; name: string };
+export type SessionLocation = { location_id: string };
 
-const STORAGE_KEY = "fridge.session.v1";
+const STORAGE_KEY = "fridge.location.v1";
 
-export function getStoredUser(): SessionUser | null {
+export function getStoredLocation(): SessionLocation | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -11,21 +11,13 @@ export function getStoredUser(): SessionUser | null {
     if (
       typeof parsed === "object" &&
       parsed !== null &&
-      "id" in parsed &&
-      "name" in parsed &&
-      typeof (parsed as Record<string, unknown>).name === "string"
+      "location_id" in parsed &&
+      typeof (parsed as Record<string, unknown>).location_id === "string"
     ) {
       const obj = parsed as Record<string, unknown>;
-      const idVal = obj.id;
-      // Backwards compatible: older sessions might have numeric ids.
-      const id =
-        typeof idVal === "string"
-          ? idVal
-          : typeof idVal === "number"
-            ? String(idVal)
-            : null;
-      if (!id) return null;
-      return { id, name: obj.name as string };
+      const id = obj.location_id as string;
+      if (!id.trim()) return null;
+      return { location_id: id };
     }
     return null;
   } catch {
@@ -33,11 +25,11 @@ export function getStoredUser(): SessionUser | null {
   }
 }
 
-export function setStoredUser(user: SessionUser) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+export function setStoredLocation(location: SessionLocation) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(location));
 }
 
-export function clearStoredUser() {
+export function clearStoredLocation() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 

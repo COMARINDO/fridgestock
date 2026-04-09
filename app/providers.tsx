@@ -6,34 +6,38 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import { clearStoredUser, getStoredUser, setStoredUser } from "@/lib/auth";
-import type { SessionUser } from "@/lib/auth";
+import {
+  clearStoredLocation,
+  getStoredLocation,
+  setStoredLocation,
+} from "@/lib/auth";
+import type { SessionLocation } from "@/lib/auth";
 
 type AuthContextValue = {
-  user: SessionUser | null;
-  setUser: (u: SessionUser | null) => void;
-  logout: () => void;
+  location: SessionLocation | null;
+  setLocation: (l: SessionLocation | null) => void;
+  logout: () => void; // clears selected location
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SESSION_EVENT = "fridge-session";
 
-let cachedUser: SessionUser | null | undefined = undefined;
+let cachedLocation: SessionLocation | null | undefined = undefined;
 
-function readUserOnce() {
-  if (cachedUser !== undefined) return cachedUser;
-  cachedUser = getStoredUser();
-  return cachedUser;
+function readLocationOnce() {
+  if (cachedLocation !== undefined) return cachedLocation;
+  cachedLocation = getStoredLocation();
+  return cachedLocation;
 }
 
-function refreshCachedUser() {
-  cachedUser = getStoredUser();
+function refreshCachedLocation() {
+  cachedLocation = getStoredLocation();
 }
 
 function subscribe(cb: () => void) {
   const handler = () => {
-    refreshCachedUser();
+    refreshCachedLocation();
     cb();
   };
 
@@ -46,7 +50,7 @@ function subscribe(cb: () => void) {
 }
 
 function getSnapshot() {
-  return readUserOnce();
+  return readLocationOnce();
 }
 
 function getServerSnapshot() {
@@ -54,24 +58,24 @@ function getServerSnapshot() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const user = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const location = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const value = useMemo<AuthContextValue>(() => {
     return {
-      user,
-      setUser: (u) => {
-        if (u) setStoredUser(u);
-        else clearStoredUser();
-        cachedUser = u;
+      location,
+      setLocation: (l) => {
+        if (l) setStoredLocation(l);
+        else clearStoredLocation();
+        cachedLocation = l;
         window.dispatchEvent(new Event(SESSION_EVENT));
       },
       logout: () => {
-        clearStoredUser();
-        cachedUser = null;
+        clearStoredLocation();
+        cachedLocation = null;
         window.dispatchEvent(new Event(SESSION_EVENT));
       },
     };
-  }, [user]);
+  }, [location]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

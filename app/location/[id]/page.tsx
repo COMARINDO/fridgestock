@@ -14,7 +14,6 @@ import {
   setInventoryQuantity,
 } from "@/lib/db";
 import type { Location, Product } from "@/lib/types";
-import { useAuth } from "@/app/providers";
 import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 
@@ -32,7 +31,6 @@ function LocationInner() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const locationId = params?.id ?? "";
-  const { user } = useAuth();
 
   const [location, setLocation] = useState<Location | null>(null);
   const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
@@ -101,14 +99,12 @@ function LocationInner() {
   }, [locationId, router]);
 
   async function runSave(productId: string) {
-    if (!user) return;
     if (!inventoryLoc) return;
     const nextQty = pendingQty.current[productId];
     if (nextQty === undefined) return;
 
     try {
       await setInventoryQuantity({
-        userId: user.id,
         locationId: inventoryLoc.id,
         productId,
         quantity: nextQty,

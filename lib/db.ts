@@ -4,7 +4,6 @@ import type {
   InventoryRow,
   Location,
   Product,
-  User,
 } from "@/lib/types";
 
 type SupabaseLikeError = { status?: number; message?: string };
@@ -34,21 +33,7 @@ function from(table: string): QueryBuilder {
   return supabase.from(table) as QueryBuilder;
 }
 
-export async function loginWithNamePassword(name: string, password: string) {
-  const { data, error } = await from("users")
-    .select("id,name,password")
-    .eq("name", name)
-    .maybeSingle();
-
-  if (error) throw error;
-  const row = data as unknown as
-    | { id: string; name: string; password: string }
-    | null;
-  if (!row) return null;
-  if (row.password !== password) return null;
-
-  return { id: row.id, name: row.name };
-}
+// NOTE: No user accounts / auth backend. Login is location-based only.
 
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await from("locations")
@@ -220,14 +205,7 @@ export async function getInventoryHistoryForLocation(
   return (data ?? []) as InventoryHistoryRow[];
 }
 
-export async function listUsers(): Promise<Pick<User, "id" | "name">[]> {
-  const { data, error } = await from("users").select("id,name").order("name");
-  if (error) throw error;
-  return (data ?? []) as Pick<User, "id" | "name">[];
-}
-
 export async function setInventoryQuantity(args: {
-  userId: string;
   locationId: string;
   productId: string;
   quantity: number;
@@ -256,7 +234,7 @@ export async function setInventoryQuantity(args: {
   if (upsertErr) throw upsertErr;
 
   const { error: histErr } = await supabase.from("inventory_history").insert({
-    user_id: args.userId,
+    user_id: null,
     location_id: args.locationId,
     product_id: args.productId,
     quantity: args.quantity,

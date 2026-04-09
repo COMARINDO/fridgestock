@@ -17,7 +17,7 @@ export default function HomePage() {
 }
 
 function HomeInner() {
-  const { user, logout } = useAuth();
+  const { location, logout } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +56,12 @@ function HomeInner() {
     }));
   }, [locations]);
 
+  const activeParent = useMemo(() => {
+    const id = location?.location_id;
+    if (!id) return null;
+    return grouped.find((g) => g.parent.id === id) ?? null;
+  }, [grouped, location?.location_id]);
+
   function sectionLabel(name: string): "Kühlschrank" | "Lager" | "Andere" {
     const n = name.trim().toLowerCase();
     if (n.includes("kühlschrank") || n.includes("kuehlschrank")) return "Kühlschrank";
@@ -69,9 +75,9 @@ function HomeInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#1f1f1f]">Eingeloggt als</div>
+              <div className="text-[15px] text-[#1f1f1f]">Location</div>
               <div className="text-[18px] font-extrabold leading-tight">
-                {user?.name}
+                {activeParent?.parent.name ?? "…"}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -85,7 +91,7 @@ function HomeInner() {
                 onClick={() => logout()}
                 className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold"
               >
-                Logout
+                Wechseln
               </button>
             </div>
           </div>
@@ -101,11 +107,13 @@ function HomeInner() {
 
         {busy ? (
           <div className="mt-6 text-[#1f1f1f]">Lade…</div>
-        ) : locations.length === 0 ? (
-          <div className="mt-6 text-[#1f1f1f]">Keine Locations gefunden.</div>
+        ) : !activeParent ? (
+          <div className="mt-6 text-[#1f1f1f]">
+            Location nicht gefunden. Bitte erneut einloggen.
+          </div>
         ) : (
           <div className="mt-2 grid gap-3">
-            {grouped.map(({ parent, children }) => {
+            {[activeParent].map(({ parent, children }) => {
               const sections = {
                 "Kühlschrank": children.filter((c) => sectionLabel(c.name) === "Kühlschrank"),
                 "Lager": children.filter((c) => sectionLabel(c.name) === "Lager"),

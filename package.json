@@ -6,8 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "create-user": "node scripts/create-user.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
