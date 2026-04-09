@@ -30,7 +30,7 @@ export function ButtonSecondary({
     <button
       className={cx(
         "w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50",
-        "bg-white text-black border-2 border-black shadow-sm",
+        "bg-[#f2d2b6] text-black border-2 border-black shadow-sm",
         className
       )}
       {...props}

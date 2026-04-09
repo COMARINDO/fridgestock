@@ -71,7 +71,7 @@ function HomeInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 bg-white border-b-2 border-black">
+      <header className="sticky top-0 z-10 bg-[var(--background)] border-b-2 border-black">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>

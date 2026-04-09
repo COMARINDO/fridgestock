@@ -340,7 +340,7 @@ function LocationInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
+      <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -433,7 +433,7 @@ function LocationInner() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 flex items-center gap-3">
+                <div className="mt-4 flex items-center gap-3 min-w-0">
                   <button
                     className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
                     onClick={() => {
@@ -469,7 +469,7 @@ function LocationInner() {
                     ref={(el) => {
                       qtyInputs.current[p.id] = el;
                     }}
-                    className="h-14 flex-1 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                    className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                     aria-label="quantity"
                   />
 
@@ -498,7 +498,7 @@ function LocationInner() {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t-2 border-black bg-white">
+      <div className="fixed bottom-0 left-0 right-0 border-t-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-3 flex gap-2">
           <Button className="h-14 text-lg" onClick={() => setScannerOpen(true)}>
             SCAN PRODUKT

@@ -47,7 +47,7 @@ function OverviewInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
+      <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
