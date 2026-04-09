@@ -13,8 +13,8 @@ export function Button({
   return (
     <button
       className={cx(
-        "h-12 rounded-xl px-4 font-semibold active:scale-[0.99] disabled:opacity-50",
-        "bg-zinc-900 text-white",
+        "h-12 rounded-2xl px-4 font-semibold active:scale-[0.99] disabled:opacity-50",
+        "bg-[#6f4e37] text-white shadow-sm",
         className
       )}
       {...props}
@@ -29,8 +29,8 @@ export function ButtonSecondary({
   return (
     <button
       className={cx(
-        "h-12 rounded-xl px-4 font-semibold active:scale-[0.99] disabled:opacity-50",
-        "bg-white text-zinc-950 border border-zinc-200",
+        "h-12 rounded-2xl px-4 font-semibold active:scale-[0.99] disabled:opacity-50",
+        "bg-[#c8a27a] text-[#1f1611] shadow-sm",
         className
       )}
       {...props}
@@ -45,8 +45,8 @@ export function Input({
   return (
     <input
       className={cx(
-        "h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base outline-none",
-        "focus:border-zinc-400",
+        "h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-base outline-none",
+        "focus:border-black/30",
         className
       )}
       {...props}

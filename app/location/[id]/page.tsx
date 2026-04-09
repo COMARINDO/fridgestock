@@ -53,6 +53,13 @@ function LocationInner() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [scanSheet, setScanSheet] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
+  const [scanMode, setScanMode] = useState<"choose" | "set" | "add">("choose");
+  const [setQty, setSetQty] = useState("");
+  const [addQty, setAddQty] = useState("1");
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [newProductName, setNewProductName] = useState("");
   const [offLoading, setOffLoading] = useState(false);
@@ -201,11 +208,19 @@ function LocationInner() {
       }
 
       setHighlightId(p.id);
+      setTimeout(() => setHighlightId(null), 900);
+
       setTimeout(() => {
-        rowRefs.current[p.id]?.scrollIntoView({ block: "center", behavior: "smooth" });
-        qtyInputs.current[p.id]?.focus();
-      }, 80);
-      setTimeout(() => setHighlightId(null), 1400);
+        rowRefs.current[p.id]?.scrollIntoView({
+          block: "center",
+          behavior: "smooth",
+        });
+      }, 60);
+
+      setScanSheet({ productId: p.id, productName: p.name });
+      setScanMode("choose");
+      setSetQty(String(quantities[p.id] ?? 0));
+      setAddQty("1");
     } catch (e: unknown) {
       setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
     }
@@ -341,6 +356,7 @@ function LocationInner() {
         }
       })();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerOpen]);
 
   const visibleProducts = useMemo(() => {
@@ -512,13 +528,13 @@ function LocationInner() {
               <div
                 key={p.id}
                 className={[
-                  "rounded-2xl border bg-white p-4",
+                  "rounded-3xl border bg-white p-4 shadow-sm",
                   status === "ok"
-                    ? "border-zinc-200"
+                    ? "border-black/10"
                     : status === "low"
-                      ? "border-orange-300"
+                      ? "border-[#c8a27a]"
                       : "border-red-300",
-                  highlightId === p.id ? "ring-2 ring-zinc-900" : "",
+                  highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                 ].join(" ")}
                 onClick={(e) => {
                   // Click-to-focus quantity input (fast)
@@ -627,7 +643,7 @@ function LocationInner() {
                     ref={(el) => {
                       qtyInputs.current[p.id] = el;
                     }}
-                    className="h-14 flex-1 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 text-center text-3xl font-extrabold outline-none focus:border-zinc-400"
+                    className="h-14 flex-1 rounded-3xl border border-black/10 bg-[#f5efe6] px-4 text-center text-3xl font-extrabold outline-none focus:border-black/30"
                     aria-label="quantity"
                   />
 
@@ -774,6 +790,142 @@ function LocationInner() {
                 Abbrechen
               </ButtonSecondary>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {scanSheet ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs text-zinc-600">Produkt erkannt</div>
+                <div className="text-2xl font-extrabold leading-tight">
+                  {scanSheet.productName}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-black/5 text-sm font-semibold"
+                onClick={() => setScanSheet(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            {scanMode === "choose" ? (
+              <div className="mt-5 grid gap-3">
+                <Button
+                  className="w-full h-14 text-lg"
+                  onClick={() => setScanMode("set")}
+                >
+                  Bestand setzen
+                </Button>
+                <ButtonSecondary
+                  className="w-full h-14 text-lg"
+                  onClick={() => setScanMode("add")}
+                >
+                  + Hinzufügen
+                </ButtonSecondary>
+              </div>
+            ) : null}
+
+            {scanMode === "set" ? (
+              <div className="mt-5 grid gap-3">
+                <div className="text-sm font-semibold text-zinc-700">
+                  Gesamtanzahl
+                </div>
+                <input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={setQty}
+                  onChange={(ev) =>
+                    setSetQty(ev.target.value.replace(/[^\d]/g, ""))
+                  }
+                  className="h-14 w-full rounded-3xl border border-black/10 bg-[#f5efe6] px-4 text-center text-3xl font-extrabold outline-none focus:border-black/30"
+                  autoFocus
+                />
+                <Button
+                  className="w-full h-14 text-lg"
+                  onClick={() => {
+                    const n = Number(setQty || "0");
+                    const next = Number.isFinite(n) ? Math.max(0, n) : 0;
+                    setQuantities((m) => ({ ...m, [scanSheet.productId]: next }));
+                    scheduleSave(scanSheet.productId, next);
+                    setScanSheet(null);
+                    setTimeout(() => qtyInputs.current[scanSheet.productId]?.focus(), 50);
+                  }}
+                >
+                  Speichern
+                </Button>
+                <ButtonSecondary
+                  className="w-full h-12"
+                  onClick={() => setScanMode("choose")}
+                >
+                  Zurück
+                </ButtonSecondary>
+              </div>
+            ) : null}
+
+            {scanMode === "add" ? (
+              <div className="mt-5 grid gap-3">
+                <div className="text-sm text-zinc-600">
+                  Aktuell:{" "}
+                  <span className="font-extrabold">
+                    {quantities[scanSheet.productId] ?? 0}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <ButtonSecondary
+                    className="h-14 text-lg"
+                    onClick={() => setAddQty("1")}
+                  >
+                    +1
+                  </ButtonSecondary>
+                  <ButtonSecondary
+                    className="h-14 text-lg"
+                    onClick={() => setAddQty("6")}
+                  >
+                    +6
+                  </ButtonSecondary>
+                </div>
+
+                <div>
+                  <div className="text-sm font-semibold text-zinc-700">+X</div>
+                  <input
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={addQty}
+                    onChange={(ev) =>
+                      setAddQty(ev.target.value.replace(/[^\d]/g, ""))
+                    }
+                    className="mt-2 h-14 w-full rounded-3xl border border-black/10 bg-white px-4 text-center text-2xl font-extrabold outline-none focus:border-black/30"
+                  />
+                </div>
+
+                <Button
+                  className="w-full h-14 text-lg"
+                  onClick={() => {
+                    const cur = quantities[scanSheet.productId] ?? 0;
+                    const inc = Number(addQty || "1");
+                    const add = Number.isFinite(inc) ? Math.max(0, inc) : 1;
+                    const next = cur + add;
+                    setQuantities((m) => ({ ...m, [scanSheet.productId]: next }));
+                    scheduleSave(scanSheet.productId, next);
+                    setScanSheet(null);
+                    setTimeout(() => qtyInputs.current[scanSheet.productId]?.focus(), 50);
+                  }}
+                >
+                  Speichern
+                </Button>
+                <ButtonSecondary
+                  className="w-full h-12"
+                  onClick={() => setScanMode("choose")}
+                >
+                  Zurück
+                </ButtonSecondary>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
