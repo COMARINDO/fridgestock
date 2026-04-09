@@ -181,7 +181,14 @@ function LocationInner() {
       }
 
       setHighlightId(p.id);
-      setTimeout(() => setHighlightId(null), 900);
+      setTimeout(() => setHighlightId(null), 2500);
+
+      setTimeout(() => {
+        rowRefs.current[p.id]?.scrollIntoView({
+          block: "center",
+          behavior: "smooth",
+        });
+      }, 60);
 
       // No automatic quantity changes on scan.
       // Tap/hold on the product card handles +1 / menu.
