@@ -68,7 +68,7 @@ export async function resolveInventoryLocation(locationId: string): Promise<{
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select("id,name,min_quantity,barcode,short_name")
+    .select("id,name,zusatz,min_quantity,barcode,short_name")
     .order("name");
   if (error) throw error;
   return (data ?? []) as Product[];
@@ -78,7 +78,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select("id,name,min_quantity,barcode,short_name")
+    .select("id,name,zusatz,min_quantity,barcode,short_name")
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
@@ -126,7 +126,7 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,name,min_quantity,barcode,short_name,inventory:inventory!left(quantity,location_id)"
+        "id,name,zusatz,min_quantity,barcode,short_name,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
@@ -134,6 +134,7 @@ export async function listProductsWithInventoryForLocation(
       const rows = data as Array<
         Product & {
           short_name?: string | null;
+          zusatz?: string | null;
           inventory?: Array<{ quantity?: number | null; location_id?: string | null }>;
         }
       >;
@@ -143,6 +144,7 @@ export async function listProductsWithInventoryForLocation(
         return rows.map((p) => ({
           id: p.id,
           name: p.name,
+          zusatz: p.zusatz ?? null,
           min_quantity: p.min_quantity,
           barcode: p.barcode ?? null,
           short_name: p.short_name ?? null,
@@ -252,12 +254,14 @@ export async function setInventoryQuantity(args: {
 
 export async function createProductWithBarcode(args: {
   name: string;
+  zusatz?: string | null;
   barcode: string;
   min_quantity?: number;
   short_name?: string | null;
 }) {
   const { error } = await from("products").insert({
     name: args.name,
+    zusatz: args.zusatz ?? null,
     barcode: args.barcode,
     min_quantity: args.min_quantity ?? 0,
     short_name: args.short_name ?? null,

@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
-import { Input } from "@/app/_components/ui";
-import { getGlobalOverviewByProduct } from "@/lib/db";
+import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
+import { getGlobalOverviewByProduct, updateProductBarcode } from "@/lib/db";
 import type { Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
+import JsBarcode from "jsbarcode";
+import { suggestShortName } from "@/lib/shortName";
 
 type Row = Product & { quantity: number };
 
@@ -23,14 +25,27 @@ function OverviewInner() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [barcodeModal, setBarcodeModal] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
+  const [shortName, setShortName] = useState("");
+  const [genBarcode, setGenBarcode] = useState<string>("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [barcodeErr, setBarcodeErr] = useState<string | null>(null);
+  const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
+
+  async function reload() {
+    const data = await getGlobalOverviewByProduct();
+    setRows(data);
+  }
 
   useEffect(() => {
     (async () => {
       setBusy(true);
       setError(null);
       try {
-        const data = await getGlobalOverviewByProduct();
-        setRows(data);
+        await reload();
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Überblick nicht laden."));
       } finally {
@@ -38,6 +53,21 @@ function OverviewInner() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!barcodeModal || !genBarcode || !barcodeSvgRef.current) return;
+    try {
+      JsBarcode(barcodeSvgRef.current, genBarcode, {
+        format: "CODE128",
+        displayValue: false,
+        margin: 0,
+        height: 40,
+        width: 1.2,
+      });
+    } catch {
+      // ignore
+    }
+  }, [barcodeModal, genBarcode]);
 
   const visible = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -90,18 +120,217 @@ function OverviewInner() {
                   <div className="min-w-0">
                     <div className="text-[18px] font-black truncate text-black">
                       {r.name}
+                      {r.zusatz ? ` ${r.zusatz}` : ""}
                     </div>
                   </div>
                   <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
                     {r.quantity}
                   </div>
                 </div>
+
+                {!r.barcode ? (
+                  <div className="mt-3">
+                    <ButtonSecondary
+                      className="h-12"
+                      onClick={() => {
+                        const label = `${r.name}${r.zusatz ? ` ${r.zusatz}` : ""}`;
+                        setBarcodeModal({ productId: r.id, productName: label });
+                        const existing = (r.short_name ?? "").trim();
+                        setShortName(
+                          existing ||
+                            suggestShortName({ name: r.name, zusatz: r.zusatz })
+                        );
+                        setGenBarcode("");
+                        setBarcodeErr(null);
+                      }}
+                    >
+                      Barcode erstellen
+                    </ButtonSecondary>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
         )}
       </main>
+
+      {barcodeModal ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Barcode Label</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
+                  {barcodeModal.productName}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                onClick={() => setBarcodeModal(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-black text-black">Kurzname (Label)</div>
+              <Input
+                value={shortName}
+                onChange={(ev) => setShortName(ev.target.value)}
+                placeholder='z.B. "co 0,5"'
+                className="mt-2"
+              />
+            </div>
+
+            <div className="mt-4 rounded-3xl border-2 border-black bg-white p-4">
+              <div className="text-sm font-black text-black">
+                Vorschau (3cm × 1,5cm)
+              </div>
+              <div className="mt-3 flex justify-center">
+                <div
+                  style={{
+                    width: "3cm",
+                    height: "1.5cm",
+                    border: "1px solid rgba(0,0,0,0.1)",
+                    borderRadius: "6mm",
+                    padding: "2mm",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: "1mm",
+                  }}
+                >
+                  <svg ref={barcodeSvgRef} />
+                  <div
+                    style={{
+                      fontSize: "7pt",
+                      fontWeight: 900,
+                      textAlign: "center",
+                      color: "#000000",
+                      lineHeight: 1.1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={shortName}
+                  >
+                    {shortName || " "}
+                  </div>
+                </div>
+              </div>
+              {genBarcode ? (
+                <div className="mt-2 text-center text-xs font-mono text-black">
+                  {genBarcode}
+                </div>
+              ) : null}
+            </div>
+
+            {barcodeErr ? (
+              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
+                {barcodeErr}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3">
+              <ButtonSecondary
+                className="h-14 text-lg"
+                onClick={() => {
+                  const base = Date.now().toString(10).slice(-8);
+                  const rand = Math.floor(Math.random() * 9000 + 1000).toString(10);
+                  setGenBarcode(`PENZI${base}${rand}`);
+                }}
+              >
+                Barcode generieren
+              </ButtonSecondary>
+
+              <Button
+                className="h-14 text-lg"
+                disabled={barcodeBusy || !genBarcode || !shortName.trim()}
+                onClick={async () => {
+                  setBarcodeErr(null);
+                  setBarcodeBusy(true);
+                  try {
+                    await updateProductBarcode({
+                      productId: barcodeModal.productId,
+                      barcode: genBarcode,
+                      short_name: shortName.trim(),
+                    });
+                    await reload();
+                    setBarcodeModal(null);
+                  } catch (e: unknown) {
+                    setBarcodeErr(errorMessage(e, "Konnte Barcode nicht speichern."));
+                  } finally {
+                    setBarcodeBusy(false);
+                  }
+                }}
+              >
+                {barcodeBusy ? "Speichert…" : "Speichern"}
+              </Button>
+
+              <ButtonSecondary
+                className="h-14 text-lg"
+                disabled={!genBarcode || !shortName.trim()}
+                onClick={() => {
+                  const svg = barcodeSvgRef.current;
+                  if (!svg) return;
+                  const svgMarkup = svg.outerHTML;
+                  const text = shortName.trim();
+
+                  const win = window.open("", "_blank", "noopener,noreferrer");
+                  if (!win) return;
+                  win.document.open();
+                  win.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Barcode Label</title>
+  <style>
+    @page { margin: 8mm; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .label {
+      width: 3cm;
+      height: 1.5cm;
+      border: 2px solid #000;
+      border-radius: 6mm;
+      padding: 2mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1mm;
+    }
+    .name { font-size: 7pt; font-weight: 900; text-align: center; color: #000; line-height: 1.1; }
+    svg { width: 100%; height: 40px; }
+  </style>
+</head>
+<body>
+  <div class="label">
+    ${svgMarkup}
+    <div class="name">${escapeHtml(text)}</div>
+  </div>
+  <script>
+    window.onload = () => { window.print(); };
+  </script>
+</body>
+</html>`);
+                  win.document.close();
+                }}
+              >
+                Drucken
+              </ButtonSecondary>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
