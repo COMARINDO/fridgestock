@@ -33,7 +33,6 @@ function LocationInner() {
   const params = useParams<{ id: string }>();
   const locationId = params?.id ?? "";
 
-  const [ultraSpeed, setUltraSpeed] = useState(false);
   const [location, setLocation] = useState<Location | null>(null);
   const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -65,20 +64,14 @@ function LocationInner() {
   const pendingQty = useRef<Record<string, number>>({});
   const quantitiesRef = useRef<Record<string, number>>({});
   const lastScanRef = useRef<{ code: string; at: number }>({ code: "", at: 0 });
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const qs = new URLSearchParams(window.location.search);
-    const on = qs.get("ultra") === "1" || window.localStorage.getItem("fridge.ultraSpeed") === "1";
-    setUltraSpeed(on);
-    if (on) window.localStorage.setItem("fridge.ultraSpeed", "1");
-  }, []);
 
   useEffect(() => {
     if (!locationId) {
@@ -108,10 +101,6 @@ function LocationInner() {
       }
     })();
   }, [locationId, router]);
-
-  useEffect(() => {
-    if (ultraSpeed) setScannerOpen(true);
-  }, [ultraSpeed]);
 
   async function runSave(productId: string) {
     if (!inventoryLoc) return;
@@ -147,69 +136,24 @@ function LocationInner() {
     }, 200); // ~200ms debounce
   }
 
-  function beep() {
-    try {
-      const w = window as unknown as {
-        AudioContext?: typeof AudioContext;
-        webkitAudioContext?: typeof AudioContext;
-      };
-      const AC = w.AudioContext || w.webkitAudioContext;
-      if (!AC) return;
-      const ctx = new AC();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "square";
-      o.frequency.value = 880;
-      g.gain.value = 0.08;
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start();
-      setTimeout(() => {
-        try {
-          o.stop();
-          ctx.close();
-        } catch {}
-      }, 60);
-    } catch {
-      // ignore
-    }
-  }
-
-  async function handleUltraScan(codeRaw: string) {
-    const code = codeRaw.trim();
-    if (!code) return;
+  async function saveImmediate(productId: string, nextQty: number) {
     if (!inventoryLoc) return;
-
-    const now = Date.now();
-    if (lastScanRef.current.code === code && now - lastScanRef.current.at < 900) return;
-    lastScanRef.current = { code, at: now };
-
+    pendingQty.current[productId] = nextQty;
+    setSaveState((s) => ({ ...s, [productId]: "saving" }));
     try {
-      const p = await getProductByBarcode(code);
-      if (!p) return; // ignore unknowns in ultra mode (no modals)
-
-      const cur = quantitiesRef.current[p.id] ?? 0;
-      const next = cur + 1;
-
-      quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
-      setQuantities((prev) => ({ ...prev, [p.id]: next }));
-
-      setHighlightId(p.id);
-      setTimeout(() => setHighlightId(null), 350);
-      beep();
-
-      setSaveState((s) => ({ ...s, [p.id]: "saving" }));
       await setInventoryQuantity({
         locationId: inventoryLoc.id,
-        productId: p.id,
-        quantity: next,
+        productId,
+        quantity: nextQty,
       });
-      setSaveState((s) => ({ ...s, [p.id]: "saved" }));
+      setSaveState((s) => ({ ...s, [productId]: "saved" }));
       setTimeout(() => {
-        setSaveState((s) => (s[p.id] === "saved" ? { ...s, [p.id]: "idle" } : s));
+        setSaveState((s) =>
+          s[productId] === "saved" ? { ...s, [productId]: "idle" } : s
+        );
       }, 450);
     } catch {
-      // keep scanner running; show a non-blocking marker on product if possible
+      setSaveState((s) => ({ ...s, [productId]: "error" }));
     }
   }
 
@@ -219,9 +163,13 @@ function LocationInner() {
     setScanError(null);
 
     try {
+      // Ignore duplicate scans within short time.
+      const now = Date.now();
+      if (lastScanRef.current.code === code && now - lastScanRef.current.at < 900) return;
+      lastScanRef.current = { code, at: now };
+
       const p = await getProductByBarcode(code);
       if (!p) {
-        if (ultraSpeed) return; // no modals in ultra mode
         setUnknownBarcode(code);
         setNewProductName("");
         setNewProductZusatz("");
@@ -232,25 +180,15 @@ function LocationInner() {
         return;
       }
 
-      const displayName = `${p.name}${p.zusatz ? ` ${p.zusatz}` : ""}`;
       setHighlightId(p.id);
       setTimeout(() => setHighlightId(null), 900);
 
-      if (!ultraSpeed) {
-        setTimeout(() => {
-          rowRefs.current[p.id]?.scrollIntoView({
-            block: "center",
-            behavior: "smooth",
-          });
-        }, 60);
-      }
-
-      if (!ultraSpeed) {
-        setScanSheet({ productId: p.id, productName: displayName });
-        setScanMode("choose");
-        setSetQty(String(quantities[p.id] ?? 0));
-        setAddQty("1");
-      }
+      // No automatic quantity changes on scan.
+      // Tap/hold on the product card handles +1 / menu.
+      setScanSheet(null);
+      setScanMode("choose");
+      setSetQty(String(quantitiesRef.current[p.id] ?? 0));
+      setAddQty("1");
     } catch (e: unknown) {
       setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
     }
@@ -351,18 +289,13 @@ function LocationInner() {
               try {
                 navigator.vibrate?.(40);
               } catch {}
-              if (ultraSpeed) {
-                // keep scanning continuously
-                void handleUltraScan(result.getText());
-              } else {
-                setScannerOpen(false);
-                try {
-                  controls.stop();
-                } catch {
-                  // ignore
-                }
-                await handleBarcode(result.getText());
+              setScannerOpen(false);
+              try {
+                controls.stop();
+              } catch {
+                // ignore
               }
+              await handleBarcode(result.getText());
               return;
             }
 
@@ -389,7 +322,6 @@ function LocationInner() {
       cancelled = true;
       stopFn?.();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerOpen]);
 
   const visibleProducts = useMemo(() => products, [products]);
@@ -457,6 +389,39 @@ function LocationInner() {
                   // Click-to-focus quantity input (fast)
                   if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
                   qtyInputs.current[p.id]?.focus();
+                }}
+                onTouchStart={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+                  longPressFiredRef.current = false;
+                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                  touchTimerRef.current = setTimeout(() => {
+                    longPressFiredRef.current = true;
+                    setScanSheet({
+                      productId: p.id,
+                      productName: `${p.name}${p.zusatz ? ` ${p.zusatz}` : ""}`,
+                    });
+                    setScanMode("choose");
+                    setSetQty(String(quantitiesRef.current[p.id] ?? 0));
+                    setAddQty("1");
+                  }, 500);
+                }}
+                onTouchEnd={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                  touchTimerRef.current = null;
+                  if (longPressFiredRef.current) return;
+
+                  const cur = quantitiesRef.current[p.id] ?? 0;
+                  const next = cur + 1;
+                  quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
+                  setQuantities((prev) => ({ ...prev, [p.id]: next }));
+                  void saveImmediate(p.id, next);
+                  setHighlightId(p.id);
+                  setTimeout(() => setHighlightId(null), 350);
                 }}
                 ref={(el) => {
                   rowRefs.current[p.id] = el;
