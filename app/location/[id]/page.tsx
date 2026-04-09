@@ -33,6 +33,7 @@ function LocationInner() {
   const params = useParams<{ id: string }>();
   const locationId = params?.id ?? "";
 
+  const [ultraSpeed, setUltraSpeed] = useState(false);
   const [location, setLocation] = useState<Location | null>(null);
   const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -62,8 +63,22 @@ function LocationInner() {
 
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingQty = useRef<Record<string, number>>({});
+  const quantitiesRef = useRef<Record<string, number>>({});
+  const lastScanRef = useRef<{ code: string; at: number }>({ code: "", at: 0 });
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    quantitiesRef.current = quantities;
+  }, [quantities]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const qs = new URLSearchParams(window.location.search);
+    const on = qs.get("ultra") === "1" || window.localStorage.getItem("fridge.ultraSpeed") === "1";
+    setUltraSpeed(on);
+    if (on) window.localStorage.setItem("fridge.ultraSpeed", "1");
+  }, []);
 
   useEffect(() => {
     if (!locationId) {
@@ -93,6 +108,10 @@ function LocationInner() {
       }
     })();
   }, [locationId, router]);
+
+  useEffect(() => {
+    if (ultraSpeed) setScannerOpen(true);
+  }, [ultraSpeed]);
 
   async function runSave(productId: string) {
     if (!inventoryLoc) return;
@@ -128,6 +147,72 @@ function LocationInner() {
     }, 200); // ~200ms debounce
   }
 
+  function beep() {
+    try {
+      const w = window as unknown as {
+        AudioContext?: typeof AudioContext;
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const AC = w.AudioContext || w.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      o.frequency.value = 880;
+      g.gain.value = 0.08;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => {
+        try {
+          o.stop();
+          ctx.close();
+        } catch {}
+      }, 60);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleUltraScan(codeRaw: string) {
+    const code = codeRaw.trim();
+    if (!code) return;
+    if (!inventoryLoc) return;
+
+    const now = Date.now();
+    if (lastScanRef.current.code === code && now - lastScanRef.current.at < 900) return;
+    lastScanRef.current = { code, at: now };
+
+    try {
+      const p = await getProductByBarcode(code);
+      if (!p) return; // ignore unknowns in ultra mode (no modals)
+
+      const cur = quantitiesRef.current[p.id] ?? 0;
+      const next = cur + 1;
+
+      quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
+      setQuantities((prev) => ({ ...prev, [p.id]: next }));
+
+      setHighlightId(p.id);
+      setTimeout(() => setHighlightId(null), 350);
+      beep();
+
+      setSaveState((s) => ({ ...s, [p.id]: "saving" }));
+      await setInventoryQuantity({
+        locationId: inventoryLoc.id,
+        productId: p.id,
+        quantity: next,
+      });
+      setSaveState((s) => ({ ...s, [p.id]: "saved" }));
+      setTimeout(() => {
+        setSaveState((s) => (s[p.id] === "saved" ? { ...s, [p.id]: "idle" } : s));
+      }, 450);
+    } catch {
+      // keep scanner running; show a non-blocking marker on product if possible
+    }
+  }
+
   async function handleBarcode(codeRaw: string) {
     const code = codeRaw.trim();
     if (!code) return;
@@ -136,6 +221,7 @@ function LocationInner() {
     try {
       const p = await getProductByBarcode(code);
       if (!p) {
+        if (ultraSpeed) return; // no modals in ultra mode
         setUnknownBarcode(code);
         setNewProductName("");
         setNewProductZusatz("");
@@ -150,17 +236,21 @@ function LocationInner() {
       setHighlightId(p.id);
       setTimeout(() => setHighlightId(null), 900);
 
-      setTimeout(() => {
-        rowRefs.current[p.id]?.scrollIntoView({
-          block: "center",
-          behavior: "smooth",
-        });
-      }, 60);
+      if (!ultraSpeed) {
+        setTimeout(() => {
+          rowRefs.current[p.id]?.scrollIntoView({
+            block: "center",
+            behavior: "smooth",
+          });
+        }, 60);
+      }
 
-      setScanSheet({ productId: p.id, productName: displayName });
-      setScanMode("choose");
-      setSetQty(String(quantities[p.id] ?? 0));
-      setAddQty("1");
+      if (!ultraSpeed) {
+        setScanSheet({ productId: p.id, productName: displayName });
+        setScanMode("choose");
+        setSetQty(String(quantities[p.id] ?? 0));
+        setAddQty("1");
+      }
     } catch (e: unknown) {
       setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
     }
@@ -176,33 +266,25 @@ function LocationInner() {
       setOffSuggestion(null);
       try {
         const code = unknownBarcode.trim();
-        // Open Food Facts product endpoint
+        // Open Food Facts v0 endpoint (simple + fast)
         const res = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(
-            code
-          )}.json`
+          `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`
         );
         if (!res.ok) throw new Error("Open Food Facts nicht erreichbar.");
         const json: unknown = await res.json();
-        const j = json as {
-          product?: {
-            product_name?: unknown;
-            product_name_de?: unknown;
-            generic_name?: unknown;
-          };
-        };
+        const j = json as { status?: unknown; product?: { product_name?: unknown } };
 
+        const ok = j.status === 1;
         const name =
-          (typeof j.product?.product_name === "string" && j.product.product_name) ||
-          (typeof j.product?.product_name_de === "string" && j.product.product_name_de) ||
-          (typeof j.product?.generic_name === "string" && j.product.generic_name) ||
-          null;
+          ok && typeof j.product?.product_name === "string" ? j.product.product_name : null;
         if (cancelled) return;
         if (typeof name === "string" && name.trim()) {
           const clean = name.trim();
           setOffSuggestion(clean);
           // Pre-fill if user hasn't typed yet
           setNewProductName((cur) => (cur.trim() ? cur : clean));
+        } else {
+          setOffError("Kein Vorschlag gefunden.");
         }
       } catch {
         if (cancelled) return;
@@ -269,13 +351,18 @@ function LocationInner() {
               try {
                 navigator.vibrate?.(40);
               } catch {}
-              setScannerOpen(false);
-              try {
-                controls.stop();
-              } catch {
-                // ignore
+              if (ultraSpeed) {
+                // keep scanning continuously
+                void handleUltraScan(result.getText());
+              } else {
+                setScannerOpen(false);
+                try {
+                  controls.stop();
+                } catch {
+                  // ignore
+                }
+                await handleBarcode(result.getText());
               }
-              await handleBarcode(result.getText());
               return;
             }
 
@@ -516,18 +603,83 @@ function LocationInner() {
             </div>
 
             <div className="mt-3 rounded-2xl border-2 border-black bg-white p-4">
-              <div className="text-sm font-black text-black">Vorschlag (Open Food Facts)</div>
+              <div className="text-sm font-black text-black">
+                Vorschlag (Open Food Facts)
+              </div>
               {offLoading ? (
                 <div className="mt-1 text-sm text-black">Suche…</div>
               ) : offSuggestion ? (
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="text-sm font-black text-black">{offSuggestion}</div>
-                  <button
-                    className="h-10 px-3 rounded-xl bg-black text-white text-sm font-black active:scale-[0.99]"
-                    onClick={() => setNewProductName(offSuggestion)}
-                  >
-                    Übernehmen
-                  </button>
+                <div className="mt-2">
+                  <div className="text-sm font-black text-black">
+                    {offSuggestion}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button
+                      className="h-12"
+                      onClick={async () => {
+                        if (!unknownBarcode) return;
+                        try {
+                          await createProductWithBarcode({
+                            name: newProductName.trim() || offSuggestion,
+                            zusatz: newProductZusatz.trim()
+                              ? newProductZusatz.trim()
+                              : null,
+                            short_name: newProductShortName.trim()
+                              ? newProductShortName.trim()
+                              : null,
+                            barcode: unknownBarcode,
+                          });
+                          const prods = await listProductsWithInventoryForLocation(
+                            inventoryLoc?.id ?? locationId
+                          );
+                          setProducts(prods);
+                          setQuantities((prev) => {
+                            const next = { ...prev };
+                            for (const p of prods)
+                              if (next[p.id] === undefined) next[p.id] = 0;
+                            return next;
+                          });
+                          const created = prods.find(
+                            (p) => p.barcode === unknownBarcode
+                          );
+                          setUnknownBarcode(null);
+                          setNewProductName("");
+                          setNewProductZusatz("");
+                          setNewProductShortName("");
+                          setNewShortTouched(false);
+                          if (created) {
+                            setHighlightId(created.id);
+                            setTimeout(() => {
+                              rowRefs.current[created.id]?.scrollIntoView({
+                                block: "center",
+                                behavior: "smooth",
+                              });
+                              qtyInputs.current[created.id]?.focus();
+                            }, 80);
+                            setTimeout(() => setHighlightId(null), 1400);
+                          }
+                        } catch (e: unknown) {
+                          setScanError(
+                            errorMessage(e, "Produkt konnte nicht erstellt werden.")
+                          );
+                        }
+                      }}
+                    >
+                      Speichern
+                    </Button>
+                    <ButtonSecondary
+                      className="h-12"
+                      onClick={() => {
+                        setUnknownBarcode(null);
+                        setNewProductName("");
+                        setNewProductZusatz("");
+                        setNewProductShortName("");
+                        setNewShortTouched(false);
+                      }}
+                    >
+                      Abbrechen
+                    </ButtonSecondary>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-1 text-sm text-black">
@@ -569,7 +721,8 @@ function LocationInner() {
               />
             </div>
 
-            <div className="mt-4 grid gap-2">
+            {!offSuggestion && !offLoading ? (
+              <div className="mt-4 grid gap-2">
               <Button
                 className="w-full h-14 text-lg"
                 disabled={!newProductName.trim()}
@@ -629,7 +782,8 @@ function LocationInner() {
               >
                 Abbrechen
               </ButtonSecondary>
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
