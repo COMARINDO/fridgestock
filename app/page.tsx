@@ -42,7 +42,7 @@ function HomeInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#2c2c2c]/70">Eingeloggt als</div>
+              <div className="text-[15px] text-[#1f1f1f]">Eingeloggt als</div>
               <div className="text-[18px] font-extrabold leading-tight">
                 {user?.name}
               </div>
@@ -67,24 +67,24 @@ function HomeInner() {
         ) : null}
 
         {busy ? (
-          <div className="mt-6 text-[#2c2c2c]/70">Lade…</div>
+          <div className="mt-6 text-[#1f1f1f]">Lade…</div>
         ) : locations.length === 0 ? (
-          <div className="mt-6 text-[#2c2c2c]/70">Keine Locations gefunden.</div>
+          <div className="mt-6 text-[#1f1f1f]">Keine Locations gefunden.</div>
         ) : (
           <div className="mt-2 grid gap-3">
             {locations.map((l) => (
               <Link
                 key={l.id}
                 href={`/location/${l.id}`}
-                className="rounded-3xl border border-black/10 bg-white p-4 shadow-sm active:scale-[0.99]"
+                className="block w-full max-w-full rounded-3xl border border-black/10 bg-white p-4 shadow-sm active:scale-[0.99]"
               >
                 <div className="text-[18px] font-extrabold">{l.name}</div>
                 {l.parent_id ? (
-                  <div className="mt-1 text-[15px] text-[#2c2c2c]/70">
+                  <div className="mt-1 text-[15px] text-[#1f1f1f]">
                     Unter-Location
                   </div>
                 ) : (
-                  <div className="mt-1 text-[15px] text-[#2c2c2c]/70">Location</div>
+                  <div className="mt-1 text-[15px] text-[#1f1f1f]">Location</div>
                 )}
               </Link>
             ))}

@@ -11,11 +11,13 @@ import {
   getProductByBarcode,
   listProducts,
   createProductWithBarcode,
+  updateProductBarcode,
   setInventoryQuantity,
 } from "@/lib/db";
 import type { Location, Product } from "@/lib/types";
 import { useAuth } from "@/app/providers";
 import { errorMessage } from "@/lib/error";
+import JsBarcode from "jsbarcode";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -54,6 +56,15 @@ function LocationInner() {
   const [offLoading, setOffLoading] = useState(false);
   const [offSuggestion, setOffSuggestion] = useState<string | null>(null);
   const [offError, setOffError] = useState<string | null>(null);
+  const [barcodeModal, setBarcodeModal] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
+  const [shortName, setShortName] = useState("");
+  const [genBarcode, setGenBarcode] = useState<string>("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  const [barcodeErr, setBarcodeErr] = useState<string | null>(null);
+  const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
 
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingQty = useRef<Record<string, number>>({});
@@ -216,6 +227,21 @@ function LocationInner() {
   }, [unknownBarcode]);
 
   useEffect(() => {
+    if (!barcodeModal || !genBarcode || !barcodeSvgRef.current) return;
+    try {
+      JsBarcode(barcodeSvgRef.current, genBarcode, {
+        format: "CODE128",
+        displayValue: false,
+        margin: 0,
+        height: 40,
+        width: 1.2,
+      });
+    } catch {
+      // ignore
+    }
+  }, [barcodeModal, genBarcode]);
+
+  useEffect(() => {
     if (!scannerOpen) return;
 
     let stop = false;
@@ -327,7 +353,7 @@ function LocationInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#2c2c2c]/70">Location</div>
+              <div className="text-[15px] text-[#1f1f1f]">Location</div>
               <div className="text-xl font-extrabold leading-tight">
                 {location?.name ?? "…"}
               </div>
@@ -360,7 +386,7 @@ function LocationInner() {
               <div
                 key={p.id}
                 className={[
-                  "rounded-3xl border bg-white p-4 shadow-sm",
+                  "w-full max-w-full rounded-3xl border bg-white p-4 shadow-sm",
                   "border-black/10",
                   highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                 ].join(" ")}
@@ -373,8 +399,8 @@ function LocationInner() {
                   rowRefs.current[p.id] = el;
                 }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="min-w-0">
                     <div className="text-lg font-extrabold">{p.name}</div>
                   </div>
 
@@ -393,6 +419,22 @@ function LocationInner() {
                           : "ok"}
                   </div>
                 </div>
+
+                {!p.barcode ? (
+                  <div className="mt-3">
+                    <button
+                      className="w-full rounded-3xl border border-black/10 bg-white px-4 py-4 text-[17px] font-semibold"
+                      onClick={() => {
+                        setBarcodeModal({ productId: p.id, productName: p.name });
+                        setShortName((p.short_name ?? "").trim());
+                        setGenBarcode("");
+                        setBarcodeErr(null);
+                      }}
+                    >
+                      Barcode erstellen
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="mt-4 flex items-center gap-3">
                   <button
@@ -493,14 +535,14 @@ function LocationInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
           <div className="w-full rounded-t-3xl bg-white p-5">
             <div className="text-lg font-extrabold">Produkt nicht gefunden</div>
-            <div className="mt-1 text-sm text-zinc-600 font-mono">
+            <div className="mt-1 text-sm text-[#1f1f1f] font-mono">
               {unknownBarcode}
             </div>
 
             <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
               <div className="text-sm font-extrabold">Vorschlag (Open Food Facts)</div>
               {offLoading ? (
-                <div className="mt-1 text-sm text-zinc-600">Suche…</div>
+                <div className="mt-1 text-sm text-[#1f1f1f]">Suche…</div>
               ) : offSuggestion ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold">{offSuggestion}</div>
@@ -512,7 +554,7 @@ function LocationInner() {
                   </button>
                 </div>
               ) : (
-                <div className="mt-1 text-sm text-zinc-600">
+                <div className="mt-1 text-sm text-[#1f1f1f]">
                   {offError ?? "Kein Vorschlag."}
                 </div>
               )}
@@ -586,7 +628,7 @@ function LocationInner() {
           <div className="w-full rounded-t-3xl bg-white p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs text-zinc-600">Produkt erkannt</div>
+                <div className="text-xs text-[#1f1f1f]">Produkt erkannt</div>
                 <div className="text-2xl font-extrabold leading-tight">
                   {scanSheet.productName}
                 </div>
@@ -655,7 +697,7 @@ function LocationInner() {
 
             {scanMode === "add" ? (
               <div className="mt-5 grid gap-3">
-                <div className="text-sm text-zinc-600">
+                <div className="text-sm text-[#1f1f1f]">
                   Aktuell:{" "}
                   <span className="font-extrabold">
                     {quantities[scanSheet.productId] ?? 0}
@@ -716,8 +758,188 @@ function LocationInner() {
           </div>
         </div>
       ) : null}
+
+      {barcodeModal ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-[#1f1f1f]">Barcode Label</div>
+                <div className="text-2xl font-extrabold leading-tight truncate">
+                  {barcodeModal.productName}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-black/5 text-sm font-semibold"
+                onClick={() => setBarcodeModal(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-semibold text-[#1f1f1f]">
+                Kurzname (Label)
+              </div>
+              <Input
+                value={shortName}
+                onChange={(ev) => setShortName(ev.target.value)}
+                placeholder='z.B. "co 0,5"'
+                className="mt-2"
+              />
+            </div>
+
+            <div className="mt-4 rounded-3xl border border-black/10 bg-white p-4">
+              <div className="text-sm font-semibold text-[#1f1f1f]">
+                Vorschau (3cm × 1,5cm)
+              </div>
+              <div className="mt-3 flex justify-center">
+                <div
+                  style={{
+                    width: "3cm",
+                    height: "1.5cm",
+                    border: "1px solid rgba(0,0,0,0.1)",
+                    borderRadius: "6mm",
+                    padding: "2mm",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: "1mm",
+                  }}
+                >
+                  <svg ref={barcodeSvgRef} />
+                  <div
+                    style={{
+                      fontSize: "7pt",
+                      fontWeight: 700,
+                      textAlign: "center",
+                      color: "#1f1f1f",
+                      lineHeight: 1.1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={shortName}
+                  >
+                    {shortName || " "}
+                  </div>
+                </div>
+              </div>
+              {genBarcode ? (
+                <div className="mt-2 text-center text-xs font-mono text-[#1f1f1f]">
+                  {genBarcode}
+                </div>
+              ) : null}
+            </div>
+
+            {barcodeErr ? (
+              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
+                {barcodeErr}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3">
+              <ButtonSecondary
+                className="h-14 text-lg"
+                onClick={() => {
+                  const base = Date.now().toString(10).slice(-8);
+                  const rand = Math.floor(Math.random() * 9000 + 1000).toString(10);
+                  setGenBarcode(`PENZI${base}${rand}`); // CODE128 friendly
+                }}
+              >
+                Barcode generieren
+              </ButtonSecondary>
+
+              <Button
+                className="h-14 text-lg"
+                disabled={barcodeBusy || !genBarcode || !shortName.trim()}
+                onClick={async () => {
+                  setBarcodeErr(null);
+                  setBarcodeBusy(true);
+                  try {
+                    await updateProductBarcode({
+                      productId: barcodeModal.productId,
+                      barcode: genBarcode,
+                      short_name: shortName.trim(),
+                    });
+                    const prods = await listProducts();
+                    setProducts(prods);
+                    setBarcodeModal(null);
+                  } catch (e: unknown) {
+                    setBarcodeErr(errorMessage(e, "Konnte Barcode nicht speichern."));
+                  } finally {
+                    setBarcodeBusy(false);
+                  }
+                }}
+              >
+                {barcodeBusy ? "Speichert…" : "Speichern"}
+              </Button>
+
+              <ButtonSecondary
+                className="h-14 text-lg"
+                disabled={!genBarcode || !shortName.trim()}
+                onClick={() => {
+                  const svg = barcodeSvgRef.current;
+                  if (!svg) return;
+                  const svgMarkup = svg.outerHTML;
+                  const text = shortName.trim();
+
+                  const win = window.open("", "_blank", "noopener,noreferrer");
+                  if (!win) return;
+                  win.document.open();
+                  win.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Barcode Label</title>
+  <style>
+    @page { margin: 8mm; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .label {
+      width: 3cm;
+      height: 1.5cm;
+      border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 6mm;
+      padding: 2mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1mm;
+    }
+    .name { font-size: 7pt; font-weight: 700; text-align: center; color: #000; line-height: 1.1; }
+    svg { width: 100%; height: 40px; }
+  </style>
+</head>
+<body>
+  <div class="label">
+    ${svgMarkup}
+    <div class="name">${escapeHtml(text)}</div>
+  </div>
+  <script>
+    window.onload = () => { window.print(); };
+  </script>
+</body>
+</html>`);
+                  win.document.close();
+                }}
+              >
+                Drucken
+              </ButtonSecondary>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 // (intentionally no low-stock/favorites/bulk logic)

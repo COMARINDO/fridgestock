@@ -71,7 +71,7 @@ export async function getLocation(id: string): Promise<Location | null> {
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select("id,name,min_quantity,barcode")
+    .select("id,name,min_quantity,barcode,short_name")
     .order("name");
   if (error) throw error;
   return (data ?? []) as Product[];
@@ -81,7 +81,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select("id,name,min_quantity,barcode")
+    .select("id,name,min_quantity,barcode,short_name")
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
@@ -197,12 +197,34 @@ export async function createProductWithBarcode(args: {
   name: string;
   barcode: string;
   min_quantity?: number;
+  short_name?: string | null;
 }) {
   const { error } = await from("products").insert({
     name: args.name,
     barcode: args.barcode,
     min_quantity: args.min_quantity ?? 0,
+    short_name: args.short_name ?? null,
   });
+  if (error) throw error;
+}
+
+export async function updateProductBarcode(args: {
+  productId: string;
+  barcode: string;
+  short_name: string;
+}) {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+
+  const { error } = await supabase
+    .from("products")
+    .update({ barcode: args.barcode, short_name: args.short_name })
+    .eq("id", args.productId);
   if (error) throw error;
 }
 

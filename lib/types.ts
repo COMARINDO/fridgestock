@@ -9,6 +9,7 @@ export type Product = {
   name: string;
   min_quantity: number;
   barcode?: string | null;
+  short_name?: string | null;
 };
 
 export type Location = {
