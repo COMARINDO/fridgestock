@@ -16,8 +16,6 @@ function getStatus(e: unknown): number | null {
   return null;
 }
 
-let snapshotRpc: "unknown" | "missing" | "available" = "unknown";
-
 type QueryResult = { data: unknown; error: unknown };
 type QueryBuilder = PromiseLike<QueryResult> & {
   select: (columns: string) => QueryBuilder;
@@ -123,37 +121,9 @@ export async function setInventoryQuantity(args: {
   productId: string;
   quantity: number;
 }) {
-  // Preferred (atomic): optional RPC if installed in Supabase.
-  if (snapshotRpc !== "missing") {
-    try {
-      const supabase = getSupabase() as unknown as {
-        rpc: (
-          fn: string,
-          args: Record<string, unknown>
-        ) => Promise<{ error: unknown }>;
-      };
-
-      const { error } = await supabase.rpc("set_inventory_snapshot", {
-        p_user_id: args.userId,
-        p_location_id: args.locationId,
-        p_product_id: args.productId,
-        p_quantity: args.quantity,
-      });
-
-      if (!error) {
-        snapshotRpc = "available";
-        return;
-      }
-
-      const status = getStatus(error);
-      if (status === 404) snapshotRpc = "missing";
-      // fallthrough to non-RPC implementation if function missing or fails
-    } catch {
-      // ignore and fall back
-    }
-  }
-
-  // Fallback (2 calls): upsert inventory then append history.
+  // Snapshot system (2 calls):
+  // 1) upsert inventory (overwrite quantity)
+  // 2) insert inventory_history (append snapshot)
   const supabase = getSupabase() as unknown as {
     from: (t: string) => {
       upsert: (
@@ -164,16 +134,14 @@ export async function setInventoryQuantity(args: {
     };
   };
 
-  const { error: upsertErr } = await supabase
-    .from("inventory")
-    .upsert(
-      {
-        location_id: args.locationId,
-        product_id: args.productId,
-        quantity: args.quantity,
-      },
-      { onConflict: "location_id,product_id" }
-    );
+  const { error: upsertErr } = await supabase.from("inventory").upsert(
+    {
+      location_id: args.locationId,
+      product_id: args.productId,
+      quantity: args.quantity,
+    },
+    { onConflict: "location_id,product_id" }
+  );
   if (upsertErr) throw upsertErr;
 
   const { error: histErr } = await supabase.from("inventory_history").insert({
