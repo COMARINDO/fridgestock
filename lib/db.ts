@@ -165,40 +165,6 @@ export async function setInventoryQuantity(args: {
   if (histErr) throw histErr;
 }
 
-export async function deleteProduct(productId: string) {
-  const supabase = getSupabase() as unknown as {
-    from: (t: string) => {
-      delete: () => { eq: (c: string, v: unknown) => Promise<{ error: unknown }> };
-    };
-  };
-  const { error } = await supabase.from("products").delete().eq("id", productId);
-  if (error) throw error;
-}
-
-export async function deleteLocation(locationId: string) {
-  const supabase = getSupabase() as unknown as {
-    from: (t: string) => {
-      delete: () => { eq: (c: string, v: unknown) => Promise<{ error: unknown }> };
-    };
-  };
-  const { error } = await supabase.from("locations").delete().eq("id", locationId);
-  if (error) throw error;
-}
-
-// Admin helpers
-export async function adminCreateProduct(args: {
-  name: string;
-  min_quantity: number;
-  barcode?: string | null;
-}) {
-  const { error } = await from("products").insert({
-    name: args.name,
-    min_quantity: args.min_quantity,
-    barcode: args.barcode ?? null,
-  });
-  if (error) throw error;
-}
-
 export async function createProductWithBarcode(args: {
   name: string;
   barcode: string;
@@ -208,25 +174,6 @@ export async function createProductWithBarcode(args: {
     name: args.name,
     barcode: args.barcode,
     min_quantity: args.min_quantity ?? 0,
-  });
-  if (error) throw error;
-}
-
-export async function adminCreateLocation(args: {
-  name: string;
-  parent_id: string | null;
-}) {
-  const { error } = await from("locations").insert({
-    name: args.name,
-    parent_id: args.parent_id,
-  });
-  if (error) throw error;
-}
-
-export async function adminCreateUser(args: { name: string; password: string }) {
-  const { error } = await from("users").insert({
-    name: args.name,
-    password: args.password,
   });
   if (error) throw error;
 }

@@ -13,7 +13,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     if (!user && pathname !== "/login") router.replace("/login");
   }, [user, router, pathname]);
 
-  if (!user) return <div className="flex-1 bg-zinc-50" />;
+  if (!user) return <div className="flex-1" />;
 
   return <>{children}</>;
 }

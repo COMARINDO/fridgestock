@@ -46,25 +46,19 @@ function HomeInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 bg-zinc-50/90 backdrop-blur border-b border-zinc-200">
-        <div className="mx-auto w-full max-w-2xl px-5 py-4">
+      <header className="sticky top-0 z-10 bg-[var(--background)]/90 backdrop-blur border-b border-black/10">
+        <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm text-zinc-600">Eingeloggt als</div>
-              <div className="text-lg font-extrabold leading-tight">
+              <div className="text-[15px] text-[#2c2c2c]/70">Eingeloggt als</div>
+              <div className="text-[18px] font-extrabold leading-tight">
                 {user?.name}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link
-                href="/admin"
-                className="h-10 px-3 inline-flex items-center rounded-xl border border-zinc-200 bg-white text-sm font-semibold"
-              >
-                Admin
-              </Link>
               <button
                 onClick={() => logout()}
-                className="h-10 px-3 inline-flex items-center rounded-xl border border-zinc-200 bg-white text-sm font-semibold"
+                className="h-11 px-4 inline-flex items-center rounded-2xl border border-black/10 bg-white text-[15px] font-semibold"
               >
                 Logout
               </button>
@@ -81,32 +75,32 @@ function HomeInner() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-2xl px-5 py-4 pb-10">
+      <main className="w-full px-4 py-4 pb-10">
         {error ? (
-          <div className="rounded-2xl bg-red-50 p-4 text-red-800">
+          <div className="rounded-3xl bg-red-50 p-4 text-red-800">
             {error}
           </div>
         ) : null}
 
         {busy ? (
-          <div className="mt-6 text-zinc-600">Lade…</div>
+          <div className="mt-6 text-[#2c2c2c]/70">Lade…</div>
         ) : filtered.length === 0 ? (
-          <div className="mt-6 text-zinc-600">Keine Locations gefunden.</div>
+          <div className="mt-6 text-[#2c2c2c]/70">Keine Locations gefunden.</div>
         ) : (
           <div className="mt-2 grid gap-3">
             {filtered.map((l) => (
               <Link
                 key={l.id}
                 href={`/location/${l.id}`}
-                className="rounded-2xl border border-zinc-200 bg-white p-4 active:scale-[0.99]"
+                className="rounded-3xl border border-black/10 bg-white p-4 shadow-sm active:scale-[0.99]"
               >
-                <div className="text-lg font-extrabold">{l.name}</div>
+                <div className="text-[18px] font-extrabold">{l.name}</div>
                 {l.parent_id ? (
-                  <div className="mt-1 text-sm text-zinc-600">
+                  <div className="mt-1 text-[15px] text-[#2c2c2c]/70">
                     Unter-Location
                   </div>
                 ) : (
-                  <div className="mt-1 text-sm text-zinc-600">Location</div>
+                  <div className="mt-1 text-[15px] text-[#2c2c2c]/70">Location</div>
                 )}
               </Link>
             ))}
