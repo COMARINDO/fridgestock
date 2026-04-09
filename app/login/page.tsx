@@ -60,7 +60,7 @@ export default function LoginPage() {
         <h1 className="text-3xl font-extrabold tracking-tight">
           Penzi Sachen Zähler
         </h1>
-        <p className="mt-2 text-[15px] text-[#1a1a1a]/80">
+        <p className="mt-2 text-[15px] text-[#1a1a1a]">
           Location wählen, Passwort eingeben, los.
         </p>
       </div>
@@ -91,7 +91,7 @@ export default function LoginPage() {
               );
             })}
             {sorted.length === 0 ? (
-              <div className="text-[15px] text-[#1f1f1f]">
+              <div className="text-[15px] text-[#1a1a1a]">
                 Keine Locations gefunden.
               </div>
             ) : null}

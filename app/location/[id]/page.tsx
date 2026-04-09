@@ -16,6 +16,8 @@ import {
 import type { Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -41,6 +43,7 @@ function LocationInner() {
   const [query, setQuery] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [scanSheet, setScanSheet] = useState<{
     productId: string;
@@ -235,85 +238,78 @@ function LocationInner() {
   useEffect(() => {
     if (!scannerOpen) return;
 
-    let stop = false;
-    let html5:
-      | null
-      | {
-          start: (
-            config: unknown,
-            options: Record<string, unknown>,
-            onSuccess: (decodedText: string) => void
-          ) => Promise<void>;
-          stop: () => Promise<void>;
-          clear: () => Promise<void>;
-        } = null;
+    let cancelled = false;
+    let stopFn: null | (() => void) = null;
 
     (async () => {
       setScanError(null);
       try {
-        const mod = await import("html5-qrcode");
-        if (stop) return;
-        const m = mod as unknown as {
-          Html5Qrcode: new (id: string) => {
-            start: (
-              config: unknown,
-              options: Record<string, unknown>,
-              onSuccess: (decodedText: string) => void
-            ) => Promise<void>;
-            stop: () => Promise<void>;
-            clear: () => Promise<void>;
-          };
-          Html5QrcodeSupportedFormats: Record<string, number>;
-        };
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = m;
+        const video = scannerVideoRef.current;
+        if (!video) throw new Error("Video element fehlt.");
 
-        html5 = new Html5Qrcode("barcode-reader");
-        await html5.start(
-          { facingMode: "environment" },
-          {
-            fps: 15,
-            // Wide rectangle improves barcode scanning performance on phones.
-            qrbox: { width: 320, height: 140 },
-            useBarCodeDetectorIfSupported: true,
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.CODE_128,
-            ],
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+        ]);
+
+        // Lower delay between attempts for faster detection.
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 40,
+          delayBetweenScanSuccess: 250,
+        });
+
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
-          async (decodedText: string) => {
-            try {
-              navigator.vibrate?.(40);
-            } catch {}
-            setScannerOpen(false);
-            try {
-              if (html5) {
-                await html5.stop();
-                await html5.clear();
+          audio: false,
+        };
+
+        const controls = await reader.decodeFromConstraints(
+          constraints,
+          video,
+          async (result, err) => {
+            if (cancelled) return;
+            if (result) {
+              try {
+                navigator.vibrate?.(40);
+              } catch {}
+              setScannerOpen(false);
+              try {
+                controls.stop();
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
+              await handleBarcode(result.getText());
+              return;
             }
-            await handleBarcode(decodedText);
+
+            // NotFoundException is expected while scanning; ignore.
+            if (err && !(err instanceof NotFoundException)) {
+              setScanError("Scan fehlgeschlagen. Bitte Barcode näher halten.");
+            }
           }
         );
+
+        stopFn = () => {
+          try {
+            controls.stop();
+          } catch {
+            // ignore
+          }
+        };
       } catch (e: unknown) {
         setScanError(errorMessage(e, "Scanner konnte nicht gestartet werden."));
       }
     })();
 
     return () => {
-      stop = true;
-      (async () => {
-        try {
-          if (html5) {
-            await html5.stop();
-            await html5.clear();
-          }
-        } catch {
-          // ignore
-        }
-      })();
+      cancelled = true;
+      stopFn?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerOpen]);
@@ -327,10 +323,10 @@ function LocationInner() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
-        <header className="sticky top-0 z-10 border-b border-zinc-200 bg-zinc-50/90 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b border-black/10 bg-[var(--background)]/90 backdrop-blur">
           <div className="w-full px-4 py-4 flex items-center justify-between">
             <div className="text-xl font-extrabold">Location</div>
-            <Link href="/" className="text-sm font-semibold text-zinc-700">
+            <Link href="/" className="text-sm font-semibold text-[#1a1a1a]">
               Home
             </Link>
           </div>
@@ -348,14 +344,14 @@ function LocationInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[15px] text-[#1f1f1f]">Location</div>
+              <div className="text-[15px] text-[#1a1a1a]">Location</div>
             <div className="text-xl font-extrabold leading-tight text-[#1a1a1a]">
                 {inventoryLoc && location?.parent_id
                   ? `${inventoryLoc.name} – ${location.name}`
                   : (location?.name ?? "…")}
               </div>
               {inventoryLoc && location?.parent_id ? (
-                <div className="mt-1 text-[14px] text-[#1f1f1f]">
+                <div className="mt-1 text-[14px] text-[#1a1a1a]">
                   Bestand von: <span className="font-semibold">{inventoryLoc.name}</span>
                 </div>
               ) : null}
@@ -479,7 +475,7 @@ function LocationInner() {
                   />
 
                   <button
-                    className="h-14 w-14 rounded-3xl bg-[#6f4e37] text-white text-2xl font-extrabold active:scale-[0.99]"
+                    className="h-14 w-14 rounded-3xl bg-[#c8a27a] text-[#1a1a1a] text-2xl font-extrabold active:scale-[0.99]"
                     onClick={() => {
                       const next = qty + 1;
                       setQuantities((m) => ({ ...m, [p.id]: next }));
@@ -513,20 +509,31 @@ function LocationInner() {
 
       {scannerOpen ? (
         <div className="fixed inset-0 z-50 bg-black">
-          <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between text-white">
-            <div className="font-extrabold">Barcode Scan</div>
+          <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-white border-b border-black/10">
+            <div className="font-extrabold text-[#1a1a1a]">Barcode Scan</div>
             <button
-              className="h-10 px-3 rounded-xl bg-white/15 text-sm font-semibold"
+              className="h-10 px-3 rounded-xl bg-white text-[#1a1a1a] text-sm font-semibold"
               onClick={() => setScannerOpen(false)}
             >
               Schließen
             </button>
           </div>
           <div className="absolute inset-0 top-16">
-            <div id="barcode-reader" className="h-full w-full" />
+            <video
+              ref={scannerVideoRef}
+              className="h-full w-full object-cover"
+              muted
+              playsInline
+              autoPlay
+            />
+
+            {/* simple scan frame */}
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="w-[84vw] max-w-[520px] h-[22vh] max-h-[220px] rounded-3xl border-2 border-white/70 bg-white/5" />
+            </div>
           </div>
           {scanError ? (
-            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-red-600/90 p-4 text-white">
+            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-white p-4 text-[#1a1a1a]">
               {scanError}
             </div>
           ) : null}
@@ -537,33 +544,33 @@ function LocationInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
           <div className="w-full rounded-t-3xl bg-white p-5">
             <div className="text-lg font-extrabold">Produkt nicht gefunden</div>
-            <div className="mt-1 text-sm text-[#1f1f1f] font-mono">
+              <div className="mt-1 text-sm text-[#1a1a1a] font-mono">
               {unknownBarcode}
             </div>
 
-            <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mt-3 rounded-2xl border border-black/10 bg-white p-4">
               <div className="text-sm font-extrabold">Vorschlag (Open Food Facts)</div>
               {offLoading ? (
-                <div className="mt-1 text-sm text-[#1f1f1f]">Suche…</div>
+                <div className="mt-1 text-sm text-[#1a1a1a]">Suche…</div>
               ) : offSuggestion ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold">{offSuggestion}</div>
                   <button
-                    className="h-10 px-3 rounded-xl bg-zinc-900 text-white text-sm font-semibold"
+                    className="h-10 px-3 rounded-xl bg-[#c8a27a] text-[#1a1a1a] text-sm font-semibold"
                     onClick={() => setNewProductName(offSuggestion)}
                   >
                     Übernehmen
                   </button>
                 </div>
               ) : (
-                <div className="mt-1 text-sm text-[#1f1f1f]">
+                <div className="mt-1 text-sm text-[#1a1a1a]">
                   {offError ?? "Kein Vorschlag."}
                 </div>
               )}
             </div>
 
             <div className="mt-4">
-              <div className="text-sm font-semibold text-zinc-700">Name</div>
+                <div className="text-sm font-semibold text-[#1a1a1a]">Name</div>
               <Input
                 value={newProductName}
                 onChange={(ev) => setNewProductName(ev.target.value)}
@@ -664,7 +671,7 @@ function LocationInner() {
 
             {scanMode === "set" ? (
               <div className="mt-5 grid gap-3">
-                <div className="text-sm font-semibold text-zinc-700">
+                <div className="text-sm font-semibold text-[#1a1a1a]">
                   Gesamtanzahl
                 </div>
                 <input
@@ -724,7 +731,7 @@ function LocationInner() {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold text-zinc-700">+X</div>
+                  <div className="text-sm font-semibold text-[#1a1a1a]">+X</div>
                   <input
                     inputMode="numeric"
                     pattern="[0-9]*"

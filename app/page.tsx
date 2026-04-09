@@ -138,7 +138,7 @@ function HomeInner() {
                     {!hasChildren ? (
                       <Link
                         href={`/location/${parent.id}`}
-                        className="h-11 px-4 inline-flex items-center rounded-2xl bg-[#6f4e37] text-white text-[15px] font-semibold active:scale-[0.99]"
+                        className="h-11 px-4 inline-flex items-center rounded-2xl bg-[#c8a27a] text-[#1a1a1a] text-[15px] font-semibold active:scale-[0.99]"
                       >
                         Öffnen
                       </Link>
