@@ -67,6 +67,20 @@ export async function getLocation(id: string): Promise<Location | null> {
   return (data ?? null) as Location | null;
 }
 
+export async function resolveInventoryLocation(locationId: string): Promise<{
+  uiLocation: Location;
+  inventoryLocation: Location;
+}> {
+  const loc = await getLocation(locationId);
+  if (!loc) throw new Error("Location nicht gefunden.");
+  if (!loc.parent_id) {
+    return { uiLocation: loc, inventoryLocation: loc };
+  }
+  const parent = await getLocation(loc.parent_id);
+  if (!parent) throw new Error("Parent-Location nicht gefunden.");
+  return { uiLocation: loc, inventoryLocation: parent };
+}
+
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
     .select("id,name,min_quantity,barcode,short_name")
@@ -94,6 +108,103 @@ export async function getInventoryForLocation(
     .eq("location_id", locationId);
   if (error) throw error;
   return (data ?? []) as InventoryRow[];
+}
+
+export async function listInventoryAll(): Promise<InventoryRow[]> {
+  const { data, error } = await from("inventory").select(
+    "location_id,product_id,quantity"
+  );
+  if (error) throw error;
+  return (data ?? []) as InventoryRow[];
+}
+
+export type ProductWithQuantity = Product & { quantity: number };
+
+export async function listProductsWithInventoryForLocation(
+  locationId: string
+): Promise<ProductWithQuantity[]> {
+  const loc = locationId.trim();
+  if (!loc) return [];
+
+  // Preferred: products as base table + left join inventory.
+  // Note: Some PostgREST setups may treat filters on the joined table as inner joins.
+  // We'll fall back to a 2-query merge if needed to guarantee "all products" behavior.
+  try {
+    const supabase = getSupabase() as unknown as {
+      from: (t: string) => {
+        select: (columns: string) => {
+          eq: (column: string, value: unknown) => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+
+    const { data, error } = await supabase
+      .from("products")
+      .select(
+        "id,name,min_quantity,barcode,short_name,inventory:inventory!left(quantity,location_id)"
+      )
+      .eq("inventory.location_id", loc);
+
+    if (!error && Array.isArray(data)) {
+      const rows = data as Array<
+        Product & {
+          short_name?: string | null;
+          inventory?: Array<{ quantity?: number | null; location_id?: string | null }>;
+        }
+      >;
+
+      // If join filter caused an unintended inner join (missing products), fall back.
+      if (rows.length > 0) {
+        return rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          min_quantity: p.min_quantity,
+          barcode: p.barcode ?? null,
+          short_name: p.short_name ?? null,
+          quantity:
+            Array.isArray(p.inventory) && p.inventory.length > 0
+              ? Number(p.inventory[0]?.quantity ?? 0)
+              : 0,
+        }));
+      }
+    }
+  } catch {
+    // ignore and fall back
+  }
+
+  // Fallback: 2-query merge (guarantees all products).
+  const [prods, inv] = await Promise.all([
+    listProducts(),
+    getInventoryForLocation(loc),
+  ]);
+
+  const m = new Map<string, number>();
+  for (const row of inv) m.set(row.product_id, row.quantity);
+
+  return prods.map((p) => ({
+    ...p,
+    quantity: m.get(p.id) ?? 0,
+  }));
+}
+
+export async function getGlobalOverviewByProduct(): Promise<ProductWithQuantity[]> {
+  const [products, locations, inv] = await Promise.all([
+    listProducts(),
+    listLocations(),
+    listInventoryAll(),
+  ]);
+
+  const parentIds = new Set(locations.filter((l) => !l.parent_id).map((l) => l.id));
+  const totals = new Map<string, number>();
+  for (const row of inv) {
+    if (!parentIds.has(row.location_id)) continue;
+    totals.set(row.product_id, (totals.get(row.product_id) ?? 0) + (row.quantity ?? 0));
+  }
+
+  return products.map((p) => ({
+    ...p,
+    quantity: totals.get(p.id) ?? 0,
+  }));
 }
 
 export async function getInventoryHistoryForLocation(

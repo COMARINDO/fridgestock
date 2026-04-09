@@ -6,10 +6,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
-  getInventoryForLocation,
-  getLocation,
+  resolveInventoryLocation,
   getProductByBarcode,
-  listProducts,
+  listProductsWithInventoryForLocation,
   createProductWithBarcode,
   updateProductBarcode,
   setInventoryQuantity,
@@ -36,6 +35,7 @@ function LocationInner() {
   const { user } = useAuth();
 
   const [location, setLocation] = useState<Location | null>(null);
+  const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
@@ -80,25 +80,19 @@ function LocationInner() {
     (async () => {
       setError(null);
       try {
-        // Speed: load core data first (location + products + inventory)
-        const [loc, prods, inv] = await Promise.all([
-          getLocation(locationId),
-          listProducts(),
-          getInventoryForLocation(locationId),
-        ]);
+        // Inventory is ONLY stored on the parent location.
+        // Sub-locations (parent_id != null) are UI grouping only.
+        const resolved = await resolveInventoryLocation(locationId);
+        const uiLoc = resolved.uiLocation;
+        const invLoc = resolved.inventoryLocation;
+        const rows = await listProductsWithInventoryForLocation(invLoc.id);
 
-        if (!loc) {
-          setError("Location nicht gefunden.");
-          setLocation(null);
-          return;
-        }
-
-        setLocation(loc);
-        setProducts(prods);
+        setLocation(uiLoc);
+        setInventoryLoc(invLoc);
+        setProducts(rows);
 
         const q: Record<string, number> = {};
-        for (const p of prods) q[p.id] = 0;
-        for (const row of inv) q[row.product_id] = row.quantity;
+        for (const p of rows) q[p.id] = p.quantity ?? 0;
         setQuantities(q);
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Daten nicht laden."));
@@ -108,13 +102,14 @@ function LocationInner() {
 
   async function runSave(productId: string) {
     if (!user) return;
+    if (!inventoryLoc) return;
     const nextQty = pendingQty.current[productId];
     if (nextQty === undefined) return;
 
     try {
       await setInventoryQuantity({
         userId: user.id,
-        locationId,
+        locationId: inventoryLoc.id,
         productId,
         quantity: nextQty,
       });
@@ -355,8 +350,15 @@ function LocationInner() {
             <div>
               <div className="text-[15px] text-[#1f1f1f]">Location</div>
               <div className="text-xl font-extrabold leading-tight">
-                {location?.name ?? "…"}
+                {inventoryLoc && location?.parent_id
+                  ? `${inventoryLoc.name} – ${location.name}`
+                  : (location?.name ?? "…")}
               </div>
+              {inventoryLoc && location?.parent_id ? (
+                <div className="mt-1 text-[14px] text-[#1f1f1f]">
+                  Bestand von: <span className="font-semibold">{inventoryLoc.name}</span>
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
               <Link href="/" className="text-[15px] font-semibold text-[#2c2c2c]">
@@ -581,7 +583,9 @@ function LocationInner() {
                       name: newProductName.trim(),
                       barcode: unknownBarcode,
                     });
-                    const prods = await listProducts();
+                    const prods = await listProductsWithInventoryForLocation(
+                      inventoryLoc?.id ?? locationId
+                    );
                     setProducts(prods);
                     setQuantities((prev) => {
                       const next = { ...prev };
@@ -862,7 +866,9 @@ function LocationInner() {
                       barcode: genBarcode,
                       short_name: shortName.trim(),
                     });
-                    const prods = await listProducts();
+                    const prods = await listProductsWithInventoryForLocation(
+                      inventoryLoc?.id ?? locationId
+                    );
                     setProducts(prods);
                     setBarcodeModal(null);
                   } catch (e: unknown) {

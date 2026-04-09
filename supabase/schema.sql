@@ -4,49 +4,52 @@
 
 -- Users
 create table if not exists public.users (
-  id bigserial primary key,
+  id uuid primary key default gen_random_uuid(),
   name text not null unique,
   password text not null
 );
 
 -- Products
 create table if not exists public.products (
-  id bigserial primary key,
+  id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  min_quantity integer not null default 0
+  min_quantity integer not null default 0,
+  barcode text unique,
+  short_name text
 );
 
 -- Locations (tree)
 create table if not exists public.locations (
-  id bigserial primary key,
+  id uuid primary key default gen_random_uuid(),
   name text not null,
-  parent_id bigint references public.locations(id) on delete set null
+  parent_id uuid references public.locations(id) on delete set null
 );
 
 create index if not exists locations_parent_id_idx on public.locations(parent_id);
 
 -- Optional: mapping users to locations
 create table if not exists public.location_users (
-  user_id bigint not null references public.users(id) on delete cascade,
-  location_id bigint not null references public.locations(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  location_id uuid not null references public.locations(id) on delete cascade,
   role text,
   primary key (user_id, location_id)
 );
 
 -- Inventory snapshot (always full quantity)
+-- IMPORTANT: inventory is stored ONLY on parent locations (parent_id is null).
 create table if not exists public.inventory (
-  location_id bigint not null references public.locations(id) on delete cascade,
-  product_id bigint not null references public.products(id) on delete cascade,
+  location_id uuid not null references public.locations(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   quantity integer not null default 0,
   primary key (location_id, product_id)
 );
 
 -- History of snapshots
 create table if not exists public.inventory_history (
-  id bigserial primary key,
-  user_id bigint references public.users(id) on delete set null,
-  location_id bigint not null references public.locations(id) on delete cascade,
-  product_id bigint not null references public.products(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete set null,
+  location_id uuid not null references public.locations(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   quantity integer not null,
   timestamp timestamptz not null default now()
 );
@@ -56,9 +59,9 @@ create index if not exists inventory_history_loc_prod_time_idx
 
 -- Single RPC for "overwrite inventory + append history" (atomic)
 create or replace function public.set_inventory_quantity(
-  p_user_id bigint,
-  p_location_id bigint,
-  p_product_id bigint,
+  p_user_id uuid,
+  p_location_id uuid,
+  p_product_id uuid,
   p_quantity integer
 ) returns void
 language plpgsql
