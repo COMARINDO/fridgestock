@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
-import { Input } from "@/app/_components/ui";
 import { listLocations } from "@/lib/db";
 import type { Location } from "@/lib/types";
 import { useAuth } from "@/app/providers";
@@ -20,7 +19,6 @@ export default function HomePage() {
 function HomeInner() {
   const { user, logout } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
-  const [q, setQ] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,12 +35,6 @@ function HomeInner() {
       }
     })();
   }, []);
-
-  const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return locations;
-    return locations.filter((l) => l.name.toLowerCase().includes(t));
-  }, [locations, q]);
 
   return (
     <div className="flex-1 flex flex-col">
@@ -64,14 +56,6 @@ function HomeInner() {
               </button>
             </div>
           </div>
-
-          <div className="mt-4">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Location suchen…"
-            />
-          </div>
         </div>
       </header>
 
@@ -84,11 +68,11 @@ function HomeInner() {
 
         {busy ? (
           <div className="mt-6 text-[#2c2c2c]/70">Lade…</div>
-        ) : filtered.length === 0 ? (
+        ) : locations.length === 0 ? (
           <div className="mt-6 text-[#2c2c2c]/70">Keine Locations gefunden.</div>
         ) : (
           <div className="mt-2 grid gap-3">
-            {filtered.map((l) => (
+            {locations.map((l) => (
               <Link
                 key={l.id}
                 href={`/location/${l.id}`}

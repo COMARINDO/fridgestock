@@ -2,13 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Fridge Stock",
-    short_name: "Fridge",
-    description: "Schnelle Bestandsverwaltung für Getränke in mehreren Locations.",
+    name: "Penzi Sachen Zähler",
+    short_name: "Penzi Zähler",
+    description: "Schnelle mobile Inventory-App für Penzi Sachen.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0b0f0e",
-    theme_color: "#0b0f0e",
+    background_color: "#f5efe6",
+    theme_color: "#6f4e37",
     icons: [
       {
         src: "/icon",

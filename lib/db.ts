@@ -7,6 +7,17 @@ import type {
   User,
 } from "@/lib/types";
 
+type SupabaseLikeError = { status?: number; message?: string };
+function getStatus(e: unknown): number | null {
+  if (e && typeof e === "object" && "status" in e) {
+    const s = (e as SupabaseLikeError).status;
+    return typeof s === "number" ? s : null;
+  }
+  return null;
+}
+
+let snapshotRpc: "unknown" | "missing" | "available" = "unknown";
+
 type QueryResult = { data: unknown; error: unknown };
 type QueryBuilder = PromiseLike<QueryResult> & {
   select: (columns: string) => QueryBuilder;
@@ -113,24 +124,33 @@ export async function setInventoryQuantity(args: {
   quantity: number;
 }) {
   // Preferred (atomic): optional RPC if installed in Supabase.
-  try {
-    const supabase = getSupabase() as unknown as {
-      rpc: (
-        fn: string,
-        args: Record<string, unknown>
-      ) => Promise<{ error: unknown }>;
-    };
+  if (snapshotRpc !== "missing") {
+    try {
+      const supabase = getSupabase() as unknown as {
+        rpc: (
+          fn: string,
+          args: Record<string, unknown>
+        ) => Promise<{ error: unknown }>;
+      };
 
-    const { error } = await supabase.rpc("set_inventory_snapshot", {
-      p_user_id: args.userId,
-      p_location_id: args.locationId,
-      p_product_id: args.productId,
-      p_quantity: args.quantity,
-    });
-    if (!error) return;
-    // fallthrough to non-RPC implementation if function missing or fails
-  } catch {
-    // ignore and fall back
+      const { error } = await supabase.rpc("set_inventory_snapshot", {
+        p_user_id: args.userId,
+        p_location_id: args.locationId,
+        p_product_id: args.productId,
+        p_quantity: args.quantity,
+      });
+
+      if (!error) {
+        snapshotRpc = "available";
+        return;
+      }
+
+      const status = getStatus(error);
+      if (status === 404) snapshotRpc = "missing";
+      // fallthrough to non-RPC implementation if function missing or fails
+    } catch {
+      // ignore and fall back
+    }
   }
 
   // Fallback (2 calls): upsert inventory then append history.
@@ -162,7 +182,15 @@ export async function setInventoryQuantity(args: {
     product_id: args.productId,
     quantity: args.quantity,
   });
-  if (histErr) throw histErr;
+  if (histErr) {
+    const status = getStatus(histErr);
+    if (status === 404) {
+      throw new Error(
+        "Supabase API findet 'inventory_history' nicht (404). Bitte in Supabase den Schema-Cache reloaden (SQL: notify pgrst, 'reload schema';) und prüfen, dass die Tabelle im 'public' Schema liegt und über die API exposed ist."
+      );
+    }
+    throw histErr;
+  }
 }
 
 export async function createProductWithBarcode(args: {

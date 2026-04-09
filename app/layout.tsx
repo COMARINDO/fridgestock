@@ -3,8 +3,8 @@ import "./globals.css";
 import { AuthProvider } from "@/app/providers";
 
 export const metadata: Metadata = {
-  title: "Fridge Stock",
-  description: "Schnelle Bestandsverwaltung für Getränke.",
+  title: "Penzi Sachen Zähler",
+  description: "Schnelle mobile Inventory-App.",
 };
 
 export default function RootLayout({

@@ -36,7 +36,9 @@ export default function LoginPage() {
   return (
     <div className="flex-1 flex flex-col">
       <div className="w-full px-4 pt-10">
-        <h1 className="text-3xl font-extrabold tracking-tight">Fridge Stock</h1>
+        <h1 className="text-3xl font-extrabold tracking-tight">
+          Penzi Sachen Zähler
+        </h1>
         <p className="mt-2 text-[15px] text-[#2c2c2c]/80">
           Schnell einloggen, dann scannen und Mengen speichern.
         </p>
