@@ -78,9 +78,6 @@ function LocationInner() {
     moved: boolean;
   } | null>(null);
   const plusTouchRef = useRef<Record<string, { x: number; y: number; moved: boolean }>>({});
-  const stockCircleTouchRef = useRef<
-    Record<string, { x: number; y: number; moved: boolean }>
-  >({});
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -456,9 +453,25 @@ function LocationInner() {
                       if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
                       touchTimerRef.current = null;
                       if (longPressFiredRef.current) return;
+                      const touch = e.changedTouches[0];
                       const s = touchScrollRef.current;
                       touchScrollRef.current = null;
-                      if (s?.id === p.id && s.moved) return;
+                      if (touch && s?.id === p.id) {
+                        const dx = touch.clientX - s.x;
+                        const dy = touch.clientY - s.y;
+                        // Swipe LEFT opens quick edit.
+                        if (dx < -50 && Math.abs(dy) < 25) {
+                          setQuickErr(null);
+                          setQuickEdit({
+                            productId: p.id,
+                            productName: formatProductName(p),
+                          });
+                          setQuickQty(String(quantitiesRef.current[p.id] ?? 0));
+                          return;
+                        }
+                        // Scrolling/movement cancels tap actions.
+                        if (s.moved) return;
+                      }
 
                       const cur = quantitiesRef.current[p.id] ?? 0;
                       const next = cur + 1;
@@ -478,50 +491,6 @@ function LocationInner() {
                           {formatProductName(p)}
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center active:scale-[0.99] disabled:opacity-50"
-                        disabled={!canWrite}
-                        onTouchStart={(e) => {
-                          const touch = e.touches[0];
-                          if (!touch) return;
-                          stockCircleTouchRef.current[p.id] = {
-                            x: touch.clientX,
-                            y: touch.clientY,
-                            moved: false,
-                          };
-                        }}
-                        onTouchMove={(e) => {
-                          const touch = e.touches[0];
-                          const s = stockCircleTouchRef.current[p.id];
-                          if (!touch || !s) return;
-                          const dx = touch.clientX - s.x;
-                          const dy = touch.clientY - s.y;
-                          if (Math.hypot(dx, dy) > 10) s.moved = true;
-                        }}
-                        onTouchEnd={(e) => {
-                          const s = stockCircleTouchRef.current[p.id];
-                          if (s?.moved) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }
-                        }}
-                        onClick={() => {
-                          const s = stockCircleTouchRef.current[p.id];
-                          if (s?.moved) return;
-                          setQuickErr(null);
-                          setQuickEdit({
-                            productId: p.id,
-                            productName: formatProductName(p),
-                          });
-                          setQuickQty(String(quantitiesRef.current[p.id] ?? 0));
-                        }}
-                        aria-label="bestand bearbeiten"
-                        title="Bestand bearbeiten"
-                      >
-                        {qty}
-                      </button>
 
                       <div
                         className={[
@@ -1066,16 +1035,7 @@ function LocationInner() {
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <ButtonSecondary
-                className="h-14 text-lg"
-                onClick={() => {
-                  const cur = Number(quickQty || "0");
-                  setQuickQty(String(Math.max(0, cur + 12)));
-                }}
-              >
-                +12
-              </ButtonSecondary>
+            <div className="mt-4">
               <ButtonSecondary
                 className="h-14 text-lg"
                 onClick={() => {
