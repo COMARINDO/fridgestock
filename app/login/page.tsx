@@ -9,14 +9,25 @@ import { useAuth } from "@/app/providers";
 import { errorMessage } from "@/lib/error";
 import type { Location } from "@/lib/types";
 
+const accessMap: Record<string, string> = {
+  "3200": "Teich",
+  "3202": "Hofstetten",
+  "3203": "Rabenstein",
+  "3204": "Kirchberg",
+};
+
 export default function LoginPage() {
   const router = useRouter();
-  const { setLocation } = useAuth();
+  const { location, setLocation } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
-  const [selected, setSelected] = useState<Location | null>(null);
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = location?.location_id;
+    if (!id) return;
+    router.replace(`/location/${id}`);
+  }, [location?.location_id, router]);
 
   useEffect(() => {
     (async () => {
@@ -36,22 +47,31 @@ export default function LoginPage() {
 
   async function onLogin() {
     setError(null);
-    setBusy(true);
     try {
-      if (!selected) {
-        setError("Bitte Platzerl auswählen.");
+      const c = code.trim();
+      if (!c) {
+        setError("Ungültiger Code");
         return;
       }
-      if (password !== "1234") {
-        setError("Passwort falsch.");
+      const locationName = accessMap[c];
+      if (!locationName) {
+        setError("Ungültiger Code");
         return;
       }
-      setLocation({ location_id: selected.id });
-      router.replace("/");
+      const target = sorted.find(
+        (l) => l.name.trim().toLowerCase() === locationName.trim().toLowerCase()
+      );
+      if (!target) {
+        setError("Ungültiger Code");
+        return;
+      }
+      try {
+        navigator.vibrate?.(40);
+      } catch {}
+      setLocation({ location_id: target.id });
+      router.replace(`/location/${target.id}`);
     } catch (e: unknown) {
       setError(errorMessage(e, "Login fehlgeschlagen."));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -63,50 +83,24 @@ export default function LoginPage() {
           <h1 className="text-3xl font-black tracking-tight text-black">Bstand</h1>
         </div>
         <p className="mt-2 text-[15px] text-black">
-          Platzerl wählen, Passwort eingeben, los.
+          Code eingeben, los.
         </p>
       </div>
 
       <div className="w-full px-4 pt-6">
         <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm">
-          <div className="text-[15px] font-extrabold text-black">Platzerl</div>
-          <div className="mt-3 grid gap-2">
-            {sorted.map((l) => {
-              const active = selected?.id === l.id;
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setSelected(l)}
-                  className={[
-                    "w-full rounded-2xl border-2 px-4 py-4 text-left text-[18px] font-black",
-                    "active:scale-[0.99]",
-                    active
-                      ? "border-black bg-black text-white"
-                      : "border-black bg-white text-black",
-                  ].join(" ")}
-                >
-                  {l.name}
-                </button>
-              );
-            })}
-            {sorted.length === 0 ? (
-              <div className="text-[15px] text-[#1a1a1a]">
-                Keine Platzerl gefunden.
-              </div>
-            ) : null}
-          </div>
-
-          <label className="mt-5 block text-[15px] font-extrabold text-black">
-            Passwort
-          </label>
           <Input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            type="password"
-            autoComplete="current-password"
-            className="mt-2"
+            value={code}
+            onChange={(e) => {
+              const next = e.target.value.replace(/[^\d]/g, "");
+              setCode(next);
+            }}
+            placeholder="Code eingeben"
+            inputMode="numeric"
+            type="tel"
+            autoComplete="one-time-code"
+            autoFocus
+            className="h-14 text-[22px] font-black text-center tracking-widest"
             onKeyDown={(e) => {
               if (e.key === "Enter") onLogin();
             }}
@@ -119,11 +113,11 @@ export default function LoginPage() {
           ) : null}
 
           <Button
-            className="mt-5"
+            className="mt-4 h-14 text-lg"
             onClick={onLogin}
-            disabled={busy || !selected || !password}
+            disabled={!code.trim()}
           >
-            {busy ? "Login…" : "Login"}
+            Login
           </Button>
         </div>
       </div>

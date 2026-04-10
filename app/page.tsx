@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { listLocations } from "@/lib/db";
 import type { Location } from "@/lib/types";
@@ -18,10 +19,17 @@ export default function HomePage() {
 }
 
 function HomeInner() {
+  const router = useRouter();
   const { location, logout } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = location?.location_id;
+    if (!id) return;
+    router.replace(`/location/${id}`);
+  }, [location?.location_id, router]);
 
   useEffect(() => {
     (async () => {
@@ -92,10 +100,13 @@ function HomeInner() {
                 Überblick
               </Link>
               <button
-                onClick={() => logout()}
+                onClick={() => {
+                  logout();
+                  router.replace("/login");
+                }}
                 className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
               >
-                Wechseln
+                Abmelden
               </button>
             </div>
           </div>
@@ -111,13 +122,11 @@ function HomeInner() {
 
         {busy ? (
           <div className="mt-6 text-black">Lade…</div>
-        ) : !activeParent ? (
-          <div className="mt-6 text-black">
-            Platzerl nicht gefunden. Bitte erneut einloggen.
-          </div>
+        ) : grouped.length === 0 ? (
+          <div className="mt-6 text-black">Keine Platzerl gefunden.</div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[activeParent].map(({ parent, children }) => {
+            {grouped.map(({ parent, children }) => {
               const sections = {
                 "Kühlschrank": children.filter((c) => sectionLabel(c.name) === "Kühlschrank"),
                 "Lager": children.filter((c) => sectionLabel(c.name) === "Lager"),
@@ -125,6 +134,7 @@ function HomeInner() {
               };
 
               const hasChildren = children.length > 0;
+              const isAssigned = location?.location_id === parent.id;
 
               return (
                 <div
@@ -139,6 +149,11 @@ function HomeInner() {
                       <div className="mt-1 text-[15px] text-black">
                         Haupt-Platzerl (Bestand hier)
                       </div>
+                      {!isAssigned ? (
+                        <div className="mt-1 text-[13px] font-black text-black/70">
+                          Nur Lesen
+                        </div>
+                      ) : null}
                     </div>
 
                     {!hasChildren ? (

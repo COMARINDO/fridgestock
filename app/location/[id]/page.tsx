@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
+import { useAuth } from "@/app/providers";
 import {
   resolveInventoryLocation,
   getProductByBarcode,
@@ -36,6 +37,7 @@ function LocationInner() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const locationId = params?.id ?? "";
+  const { location: sessionLocation } = useAuth();
 
   const [location, setLocation] = useState<Location | null>(null);
   const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
@@ -108,8 +110,16 @@ function LocationInner() {
     })();
   }, [locationId, router]);
 
+  const canWrite = useMemo(() => {
+    const assigned = sessionLocation?.location_id;
+    const inv = inventoryLoc?.id;
+    if (!assigned || !inv) return false;
+    return assigned === inv;
+  }, [sessionLocation?.location_id, inventoryLoc?.id]);
+
   async function runSave(productId: string) {
     if (!inventoryLoc) return;
+    if (!canWrite) return;
     const nextQty = pendingQty.current[productId];
     if (nextQty === undefined) return;
 
@@ -132,6 +142,7 @@ function LocationInner() {
   }
 
   function scheduleSave(productId: string, nextQty: number) {
+    if (!canWrite) return;
     pendingQty.current[productId] = nextQty;
 
     if (timers.current[productId]) clearTimeout(timers.current[productId]);
@@ -144,6 +155,7 @@ function LocationInner() {
 
   async function saveImmediate(productId: string, nextQty: number) {
     if (!inventoryLoc) return;
+    if (!canWrite) return;
     pendingQty.current[productId] = nextQty;
     setSaveState((s) => ({ ...s, [productId]: "saving" }));
     try {
@@ -171,50 +183,55 @@ function LocationInner() {
     }, 0);
   }
 
-  async function handleBarcode(codeRaw: string) {
-    const code = codeRaw.trim();
-    if (!code) return;
-    setScanError(null);
+  const handleBarcode = useCallback(
+    async (codeRaw: string) => {
+      if (!canWrite) return;
+      const code = codeRaw.trim();
+      if (!code) return;
+      setScanError(null);
 
-    try {
-      // Ignore duplicate scans within short time.
-      const now = Date.now();
-      if (lastScanRef.current.code === code && now - lastScanRef.current.at < 900) return;
-      lastScanRef.current = { code, at: now };
+      try {
+        // Ignore duplicate scans within short time.
+        const now = Date.now();
+        if (lastScanRef.current.code === code && now - lastScanRef.current.at < 900)
+          return;
+        lastScanRef.current = { code, at: now };
 
-      const p = await getProductByBarcode(code);
-      if (!p) {
-        setUnknownBarcode(code);
-        setNewProductBrand("");
-        setNewProductName("");
-        setNewProductZusatz("");
-        setNewProductShortName("");
-        setNewShortTouched(false);
-        setOffSuggestion(null);
-        setOffError(null);
-        return;
+        const p = await getProductByBarcode(code);
+        if (!p) {
+          setUnknownBarcode(code);
+          setNewProductBrand("");
+          setNewProductName("");
+          setNewProductZusatz("");
+          setNewProductShortName("");
+          setNewShortTouched(false);
+          setOffSuggestion(null);
+          setOffError(null);
+          return;
+        }
+
+        setHighlightId(p.id);
+        setTimeout(() => setHighlightId(null), 2500);
+
+        setTimeout(() => {
+          rowRefs.current[p.id]?.scrollIntoView({
+            block: "center",
+            behavior: "smooth",
+          });
+        }, 60);
+
+        // No automatic quantity changes on scan.
+        // Tap/hold on the product card handles +1 / menu.
+        setScanSheet(null);
+        setScanMode("choose");
+        setSetQty(String(quantitiesRef.current[p.id] ?? 0));
+        setAddQty("1");
+      } catch (e: unknown) {
+        setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
       }
-
-      setHighlightId(p.id);
-      setTimeout(() => setHighlightId(null), 2500);
-
-      setTimeout(() => {
-        rowRefs.current[p.id]?.scrollIntoView({
-          block: "center",
-          behavior: "smooth",
-        });
-      }, 60);
-
-      // No automatic quantity changes on scan.
-      // Tap/hold on the product card handles +1 / menu.
-      setScanSheet(null);
-      setScanMode("choose");
-      setSetQty(String(quantitiesRef.current[p.id] ?? 0));
-      setAddQty("1");
-    } catch (e: unknown) {
-      setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
-    }
-  }
+    },
+    [canWrite]
+  );
 
   useEffect(() => {
     if (!unknownBarcode) return;
@@ -352,7 +369,7 @@ function LocationInner() {
       cancelled = true;
       stopFn?.();
     };
-  }, [scannerOpen]);
+  }, [scannerOpen, canWrite, handleBarcode]);
 
   const visibleProducts = useMemo(() => products, [products]);
 
@@ -567,7 +584,11 @@ function LocationInner() {
 
       <div className="fixed bottom-0 left-0 right-0 border-t-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-3 flex gap-2">
-          <Button className="h-14 text-lg" onClick={() => setScannerOpen(true)}>
+          <Button
+            className="h-14 text-lg"
+            onClick={() => setScannerOpen(true)}
+            disabled={!canWrite}
+          >
             SCAN PRODUKT
           </Button>
         </div>
@@ -629,6 +650,7 @@ function LocationInner() {
                     <Button
                       className="h-12"
                       onClick={async () => {
+                        if (!canWrite) return;
                         if (!unknownBarcode) return;
                         try {
                           await createProductWithBarcode({
@@ -751,6 +773,7 @@ function LocationInner() {
                 className="w-full h-14 text-lg"
                 disabled={!newProductName.trim()}
                 onClick={async () => {
+                    if (!canWrite) return;
                   if (!unknownBarcode) return;
                   try {
                     await createProductWithBarcode({

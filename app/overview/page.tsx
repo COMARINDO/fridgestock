@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
@@ -16,6 +17,7 @@ import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 import { suggestShortName } from "@/lib/shortName";
 import { formatProductName } from "@/lib/formatProductName";
+import { useAuth } from "@/app/providers";
 
 type Row = Product & { quantity: number };
 
@@ -28,16 +30,30 @@ export default function OverviewPage() {
 }
 
 function OverviewInner() {
+  const router = useRouter();
+  const { logout } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
+  const touchStartRef = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    moved: boolean;
+    scrollLock: boolean;
+  } | null>(null);
+  const [swipeFx, setSwipeFx] = useState<{ id: string; t: number } | null>(null);
+  const [swipeHint, setSwipeHint] = useState<{ id: string; opacity: number } | null>(
+    null
+  );
 
   const [detailOpen, setDetailOpen] = useState<{
     productId: string;
     title: string;
+    total: number;
   } | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -112,7 +128,7 @@ function OverviewInner() {
   }, [rows, q]);
 
   async function openDetail(r: Row) {
-    setDetailOpen({ productId: r.id, title: formatProductName(r) });
+    setDetailOpen({ productId: r.id, title: formatProductName(r), total: r.quantity });
     setDetailBusy(true);
     setDetailError(null);
     setDetailRows([]);
@@ -138,9 +154,20 @@ function OverviewInner() {
                 <div className="text-xl font-black leading-tight text-black">Überblick</div>
               </div>
             </div>
-            <Link href="/" className="text-[15px] font-black text-black">
-              Home
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/" className="text-[15px] font-black text-black">
+                Home
+              </Link>
+              <button
+                onClick={() => {
+                  logout();
+                  router.replace("/login");
+                }}
+                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
+              >
+                Abmelden
+              </button>
+            </div>
           </div>
 
           <div className="mt-4">
@@ -168,13 +195,33 @@ function OverviewInner() {
             {visible.map((r) => (
               <div
                 key={r.id}
-                className="w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
-                onClick={() => void openDetail(r)}
-                onTouchStart={() => {
+                className="relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                onClick={(e) => {
+                  // Tap should do nothing.
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onTouchStart={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+
                   longPressFiredRef.current = false;
+                  const touch = e.touches[0];
+                  if (!touch) return;
+
+                  touchStartRef.current = {
+                    id: r.id,
+                    x: touch.clientX,
+                    y: touch.clientY,
+                    moved: false,
+                    scrollLock: false,
+                  };
+
                   if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
                   touchTimerRef.current = setTimeout(() => {
                     longPressFiredRef.current = true;
+                    setSwipeHint(null);
                     setEditError(null);
                     setEditOpen({
                       productId: r.id,
@@ -186,13 +233,82 @@ function OverviewInner() {
                     });
                   }, 500);
                 }}
-                onTouchEnd={() => {
+                onTouchMove={(e) => {
+                  const touch = e.touches[0];
+                  const start = touchStartRef.current;
+                  if (!touch || !start || start.id !== r.id) return;
+                  if (longPressFiredRef.current) return;
+
+                  const dx = touch.clientX - start.x;
+                  const dy = touch.clientY - start.y;
+
+                  // If user is scrolling vertically, never treat as swipe.
+                  if (!start.scrollLock) {
+                    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+                      start.scrollLock = true;
+                      setSwipeHint(null);
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = null;
+                      return;
+                    }
+                    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+                      start.moved = true;
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = null;
+                    }
+                  }
+
+                  // Optional visual feedback while swiping left (no movement).
+                  if (!start.scrollLock && dx < 0) {
+                    const opacity = Math.max(0, Math.min(1, Math.abs(dx) / 80));
+                    setSwipeHint({ id: r.id, opacity });
+                  } else {
+                    setSwipeHint(null);
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+
                   if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
                   touchTimerRef.current = null;
                   if (longPressFiredRef.current) return;
-                  void openDetail(r);
+
+                  const touch = e.changedTouches[0];
+                  const start = touchStartRef.current;
+                  touchStartRef.current = null;
+                  setSwipeHint(null);
+                  if (!touch || !start || start.id !== r.id) return;
+                  if (start.scrollLock) return;
+
+                  const dx = touch.clientX - start.x;
+                  const dy = touch.clientY - start.y;
+
+                  // Swipe LEFT only if horizontal and strong enough.
+                  if (dx < -50 && Math.abs(dy) < 25) {
+                    setSwipeFx({ id: r.id, t: Date.now() });
+                    setTimeout(() => {
+                      setSwipeFx((s) => (s?.id === r.id ? null : s));
+                    }, 180);
+                    void openDetail(r);
+                    return;
+                  }
+
+                  // Tap / small moves do nothing.
                 }}
               >
+                {swipeHint?.id === r.id ? (
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-3xl border-2 border-black"
+                    style={{ opacity: swipeHint.opacity * 0.25 }}
+                  />
+                ) : null}
+                {swipeFx?.id === r.id ? (
+                  <div className="pointer-events-none absolute right-4 top-4 text-[12px] font-black text-black/60">
+                    ◀
+                  </div>
+                ) : null}
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0">
                     <div className="text-[18px] font-black truncate text-black">
@@ -246,12 +362,22 @@ function OverviewInner() {
                   {detailOpen.title}
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                  {detailOpen.total}
+                </div>
+                <button
+                  className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                  onClick={() => setDetailOpen(null)}
+                >
+                  Schließen
+                </button>
+              </div>
               <button
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
-                onClick={() => setDetailOpen(null)}
-              >
-                Schließen
-              </button>
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
             </div>
 
             {detailError ? (
