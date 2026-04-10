@@ -21,8 +21,6 @@ import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
 import { groupProducts } from "@/lib/groupProducts";
 
-type SaveState = "idle" | "saving" | "saved" | "error";
-
 export default function LocationPage() {
   return (
     <RequireAuth>
@@ -40,7 +38,6 @@ function LocationInner() {
   const [, setLocation] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -136,15 +133,8 @@ function LocationInner() {
         productId,
         quantity: nextQty,
       });
-      setSaveState((s) => ({ ...s, [productId]: "saved" }));
-
-      setTimeout(() => {
-        setSaveState((s) =>
-          s[productId] === "saved" ? { ...s, [productId]: "idle" } : s
-        );
-      }, 650);
     } catch {
-      setSaveState((s) => ({ ...s, [productId]: "error" }));
+      // ignore
     }
   }
 
@@ -153,7 +143,6 @@ function LocationInner() {
     pendingQty.current[productId] = nextQty;
 
     if (timers.current[productId]) clearTimeout(timers.current[productId]);
-    setSaveState((s) => ({ ...s, [productId]: "saving" }));
 
     timers.current[productId] = setTimeout(async () => {
       await runSave(productId);
@@ -164,21 +153,14 @@ function LocationInner() {
     if (!locationId) return;
     if (!canWrite) return;
     pendingQty.current[productId] = nextQty;
-    setSaveState((s) => ({ ...s, [productId]: "saving" }));
     try {
       await setInventoryQuantity({
         locationId,
         productId,
         quantity: nextQty,
       });
-      setSaveState((s) => ({ ...s, [productId]: "saved" }));
-      setTimeout(() => {
-        setSaveState((s) =>
-          s[productId] === "saved" ? { ...s, [productId]: "idle" } : s
-        );
-      }, 450);
     } catch {
-      setSaveState((s) => ({ ...s, [productId]: "error" }));
+      // ignore
     }
   }
 
@@ -399,7 +381,6 @@ function LocationInner() {
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {items.map((p) => {
                 const qty = quantities[p.id] ?? 0;
-                const state = saveState[p.id] ?? "idle";
 
                 return (
                   <div
@@ -490,23 +471,6 @@ function LocationInner() {
                         <div className="text-lg font-black text-black">
                           {formatProductName(p)}
                         </div>
-                      </div>
-
-                      <div
-                        className={[
-                          "h-10 px-4 rounded-full text-[15px] font-black flex items-center",
-                          state === "error"
-                            ? "bg-white text-black border-2 border-black"
-                            : "bg-black text-white",
-                        ].join(" ")}
-                      >
-                        {state === "saving"
-                          ? "speichert…"
-                          : state === "saved"
-                            ? "gespeichert"
-                            : state === "error"
-                              ? "Fehler"
-                              : "ok"}
                       </div>
                     </div>
 
