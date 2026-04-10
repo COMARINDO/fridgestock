@@ -76,7 +76,7 @@ function HomeInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src="/logo.svg" alt="Bstand" width={36} height={36} />
+              <Image src="/logo.png" alt="Bstand" width={36} height={36} />
               <div className="min-w-0">
                 <div className="text-[13px] text-black">Location</div>
                 <div className="text-[20px] font-black leading-tight text-black truncate">

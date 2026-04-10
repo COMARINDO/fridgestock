@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div className="flex-1 flex flex-col">
       <div className="w-full px-4 pt-8">
         <div className="flex items-center gap-3">
-          <Image src="/logo.svg" alt="Bstand" width={40} height={40} />
+          <Image src="/logo.png" alt="Bstand" width={40} height={40} />
           <h1 className="text-3xl font-black tracking-tight text-black">Bstand</h1>
         </div>
         <p className="mt-2 text-[15px] text-black">

@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export function generateImageMetadata() {
   return [
@@ -20,6 +22,9 @@ export default async function Icon({ id }: { id: Promise<string | number> }) {
   const s = typeof iconId === "number" ? iconId : Number(iconId);
   const size = Number.isFinite(s) ? s : 512;
 
+  const png = await fs.readFile(path.join(process.cwd(), "public", "logo.png"));
+  const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -29,15 +34,16 @@ export default async function Icon({ id }: { id: Promise<string | number> }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#0b0f0e",
-          color: "white",
-          fontWeight: 800,
-          fontSize: Math.round(size * 0.42),
-          letterSpacing: Math.round(size * -0.02),
-          borderRadius: Math.round(size * 0.18),
+          background: "transparent",
         }}
       >
-        B
+        <img
+          src={dataUrl}
+          width={size}
+          height={size}
+          alt=""
+          style={{ width: size, height: size, objectFit: "contain" }}
+        />
       </div>
     ),
     { width: size, height: size }
