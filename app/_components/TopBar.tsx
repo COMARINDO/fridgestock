@@ -13,8 +13,8 @@ export function TopBar() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
-      <div className="w-full px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="w-full px-4 h-24 flex items-center">
+        <div className="flex items-center justify-between gap-3 w-full">
           <Link
             href={homeHref}
             className="flex items-center gap-3 min-w-0 active:scale-[0.99]"
@@ -23,10 +23,10 @@ export function TopBar() {
             <Image
               src="/logo.png"
               alt="Bstand"
-              width={44}
-              height={44}
+              width={88}
+              height={88}
               priority
-              className="h-11 w-11"
+              className="h-[88px] w-[88px] aspect-square object-contain"
             />
           </Link>
 

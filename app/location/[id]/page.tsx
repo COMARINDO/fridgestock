@@ -78,8 +78,19 @@ function LocationInner() {
     moved: boolean;
   } | null>(null);
   const plusTouchRef = useRef<Record<string, { x: number; y: number; moved: boolean }>>({});
+  const stockCircleTouchRef = useRef<
+    Record<string, { x: number; y: number; moved: boolean }>
+  >({});
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const [quickEdit, setQuickEdit] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
+  const [quickQty, setQuickQty] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickErr, setQuickErr] = useState<string | null>(null);
 
   useEffect(() => {
     quantitiesRef.current = quantities;
@@ -467,6 +478,50 @@ function LocationInner() {
                           {formatProductName(p)}
                         </div>
                       </div>
+
+                      <button
+                        type="button"
+                        className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center active:scale-[0.99] disabled:opacity-50"
+                        disabled={!canWrite}
+                        onTouchStart={(e) => {
+                          const touch = e.touches[0];
+                          if (!touch) return;
+                          stockCircleTouchRef.current[p.id] = {
+                            x: touch.clientX,
+                            y: touch.clientY,
+                            moved: false,
+                          };
+                        }}
+                        onTouchMove={(e) => {
+                          const touch = e.touches[0];
+                          const s = stockCircleTouchRef.current[p.id];
+                          if (!touch || !s) return;
+                          const dx = touch.clientX - s.x;
+                          const dy = touch.clientY - s.y;
+                          if (Math.hypot(dx, dy) > 10) s.moved = true;
+                        }}
+                        onTouchEnd={(e) => {
+                          const s = stockCircleTouchRef.current[p.id];
+                          if (s?.moved) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }
+                        }}
+                        onClick={() => {
+                          const s = stockCircleTouchRef.current[p.id];
+                          if (s?.moved) return;
+                          setQuickErr(null);
+                          setQuickEdit({
+                            productId: p.id,
+                            productName: formatProductName(p),
+                          });
+                          setQuickQty(String(quantitiesRef.current[p.id] ?? 0));
+                        }}
+                        aria-label="bestand bearbeiten"
+                        title="Bestand bearbeiten"
+                      >
+                        {qty}
+                      </button>
 
                       <div
                         className={[
@@ -977,6 +1032,95 @@ function LocationInner() {
                 </ButtonSecondary>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {quickEdit ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Bestand bearbeiten</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
+                  {quickEdit.productName}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                onClick={() => setQuickEdit(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-black text-black">Menge</div>
+              <Input
+                value={quickQty}
+                onChange={(e) => setQuickQty(e.target.value.replace(/[^\d]/g, ""))}
+                inputMode="numeric"
+                type="tel"
+                className="mt-2 h-14 text-[22px] font-black text-center tracking-widest"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <ButtonSecondary
+                className="h-14 text-lg"
+                onClick={() => {
+                  const cur = Number(quickQty || "0");
+                  setQuickQty(String(Math.max(0, cur + 12)));
+                }}
+              >
+                +12
+              </ButtonSecondary>
+              <ButtonSecondary
+                className="h-14 text-lg"
+                onClick={() => {
+                  const cur = Number(quickQty || "0");
+                  setQuickQty(String(Math.max(0, cur + 24)));
+                }}
+              >
+                +24
+              </ButtonSecondary>
+            </div>
+
+            {quickErr ? (
+              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
+                {quickErr}
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <Button
+                className="h-14 text-lg"
+                disabled={quickBusy || !canWrite}
+                onClick={async () => {
+                  if (!quickEdit) return;
+                  const n = Number(quickQty || "0");
+                  const next = Number.isFinite(n) ? Math.max(0, n) : 0;
+                  setQuickBusy(true);
+                  setQuickErr(null);
+                  try {
+                    quantitiesRef.current = {
+                      ...quantitiesRef.current,
+                      [quickEdit.productId]: next,
+                    };
+                    setQuantities((m) => ({ ...m, [quickEdit.productId]: next }));
+                    await saveImmediate(quickEdit.productId, next);
+                    setQuickEdit(null);
+                  } catch (e: unknown) {
+                    setQuickErr(errorMessage(e, "Konnte Bestand nicht speichern."));
+                  } finally {
+                    setQuickBusy(false);
+                  }
+                }}
+              >
+                {quickBusy ? "Speichert…" : "Speichern"}
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
