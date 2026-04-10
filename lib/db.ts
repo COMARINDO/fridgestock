@@ -346,3 +346,72 @@ export async function getProductStockByLocation(productId: string): Promise<
     .sort((a, b) => a.location_name.localeCompare(b.location_name));
 }
 
+export async function getWeeklyUsageByProduct(args?: {
+  days?: number;
+  multiplier?: number;
+}): Promise<Record<string, number>> {
+  const days = args?.days ?? 7;
+  const multiplier = args?.multiplier ?? 1;
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const [locs, rows] = await Promise.all([
+    listLocations(),
+    (async () => {
+      const supabase = getSupabase() as unknown as {
+        from: (t: string) => {
+          select: (columns: string) => {
+            gte: (
+              column: string,
+              value: string
+            ) => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+
+      const { data, error } = await supabase
+        .from("inventory_history")
+        .select("location_id,product_id,quantity,timestamp")
+        .gte("timestamp", sinceIso);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        location_id: string;
+        product_id: string;
+        quantity: number;
+        timestamp: string;
+      }>;
+    })(),
+  ]);
+
+  const parentIds = new Set(locs.filter((l) => !l.parent_id).map((l) => l.id));
+
+  // Per (location, product): min/max over last N days.
+  const minmax = new Map<string, { min: number; max: number }>();
+  for (const r of rows) {
+    if (!parentIds.has(r.location_id)) continue;
+    const key = `${r.location_id}:${r.product_id}`;
+    const cur = minmax.get(key);
+    if (!cur) {
+      minmax.set(key, { min: r.quantity ?? 0, max: r.quantity ?? 0 });
+      continue;
+    }
+    const q = r.quantity ?? 0;
+    if (q < cur.min) cur.min = q;
+    if (q > cur.max) cur.max = q;
+  }
+
+  // Sum usage across locations for each product.
+  const usageByProduct = new Map<string, number>();
+  for (const [key, mm] of minmax.entries()) {
+    const productId = key.split(":")[1] ?? "";
+    if (!productId) continue;
+    const usage = Math.max(0, mm.max - mm.min);
+    usageByProduct.set(productId, (usageByProduct.get(productId) ?? 0) + usage);
+  }
+
+  const out: Record<string, number> = {};
+  for (const [pid, usage] of usageByProduct.entries()) {
+    out[pid] = Math.round(usage * multiplier);
+  }
+  return out;
+}
+

@@ -9,6 +9,7 @@ import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
   getGlobalOverviewByProduct,
   getProductStockByLocation,
+  getWeeklyUsageByProduct,
   updateProduct,
   updateProductBarcode,
 } from "@/lib/db";
@@ -33,6 +34,7 @@ function OverviewInner() {
   const router = useRouter();
   const { logout } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
+  const [forecastById, setForecastById] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -83,8 +85,12 @@ function OverviewInner() {
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
 
   async function reload() {
-    const data = await getGlobalOverviewByProduct();
+    const [data, usage] = await Promise.all([
+      getGlobalOverviewByProduct(),
+      getWeeklyUsageByProduct({ days: 7 }),
+    ]);
     setRows(data);
+    setForecastById(usage);
   }
 
   useEffect(() => {
@@ -315,8 +321,25 @@ function OverviewInner() {
                       {formatProductName(r)}
                     </div>
                   </div>
-                  <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                    {r.quantity}
+                  <div className="flex items-center gap-2">
+                    <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                      {r.quantity}
+                    </div>
+                    {(() => {
+                      const forecast = Math.max(0, Number(forecastById[r.id] ?? 0));
+                      const enough = r.quantity >= forecast;
+                      return (
+                        <div
+                          className={[
+                            "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
+                            enough ? "bg-emerald-700" : "bg-red-700",
+                          ].join(" ")}
+                          title="Verbrauch nächste Woche (Schätzung)"
+                        >
+                          {forecast}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
