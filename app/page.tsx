@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { listLocations } from "@/lib/db";
@@ -18,7 +17,7 @@ export default function HomePage() {
 }
 
 function HomeInner() {
-  const { location, logout } = useAuth();
+  const { location } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,12 +56,6 @@ function HomeInner() {
     }));
   }, [locations]);
 
-  const activeParent = useMemo(() => {
-    const id = location?.location_id;
-    if (!id) return null;
-    return grouped.find((g) => g.parent.id === id) ?? null;
-  }, [grouped, location?.location_id]);
-
   function sectionLabel(name: string): "Kühlschrank" | "Lager" | "Andere" {
     const n = name.trim().toLowerCase();
     if (n.includes("kühlschrank") || n.includes("kuehlschrank")) return "Kühlschrank";
@@ -72,37 +65,6 @@ function HomeInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 bg-[var(--background)] border-b-2 border-black">
-        <div className="w-full px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Image src="/logo.png" alt="Bstand" width={44} height={44} />
-              <div className="min-w-0">
-                <div className="text-[20px] font-black leading-tight text-black truncate">
-                  {activeParent?.parent.name ?? "…"}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/overview"
-                className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
-              >
-                Überblick
-              </Link>
-              <button
-                onClick={() => {
-                  logout();
-                }}
-                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
-              >
-                Abmelden
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <main className="w-full px-4 py-4 pb-10">
         {error ? (
           <div className="rounded-3xl bg-red-50 p-4 text-red-800">

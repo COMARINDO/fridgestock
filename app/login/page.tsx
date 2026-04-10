@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Input, Button } from "@/app/_components/ui";
 import { listLocations } from "@/lib/db";
 import { useAuth } from "@/app/providers";
@@ -77,18 +76,6 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="w-full px-4 pt-8">
-        <div className="flex justify-center">
-          <Image
-            src="/logo.png"
-            alt="Bstand"
-            width={120}
-            height={120}
-            priority
-          />
-        </div>
-      </div>
-
       <div className="w-full px-4 pt-6">
         <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm">
           <Input

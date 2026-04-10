@@ -1,9 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
@@ -19,7 +16,6 @@ import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 import { suggestShortName } from "@/lib/shortName";
 import { formatProductName } from "@/lib/formatProductName";
-import { useAuth } from "@/app/providers";
 
 type Row = Product & { quantity: number };
 
@@ -32,8 +28,6 @@ export default function OverviewPage() {
 }
 
 function OverviewInner() {
-  const router = useRouter();
-  const { location, logout } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [parentLocations, setParentLocations] = useState<Location[]>([]);
   const [stockByLocationProduct, setStockByLocationProduct] = useState<
@@ -169,47 +163,15 @@ function OverviewInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
-        <div className="w-full px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Image src="/logo.png" alt="Bstand" width={36} height={36} />
-              <div className="min-w-0">
-                <div className="text-[13px] text-black">Global</div>
-                <div className="text-xl font-black leading-tight text-black">Überblick</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href={location?.location_id ? `/location/${location.location_id}` : "/"}
-                className="text-[15px] font-black text-black"
-              >
-                Home
-              </Link>
-              <button
-                onClick={() => {
-                  logout();
-                  router.replace("/login");
-                }}
-                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
-              >
-                Abmelden
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Produkt suchen…"
-              autoFocus
-            />
-          </div>
-        </div>
-      </header>
-
       <main className="w-full px-4 py-4 pb-10">
+        <div>
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Produkt suchen…"
+          />
+        </div>
+
         {error ? (
           <div className="rounded-3xl bg-red-50 p-4 text-red-800">{error}</div>
         ) : null}
