@@ -5,7 +5,12 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
-import { getGlobalOverviewByProduct, updateProductBarcode } from "@/lib/db";
+import {
+  getGlobalOverviewByProduct,
+  getProductStockByLocation,
+  updateProduct,
+  updateProductBarcode,
+} from "@/lib/db";
 import type { Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
@@ -27,6 +32,30 @@ function OverviewInner() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+
+  const [detailOpen, setDetailOpen] = useState<{
+    productId: string;
+    title: string;
+  } | null>(null);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailRows, setDetailRows] = useState<
+    Array<{ location_id: string; location_name: string; quantity: number }>
+  >([]);
+
+  const [editOpen, setEditOpen] = useState<{
+    productId: string;
+    brand: string;
+    product_name: string;
+    zusatz: string;
+    barcode: string;
+    short_name: string;
+  } | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const [barcodeModal, setBarcodeModal] = useState<{
     productId: string;
     productName: string;
@@ -82,6 +111,21 @@ function OverviewInner() {
     });
   }, [rows, q]);
 
+  async function openDetail(r: Row) {
+    setDetailOpen({ productId: r.id, title: formatProductName(r) });
+    setDetailBusy(true);
+    setDetailError(null);
+    setDetailRows([]);
+    try {
+      const data = await getProductStockByLocation(r.id);
+      setDetailRows(data);
+    } catch (e: unknown) {
+      setDetailError(errorMessage(e, "Konnte Bestand nicht laden."));
+    } finally {
+      setDetailBusy(false);
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
@@ -125,6 +169,29 @@ function OverviewInner() {
               <div
                 key={r.id}
                 className="w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                onClick={() => void openDetail(r)}
+                onTouchStart={() => {
+                  longPressFiredRef.current = false;
+                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                  touchTimerRef.current = setTimeout(() => {
+                    longPressFiredRef.current = true;
+                    setEditError(null);
+                    setEditOpen({
+                      productId: r.id,
+                      brand: r.brand ?? "",
+                      product_name: r.product_name ?? "",
+                      zusatz: (r.zusatz ?? "").trim(),
+                      barcode: (r.barcode ?? "").trim(),
+                      short_name: (r.short_name ?? "").trim(),
+                    });
+                  }, 500);
+                }}
+                onTouchEnd={() => {
+                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                  touchTimerRef.current = null;
+                  if (longPressFiredRef.current) return;
+                  void openDetail(r);
+                }}
               >
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0">
@@ -168,6 +235,185 @@ function OverviewInner() {
           </div>
         )}
       </main>
+
+      {detailOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Bestand pro Platzerl</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
+                  {detailOpen.title}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                onClick={() => setDetailOpen(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            {detailError ? (
+              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
+                {detailError}
+              </div>
+            ) : null}
+
+            {detailBusy ? (
+              <div className="mt-4 text-black">Lade…</div>
+            ) : (
+              <div className="mt-4 grid gap-2">
+                {detailRows.length === 0 ? (
+                  <div className="text-black">Kein Bestand.</div>
+                ) : (
+                  detailRows.map((row) => (
+                    <div
+                      key={row.location_id}
+                      className="w-full rounded-3xl border-2 border-black bg-white px-4 py-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 font-black text-black truncate">
+                        {row.location_name}
+                      </div>
+                      <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                        {row.quantity}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {editOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Produkt bearbeiten</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
+                  {editOpen.brand} - {editOpen.product_name}
+                </div>
+              </div>
+              <button
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                onClick={() => setEditOpen(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <div>
+                <div className="text-sm font-black text-black">Brand</div>
+                <Input
+                  value={editOpen.brand}
+                  onChange={(e) =>
+                    setEditOpen((s) => (s ? { ...s, brand: e.target.value } : s))
+                  }
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-black text-black">Produkt</div>
+                <Input
+                  value={editOpen.product_name}
+                  onChange={(e) =>
+                    setEditOpen((s) =>
+                      s ? { ...s, product_name: e.target.value } : s
+                    )
+                  }
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-black text-black">Zusatz</div>
+                <Input
+                  value={editOpen.zusatz}
+                  onChange={(e) =>
+                    setEditOpen((s) => (s ? { ...s, zusatz: e.target.value } : s))
+                  }
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-black text-black">Barcode</div>
+                <Input
+                  value={editOpen.barcode}
+                  onChange={(e) =>
+                    setEditOpen((s) => (s ? { ...s, barcode: e.target.value } : s))
+                  }
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-black text-black">Kurzname</div>
+                <Input
+                  value={editOpen.short_name}
+                  onChange={(e) =>
+                    setEditOpen((s) =>
+                      s ? { ...s, short_name: e.target.value } : s
+                    )
+                  }
+                  className="mt-2"
+                />
+              </div>
+
+              <ButtonSecondary
+                className="h-12"
+                onClick={() => {
+                  const sug = suggestShortName({
+                    brand: editOpen.brand,
+                    product_name: editOpen.product_name,
+                    zusatz: editOpen.zusatz,
+                  });
+                  setEditOpen((s) => (s ? { ...s, short_name: sug } : s));
+                }}
+              >
+                Kurzname vorschlagen
+              </ButtonSecondary>
+
+              {editError ? (
+                <div className="rounded-3xl bg-red-50 p-4 text-red-800">
+                  {editError}
+                </div>
+              ) : null}
+
+              <Button
+                className="h-14 text-lg"
+                disabled={editBusy || !editOpen.brand.trim() || !editOpen.product_name.trim()}
+                onClick={async () => {
+                  if (!editOpen) return;
+                  setEditBusy(true);
+                  setEditError(null);
+                  try {
+                    await updateProduct({
+                      productId: editOpen.productId,
+                      brand: editOpen.brand,
+                      product_name: editOpen.product_name,
+                      zusatz: editOpen.zusatz.trim() ? editOpen.zusatz.trim() : null,
+                      barcode: editOpen.barcode.trim() ? editOpen.barcode.trim() : null,
+                      short_name: editOpen.short_name.trim()
+                        ? editOpen.short_name.trim()
+                        : null,
+                    });
+                    await reload();
+                    setEditOpen(null);
+                  } catch (e: unknown) {
+                    setEditError(errorMessage(e, "Konnte Produkt nicht speichern."));
+                  } finally {
+                    setEditBusy(false);
+                  }
+                }}
+              >
+                {editBusy ? "Speichert…" : "Speichern"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {barcodeModal ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
@@ -265,11 +511,11 @@ function OverviewInner() {
                   setBarcodeErr(null);
                   setBarcodeBusy(true);
                   try {
-                    await updateProductBarcode({
-                      productId: barcodeModal.productId,
-                      barcode: genBarcode,
-                      short_name: shortName.trim(),
-                    });
+                      await updateProductBarcode({
+                        productId: barcodeModal.productId,
+                        barcode: genBarcode,
+                        short_name: shortName.trim(),
+                      });
                     await reload();
                     setBarcodeModal(null);
                   } catch (e: unknown) {

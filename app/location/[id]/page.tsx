@@ -363,7 +363,7 @@ function LocationInner() {
           <div className="w-full px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Image src="/logo.png" alt="Bstand" width={36} height={36} />
-              <div className="text-xl font-black text-black">Location</div>
+              <div className="text-xl font-black text-black">Platzerl</div>
             </div>
             <Link href="/" className="text-sm font-black text-black">
               Home
@@ -385,7 +385,7 @@ function LocationInner() {
             <div className="flex items-center gap-3 min-w-0">
               <Image src="/logo.png" alt="Bstand" width={36} height={36} />
               <div className="min-w-0">
-                <div className="text-[13px] text-black">Location</div>
+                <div className="text-[13px] text-black">Platzerl</div>
                 <div className="text-xl font-black leading-tight text-black truncate">
                   {inventoryLoc && location?.parent_id
                     ? `${inventoryLoc.name} – ${location.name}`
@@ -560,7 +560,7 @@ function LocationInner() {
 
         <div className="mt-6">
           <ButtonSecondary className="" onClick={() => router.replace("/")}>
-            Zurück zu Locations
+            Zurück zu Platzerl
           </ButtonSecondary>
         </div>
       </main>

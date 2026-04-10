@@ -289,3 +289,60 @@ export async function updateProductBarcode(args: {
   if (error) throw error;
 }
 
+export async function updateProduct(args: {
+  productId: string;
+  brand: string;
+  product_name: string;
+  zusatz: string | null;
+  barcode: string | null;
+  short_name: string | null;
+}) {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      brand: args.brand.trim(),
+      product_name: args.product_name.trim(),
+      zusatz: args.zusatz,
+      barcode: args.barcode,
+      short_name: args.short_name,
+    })
+    .eq("id", args.productId);
+  if (error) throw error;
+}
+
+export async function getProductStockByLocation(productId: string): Promise<
+  Array<{ location_id: string; location_name: string; quantity: number }>
+> {
+  const pid = productId.trim();
+  if (!pid) return [];
+
+  const [inv, locs] = await Promise.all([
+    (async () => {
+      const { data, error } = await from("inventory")
+        .select("location_id,product_id,quantity")
+        .eq("product_id", pid);
+      if (error) throw error;
+      return (data ?? []) as InventoryRow[];
+    })(),
+    listLocations(),
+  ]);
+
+  const nameById = new Map(locs.map((l) => [l.id, l.name]));
+
+  return inv
+    .map((r) => ({
+      location_id: r.location_id,
+      location_name: nameById.get(r.location_id) ?? r.location_id,
+      quantity: r.quantity ?? 0,
+    }))
+    .sort((a, b) => a.location_name.localeCompare(b.location_name));
+}
+

@@ -30,7 +30,7 @@ function HomeInner() {
       try {
         setLocations(await listLocations());
       } catch (e: unknown) {
-        setError(errorMessage(e, "Konnte Locations nicht laden."));
+        setError(errorMessage(e, "Konnte Platzerl nicht laden."));
       } finally {
         setBusy(false);
       }
@@ -78,7 +78,7 @@ function HomeInner() {
             <div className="flex items-center gap-3 min-w-0">
               <Image src="/logo.png" alt="Bstand" width={36} height={36} />
               <div className="min-w-0">
-                <div className="text-[13px] text-black">Location</div>
+                <div className="text-[13px] text-black">Platzerl</div>
                 <div className="text-[20px] font-black leading-tight text-black truncate">
                   {activeParent?.parent.name ?? "…"}
                 </div>
@@ -113,7 +113,7 @@ function HomeInner() {
           <div className="mt-6 text-black">Lade…</div>
         ) : !activeParent ? (
           <div className="mt-6 text-black">
-            Location nicht gefunden. Bitte erneut einloggen.
+            Platzerl nicht gefunden. Bitte erneut einloggen.
           </div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -137,7 +137,7 @@ function HomeInner() {
                         {parent.name}
                       </div>
                       <div className="mt-1 text-[15px] text-black">
-                        Haupt-Location (Bestand hier)
+                        Haupt-Platzerl (Bestand hier)
                       </div>
                     </div>
 

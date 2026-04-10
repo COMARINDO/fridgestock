@@ -24,7 +24,7 @@ export default function LoginPage() {
         const all = await listLocations();
         setLocations(all.filter((l) => !l.parent_id));
       } catch (e: unknown) {
-        setError(errorMessage(e, "Konnte Locations nicht laden."));
+        setError(errorMessage(e, "Konnte Platzerl nicht laden."));
       }
     })();
   }, []);
@@ -39,7 +39,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (!selected) {
-        setError("Bitte Location auswählen.");
+        setError("Bitte Platzerl auswählen.");
         return;
       }
       if (password !== "1234") {
@@ -63,13 +63,13 @@ export default function LoginPage() {
           <h1 className="text-3xl font-black tracking-tight text-black">Bstand</h1>
         </div>
         <p className="mt-2 text-[15px] text-black">
-          Location wählen, Passwort eingeben, los.
+          Platzerl wählen, Passwort eingeben, los.
         </p>
       </div>
 
       <div className="w-full px-4 pt-6">
         <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm">
-          <div className="text-[15px] font-extrabold text-black">Location</div>
+          <div className="text-[15px] font-extrabold text-black">Platzerl</div>
           <div className="mt-3 grid gap-2">
             {sorted.map((l) => {
               const active = selected?.id === l.id;
@@ -92,7 +92,7 @@ export default function LoginPage() {
             })}
             {sorted.length === 0 ? (
               <div className="text-[15px] text-[#1a1a1a]">
-                Keine Locations gefunden.
+                Keine Platzerl gefunden.
               </div>
             ) : null}
           </div>
