@@ -35,12 +35,15 @@ function from(table: string): QueryBuilder {
 
 // NOTE: No user accounts / auth backend. Login is location-based only.
 
+const MAIN_LOCATION_NAMES = new Set(["Teich", "Hofstetten", "Rabenstein", "Kirchberg"]);
+
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await from("locations")
     .select("id,name,parent_id")
     .order("name");
   if (error) throw error;
-  return (data ?? []) as Location[];
+  // App uses only the 4 main Platzerl. Hide legacy sub-locations (Lager/Kühlschrank).
+  return ((data ?? []) as Location[]).filter((l) => MAIN_LOCATION_NAMES.has(l.name));
 }
 
 export async function getLocation(id: string): Promise<Location | null> {

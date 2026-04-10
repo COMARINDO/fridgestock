@@ -20,7 +20,14 @@ export function TopBar() {
             className="flex items-center gap-3 min-w-0 active:scale-[0.99]"
             aria-label="Bstand Home"
           >
-            <Image src="/logo.png" alt="Bstand" width={48} height={48} priority />
+            <Image
+              src="/logo.png"
+              alt="Bstand"
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11"
+            />
           </Link>
 
           <div className="flex items-center gap-2">
