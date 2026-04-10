@@ -33,7 +33,7 @@ export default function OverviewPage() {
 
 function OverviewInner() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { location, logout } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [parentLocations, setParentLocations] = useState<Location[]>([]);
   const [stockByLocationProduct, setStockByLocationProduct] = useState<
@@ -180,7 +180,10 @@ function OverviewInner() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/" className="text-[15px] font-black text-black">
+              <Link
+                href={location?.location_id ? `/location/${location.location_id}` : "/"}
+                className="text-[15px] font-black text-black"
+              >
                 Home
               </Link>
               <button

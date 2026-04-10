@@ -78,13 +78,15 @@ export default function LoginPage() {
   return (
     <div className="flex-1 flex flex-col">
       <div className="w-full px-4 pt-8">
-        <div className="flex items-center gap-3">
-          <Image src="/logo.png" alt="Bstand" width={40} height={40} />
-          <h1 className="text-3xl font-black tracking-tight text-black">Bstand</h1>
+        <div className="flex justify-center">
+          <Image
+            src="/logo.png"
+            alt="Bstand"
+            width={120}
+            height={120}
+            priority
+          />
         </div>
-        <p className="mt-2 text-[15px] text-black">
-          Code eingeben, los.
-        </p>
       </div>
 
       <div className="w-full px-4 pt-6">

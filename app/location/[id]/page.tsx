@@ -379,8 +379,7 @@ function LocationInner() {
         <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
           <div className="w-full px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Image src="/logo.png" alt="Bstand" width={36} height={36} />
-              <div className="text-xl font-black text-black">Platzerl</div>
+              <Image src="/logo.png" alt="Bstand" width={44} height={44} />
             </div>
             <Link href="/" className="text-sm font-black text-black">
               Home
@@ -400,9 +399,8 @@ function LocationInner() {
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <Image src="/logo.png" alt="Bstand" width={36} height={36} />
+              <Image src="/logo.png" alt="Bstand" width={44} height={44} />
               <div className="min-w-0">
-                <div className="text-[13px] text-black">Platzerl</div>
                 <div className="text-xl font-black leading-tight text-black truncate">
                   {inventoryLoc && location?.parent_id
                     ? `${inventoryLoc.name} – ${location.name}`
