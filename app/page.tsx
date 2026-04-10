@@ -36,32 +36,10 @@ function HomeInner() {
     })();
   }, []);
 
-  const grouped = useMemo(() => {
-    const parents = locations
-      .filter((l) => !l.parent_id)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const children = locations
-      .filter((l) => !!l.parent_id)
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    const byParent = new Map<string, Location[]>();
-    for (const c of children) {
-      const pid = c.parent_id!;
-      byParent.set(pid, [...(byParent.get(pid) ?? []), c]);
-    }
-
-    return parents.map((p) => ({
-      parent: p,
-      children: byParent.get(p.id) ?? [],
-    }));
-  }, [locations]);
-
-  function sectionLabel(name: string): "Kühlschrank" | "Lager" | "Andere" {
-    const n = name.trim().toLowerCase();
-    if (n.includes("kühlschrank") || n.includes("kuehlschrank")) return "Kühlschrank";
-    if (n.includes("lager")) return "Lager";
-    return "Andere";
-  }
+  const main = useMemo(
+    () => [...locations].sort((a, b) => a.name.localeCompare(b.name)),
+    [locations]
+  );
 
   return (
     <div className="flex-1 flex flex-col">
@@ -74,32 +52,22 @@ function HomeInner() {
 
         {busy ? (
           <div className="mt-6 text-black">Lade…</div>
-        ) : grouped.length === 0 ? (
+        ) : main.length === 0 ? (
           <div className="mt-6 text-black">Keine Platzerl gefunden.</div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {grouped.map(({ parent, children }) => {
-              const sections = {
-                "Kühlschrank": children.filter((c) => sectionLabel(c.name) === "Kühlschrank"),
-                "Lager": children.filter((c) => sectionLabel(c.name) === "Lager"),
-                "Andere": children.filter((c) => sectionLabel(c.name) === "Andere"),
-              };
-
-              const hasChildren = children.length > 0;
-              const isAssigned = location?.location_id === parent.id;
+            {main.map((loc) => {
+              const isAssigned = location?.location_id === loc.id;
 
               return (
                 <div
-                  key={parent.id}
+                  key={loc.id}
                   className="block w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[18px] font-black truncate text-black">
-                        {parent.name}
-                      </div>
-                      <div className="mt-1 text-[15px] text-black">
-                        Haupt-Platzerl (Bestand hier)
+                        {loc.name}
                       </div>
                       {!isAssigned ? (
                         <div className="mt-1 text-[13px] font-black text-black/70">
@@ -108,42 +76,13 @@ function HomeInner() {
                       ) : null}
                     </div>
 
-                    {!hasChildren ? (
-                      <Link
-                        href={`/location/${parent.id}`}
-                        className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
-                      >
-                        Öffnen
-                      </Link>
-                    ) : null}
+                    <Link
+                      href={`/location/${loc.id}`}
+                      className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
+                    >
+                      Öffnen
+                    </Link>
                   </div>
-
-                  {hasChildren ? (
-                    <div className="mt-4 grid gap-4">
-                      {(["Kühlschrank", "Lager", "Andere"] as const).map((s) => {
-                        const items = sections[s];
-                        if (items.length === 0) return null;
-                        return (
-                          <div key={s}>
-                            <div className="text-[15px] font-black text-black">
-                              {s}
-                            </div>
-                            <div className="mt-2 grid gap-2">
-                              {items.map((c) => (
-                                <Link
-                                  key={c.id}
-                                  href={`/location/${c.id}`}
-                                  className="block w-full rounded-3xl border-2 border-black bg-white px-4 py-4 text-[17px] font-black text-black active:scale-[0.99]"
-                                >
-                                  {c.name}
-                                </Link>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
                 </div>
               );
             })}

@@ -52,20 +52,6 @@ export async function getLocation(id: string): Promise<Location | null> {
   return (data ?? null) as Location | null;
 }
 
-export async function resolveInventoryLocation(locationId: string): Promise<{
-  uiLocation: Location;
-  inventoryLocation: Location;
-}> {
-  const loc = await getLocation(locationId);
-  if (!loc) throw new Error("Location nicht gefunden.");
-  if (!loc.parent_id) {
-    return { uiLocation: loc, inventoryLocation: loc };
-  }
-  const parent = await getLocation(loc.parent_id);
-  if (!parent) throw new Error("Parent-Location nicht gefunden.");
-  return { uiLocation: loc, inventoryLocation: parent };
-}
-
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
     .select("id,brand,product_name,zusatz,barcode,short_name")
@@ -173,16 +159,9 @@ export async function listProductsWithInventoryForLocation(
 }
 
 export async function getGlobalOverviewByProduct(): Promise<ProductWithQuantity[]> {
-  const [products, locations, inv] = await Promise.all([
-    listProducts(),
-    listLocations(),
-    listInventoryAll(),
-  ]);
-
-  const parentIds = new Set(locations.filter((l) => !l.parent_id).map((l) => l.id));
   const totals = new Map<string, number>();
+  const [products, inv] = await Promise.all([listProducts(), listInventoryAll()]);
   for (const row of inv) {
-    if (!parentIds.has(row.location_id)) continue;
     totals.set(row.product_id, (totals.get(row.product_id) ?? 0) + (row.quantity ?? 0));
   }
 
@@ -354,9 +333,7 @@ export async function getWeeklyUsageByProduct(args?: {
   const multiplier = args?.multiplier ?? 1;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [locs, rows] = await Promise.all([
-    listLocations(),
-    (async () => {
+  const rows = await (async () => {
       const supabase = getSupabase() as unknown as {
         from: (t: string) => {
           select: (columns: string) => {
@@ -379,15 +356,11 @@ export async function getWeeklyUsageByProduct(args?: {
         quantity: number;
         timestamp: string;
       }>;
-    })(),
-  ]);
-
-  const parentIds = new Set(locs.filter((l) => !l.parent_id).map((l) => l.id));
+    })();
 
   // Per (location, product): min/max over last N days.
   const minmax = new Map<string, { min: number; max: number }>();
   for (const r of rows) {
-    if (!parentIds.has(r.location_id)) continue;
     const key = `${r.location_id}:${r.product_id}`;
     const cur = minmax.get(key);
     if (!cur) {
@@ -423,9 +396,7 @@ export async function getWeeklyUsageByLocationProduct(args?: {
   const multiplier = args?.multiplier ?? 1;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [locs, rows] = await Promise.all([
-    listLocations(),
-    (async () => {
+  const rows = await (async () => {
       const supabase = getSupabase() as unknown as {
         from: (t: string) => {
           select: (columns: string) => {
@@ -448,14 +419,10 @@ export async function getWeeklyUsageByLocationProduct(args?: {
         quantity: number;
         timestamp: string;
       }>;
-    })(),
-  ]);
-
-  const parentIds = new Set(locs.filter((l) => !l.parent_id).map((l) => l.id));
+    })();
 
   const minmax = new Map<string, { min: number; max: number }>();
   for (const r of rows) {
-    if (!parentIds.has(r.location_id)) continue;
     const key = `${r.location_id}:${r.product_id}`;
     const cur = minmax.get(key);
     const q = r.quantity ?? 0;

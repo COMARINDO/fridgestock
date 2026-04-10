@@ -6,7 +6,7 @@ import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import { useAuth } from "@/app/providers";
 import {
-  resolveInventoryLocation,
+  getLocation,
   getProductByBarcode,
   listProductsWithInventoryForLocation,
   createProductWithBarcode,
@@ -38,7 +38,6 @@ function LocationInner() {
   const { location: sessionLocation } = useAuth();
 
   const [, setLocation] = useState<Location | null>(null);
-  const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
@@ -88,15 +87,11 @@ function LocationInner() {
     (async () => {
       setError(null);
       try {
-        // Inventory is ONLY stored on the parent location.
-        // Sub-locations (parent_id != null) are UI grouping only.
-        const resolved = await resolveInventoryLocation(locationId);
-        const uiLoc = resolved.uiLocation;
-        const invLoc = resolved.inventoryLocation;
-        const rows = await listProductsWithInventoryForLocation(invLoc.id);
+        const loc = await getLocation(locationId);
+        if (!loc) throw new Error("Platzerl nicht gefunden.");
+        const rows = await listProductsWithInventoryForLocation(locationId);
 
-        setLocation(uiLoc);
-        setInventoryLoc(invLoc);
+        setLocation(loc);
         setProducts(rows);
 
         const q: Record<string, number> = {};
@@ -110,20 +105,19 @@ function LocationInner() {
 
   const canWrite = useMemo(() => {
     const assigned = sessionLocation?.location_id;
-    const inv = inventoryLoc?.id;
-    if (!assigned || !inv) return false;
-    return assigned === inv;
-  }, [sessionLocation?.location_id, inventoryLoc?.id]);
+    if (!assigned || !locationId) return false;
+    return assigned === locationId;
+  }, [sessionLocation?.location_id, locationId]);
 
   async function runSave(productId: string) {
-    if (!inventoryLoc) return;
+    if (!locationId) return;
     if (!canWrite) return;
     const nextQty = pendingQty.current[productId];
     if (nextQty === undefined) return;
 
     try {
       await setInventoryQuantity({
-        locationId: inventoryLoc.id,
+        locationId,
         productId,
         quantity: nextQty,
       });
@@ -152,13 +146,13 @@ function LocationInner() {
   }
 
   async function saveImmediate(productId: string, nextQty: number) {
-    if (!inventoryLoc) return;
+    if (!locationId) return;
     if (!canWrite) return;
     pendingQty.current[productId] = nextQty;
     setSaveState((s) => ({ ...s, [productId]: "saving" }));
     try {
       await setInventoryQuantity({
-        locationId: inventoryLoc.id,
+        locationId,
         productId,
         quantity: nextQty,
       });
@@ -622,7 +616,7 @@ function LocationInner() {
                             barcode: unknownBarcode,
                           });
                           const prods = await listProductsWithInventoryForLocation(
-                            inventoryLoc?.id ?? locationId
+                            locationId
                           );
                           setProducts(prods);
                           setQuantities((prev) => {
@@ -743,7 +737,7 @@ function LocationInner() {
                       barcode: unknownBarcode,
                     });
                     const prods = await listProductsWithInventoryForLocation(
-                      inventoryLoc?.id ?? locationId
+                      locationId
                     );
                     setProducts(prods);
                     setQuantities((prev) => {

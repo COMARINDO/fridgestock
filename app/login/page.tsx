@@ -32,7 +32,7 @@ export default function LoginPage() {
     (async () => {
       try {
         const all = await listLocations();
-        setLocations(all.filter((l) => !l.parent_id));
+        setLocations(all);
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Platzerl nicht laden."));
       }
