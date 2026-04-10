@@ -420,6 +420,9 @@ function LocationInner() {
               <Link href="/" className="text-[15px] font-black text-black">
                 Home
               </Link>
+              <Link href="/overview" className="text-[15px] font-black text-black">
+                Überblick
+              </Link>
             </div>
           </div>
 

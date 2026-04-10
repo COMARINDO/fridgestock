@@ -3,7 +3,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { listLocations } from "@/lib/db";
 import type { Location } from "@/lib/types";
@@ -19,17 +18,10 @@ export default function HomePage() {
 }
 
 function HomeInner() {
-  const router = useRouter();
   const { location, logout } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const id = location?.location_id;
-    if (!id) return;
-    router.replace(`/location/${id}`);
-  }, [location?.location_id, router]);
 
   useEffect(() => {
     (async () => {
@@ -102,7 +94,6 @@ function HomeInner() {
               <button
                 onClick={() => {
                   logout();
-                  router.replace("/login");
                 }}
                 className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
               >
