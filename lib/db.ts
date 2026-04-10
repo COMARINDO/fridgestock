@@ -415,3 +415,67 @@ export async function getWeeklyUsageByProduct(args?: {
   return out;
 }
 
+export async function getWeeklyUsageByLocationProduct(args?: {
+  days?: number;
+  multiplier?: number;
+}): Promise<Record<string, Record<string, number>>> {
+  const days = args?.days ?? 7;
+  const multiplier = args?.multiplier ?? 1;
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const [locs, rows] = await Promise.all([
+    listLocations(),
+    (async () => {
+      const supabase = getSupabase() as unknown as {
+        from: (t: string) => {
+          select: (columns: string) => {
+            gte: (
+              column: string,
+              value: string
+            ) => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+
+      const { data, error } = await supabase
+        .from("inventory_history")
+        .select("location_id,product_id,quantity,timestamp")
+        .gte("timestamp", sinceIso);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        location_id: string;
+        product_id: string;
+        quantity: number;
+        timestamp: string;
+      }>;
+    })(),
+  ]);
+
+  const parentIds = new Set(locs.filter((l) => !l.parent_id).map((l) => l.id));
+
+  const minmax = new Map<string, { min: number; max: number }>();
+  for (const r of rows) {
+    if (!parentIds.has(r.location_id)) continue;
+    const key = `${r.location_id}:${r.product_id}`;
+    const cur = minmax.get(key);
+    const q = r.quantity ?? 0;
+    if (!cur) {
+      minmax.set(key, { min: q, max: q });
+      continue;
+    }
+    if (q < cur.min) cur.min = q;
+    if (q > cur.max) cur.max = q;
+  }
+
+  const out: Record<string, Record<string, number>> = {};
+  for (const [key, mm] of minmax.entries()) {
+    const [locationId, productId] = key.split(":");
+    if (!locationId || !productId) continue;
+    const usage = Math.max(0, mm.max - mm.min);
+    const scaled = Math.round(usage * multiplier);
+    if (!out[locationId]) out[locationId] = {};
+    out[locationId][productId] = scaled;
+  }
+  return out;
+}
+

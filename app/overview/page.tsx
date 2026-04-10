@@ -9,11 +9,13 @@ import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
   getGlobalOverviewByProduct,
   getProductStockByLocation,
-  getWeeklyUsageByProduct,
+  getWeeklyUsageByLocationProduct,
+  listInventoryAll,
+  listLocations,
   updateProduct,
   updateProductBarcode,
 } from "@/lib/db";
-import type { Product } from "@/lib/types";
+import type { Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 import { suggestShortName } from "@/lib/shortName";
@@ -34,7 +36,13 @@ function OverviewInner() {
   const router = useRouter();
   const { logout } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
-  const [forecastById, setForecastById] = useState<Record<string, number>>({});
+  const [parentLocations, setParentLocations] = useState<Location[]>([]);
+  const [stockByLocationProduct, setStockByLocationProduct] = useState<
+    Record<string, Record<string, number>>
+  >({});
+  const [forecastByLocationProduct, setForecastByLocationProduct] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -85,12 +93,26 @@ function OverviewInner() {
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
 
   async function reload() {
-    const [data, usage] = await Promise.all([
+    const [data, locs, inv, usageByLoc] = await Promise.all([
       getGlobalOverviewByProduct(),
-      getWeeklyUsageByProduct({ days: 7 }),
+      listLocations(),
+      listInventoryAll(),
+      getWeeklyUsageByLocationProduct({ days: 7 }),
     ]);
     setRows(data);
-    setForecastById(usage);
+
+    const parents = locs.filter((l) => !l.parent_id).sort((a, b) => a.name.localeCompare(b.name));
+    setParentLocations(parents);
+    const parentIds = new Set(parents.map((l) => l.id));
+
+    const stockMap: Record<string, Record<string, number>> = {};
+    for (const r of inv) {
+      if (!parentIds.has(r.location_id)) continue;
+      if (!stockMap[r.location_id]) stockMap[r.location_id] = {};
+      stockMap[r.location_id][r.product_id] = r.quantity ?? 0;
+    }
+    setStockByLocationProduct(stockMap);
+    setForecastByLocationProduct(usageByLoc);
   }
 
   useEffect(() => {
@@ -321,26 +343,41 @@ function OverviewInner() {
                       {formatProductName(r)}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                      {r.quantity}
-                    </div>
-                    {(() => {
-                      const forecast = Math.max(0, Number(forecastById[r.id] ?? 0));
-                      const enough = r.quantity >= forecast;
-                      return (
-                        <div
-                          className={[
-                            "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
-                            enough ? "bg-emerald-700" : "bg-red-700",
-                          ].join(" ")}
-                          title="Verbrauch nächste Woche (Schätzung)"
-                        >
-                          {forecast}
-                        </div>
-                      );
-                    })()}
+                  <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                    {r.quantity}
                   </div>
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  {parentLocations.map((loc) => {
+                    const stock = Number(stockByLocationProduct[loc.id]?.[r.id] ?? 0);
+                    const forecast = Number(forecastByLocationProduct[loc.id]?.[r.id] ?? 0);
+                    const enough = stock >= forecast;
+                    return (
+                      <div
+                        key={loc.id}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 text-[15px] font-black text-black truncate">
+                          {loc.name}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                            {stock}
+                          </div>
+                          <div
+                            className={[
+                              "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
+                              enough ? "bg-emerald-700" : "bg-red-700",
+                            ].join(" ")}
+                            title="Forecast (7 Tage)"
+                          >
+                            {forecast}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {!r.barcode ? (
