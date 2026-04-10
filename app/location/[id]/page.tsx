@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
@@ -17,6 +18,9 @@ import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
 import { suggestShortName } from "@/lib/shortName";
+import { splitNameToBrandProduct } from "@/lib/brandProduct";
+import { formatProductName } from "@/lib/formatProductName";
+import { groupProducts } from "@/lib/groupProducts";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -43,6 +47,7 @@ function LocationInner() {
   const [scanError, setScanError] = useState<string | null>(null);
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [scanSheet, setScanSheet] = useState<{
     productId: string;
     productName: string;
@@ -51,6 +56,7 @@ function LocationInner() {
   const [setQty, setSetQty] = useState("");
   const [addQty, setAddQty] = useState("1");
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [newProductBrand, setNewProductBrand] = useState("");
   const [newProductName, setNewProductName] = useState("");
   const [newProductZusatz, setNewProductZusatz] = useState("");
   const [newProductShortName, setNewProductShortName] = useState("");
@@ -157,6 +163,14 @@ function LocationInner() {
     }
   }
 
+  function focusQtyInput(productId: string) {
+    setTimeout(() => {
+      const el = qtyInputs.current[productId];
+      el?.focus();
+      el?.select?.();
+    }, 0);
+  }
+
   async function handleBarcode(codeRaw: string) {
     const code = codeRaw.trim();
     if (!code) return;
@@ -171,6 +185,7 @@ function LocationInner() {
       const p = await getProductByBarcode(code);
       if (!p) {
         setUnknownBarcode(code);
+        setNewProductBrand("");
         setNewProductName("");
         setNewProductZusatz("");
         setNewProductShortName("");
@@ -227,7 +242,11 @@ function LocationInner() {
           const clean = name.trim();
           setOffSuggestion(clean);
           // Pre-fill if user hasn't typed yet
-          setNewProductName((cur) => (cur.trim() ? cur : clean));
+          const split = splitNameToBrandProduct(clean);
+          setNewProductBrand((cur) => (cur.trim() ? cur : split.brand));
+          setNewProductName((cur) =>
+            cur.trim() ? cur : (split.product_name || clean)
+          );
         } else {
           setOffError("Kein Vorschlag gefunden.");
         }
@@ -247,9 +266,13 @@ function LocationInner() {
   useEffect(() => {
     if (!unknownBarcode) return;
     if (newShortTouched) return;
-    const sug = suggestShortName({ name: newProductName, zusatz: newProductZusatz });
+    const sug = suggestShortName({
+      brand: newProductBrand,
+      product_name: newProductName,
+      zusatz: newProductZusatz,
+    });
     setNewProductShortName(sug);
-  }, [unknownBarcode, newProductName, newProductZusatz, newShortTouched]);
+  }, [unknownBarcode, newProductBrand, newProductName, newProductZusatz, newShortTouched]);
 
   // (barcode generation UI removed here)
 
@@ -336,9 +359,12 @@ function LocationInner() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
-        <header className="sticky top-0 z-10 border-b-2 border-black bg-white">
+        <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
           <div className="w-full px-4 py-4 flex items-center justify-between">
-            <div className="text-xl font-black text-black">Location</div>
+            <div className="flex items-center gap-3">
+              <Image src="/logo.svg" alt="Bstand" width={36} height={36} />
+              <div className="text-xl font-black text-black">Location</div>
+            </div>
             <Link href="/" className="text-sm font-black text-black">
               Home
             </Link>
@@ -356,18 +382,22 @@ function LocationInner() {
       <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[13px] text-black">Location</div>
-            <div className="text-xl font-black leading-tight text-black">
-                {inventoryLoc && location?.parent_id
-                  ? `${inventoryLoc.name} – ${location.name}`
-                  : (location?.name ?? "…")}
-              </div>
-              {inventoryLoc && location?.parent_id ? (
-                <div className="mt-1 text-[14px] text-black">
-                  Bestand von: <span className="font-black">{inventoryLoc.name}</span>
+            <div className="flex items-center gap-3 min-w-0">
+              <Image src="/logo.svg" alt="Bstand" width={36} height={36} />
+              <div className="min-w-0">
+                <div className="text-[13px] text-black">Location</div>
+                <div className="text-xl font-black leading-tight text-black truncate">
+                  {inventoryLoc && location?.parent_id
+                    ? `${inventoryLoc.name} – ${location.name}`
+                    : (location?.name ?? "…")}
                 </div>
-              ) : null}
+                {inventoryLoc && location?.parent_id ? (
+                  <div className="mt-1 text-[14px] text-black truncate">
+                    Bestand von:{" "}
+                    <span className="font-black">{inventoryLoc.name}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Link href="/" className="text-[15px] font-black text-black">
@@ -380,143 +410,153 @@ function LocationInner() {
       </header>
 
       <main className="w-full px-4 py-4 pb-28">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {visibleProducts.map((p) => {
-            const qty = quantities[p.id] ?? 0;
-            const state = saveState[p.id] ?? "idle";
+        {Object.entries(groupProducts(visibleProducts)).map(([brand, items]) => (
+          <div key={brand} className="mt-2">
+            <div className="text-[18px] font-black text-black">{brand}</div>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {items.map((p) => {
+                const qty = quantities[p.id] ?? 0;
+                const state = saveState[p.id] ?? "idle";
 
-            return (
-              <div
-                key={p.id}
-                className={[
-                  "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
-                  highlightId === p.id ? "ring-2 ring-emerald-500" : "",
-                ].join(" ")}
-                onClick={(e) => {
-                  // Click-to-focus quantity input (fast)
-                  if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
-                  qtyInputs.current[p.id]?.focus();
-                }}
-                onTouchStart={(e) => {
-                  const t = e.target as HTMLElement;
-                  const tag = t.tagName.toLowerCase();
-                  if (tag === "button" || tag === "input") return;
-                  longPressFiredRef.current = false;
-                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-                  touchTimerRef.current = setTimeout(() => {
-                    longPressFiredRef.current = true;
-                    setScanSheet({
-                      productId: p.id,
-                      productName: `${p.name}${p.zusatz ? ` ${p.zusatz}` : ""}`,
-                    });
-                    setScanMode("choose");
-                    setSetQty(String(quantitiesRef.current[p.id] ?? 0));
-                    setAddQty("1");
-                  }, 500);
-                }}
-                onTouchEnd={(e) => {
-                  const t = e.target as HTMLElement;
-                  const tag = t.tagName.toLowerCase();
-                  if (tag === "button" || tag === "input") return;
-                  if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-                  touchTimerRef.current = null;
-                  if (longPressFiredRef.current) return;
-
-                  const cur = quantitiesRef.current[p.id] ?? 0;
-                  const next = cur + 1;
-                  quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
-                  setQuantities((prev) => ({ ...prev, [p.id]: next }));
-                  void saveImmediate(p.id, next);
-                  setHighlightId(p.id);
-                  setTimeout(() => setHighlightId(null), 350);
-                }}
-                ref={(el) => {
-                  rowRefs.current[p.id] = el;
-                }}
-              >
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="min-w-0">
-                    <div className="text-lg font-black text-black">
-                      {p.name}
-                      {p.zusatz ? ` ${p.zusatz}` : ""}
-                    </div>
-                  </div>
-
+                return (
                   <div
+                    key={p.id}
                     className={[
-                      "h-10 px-4 rounded-full text-[15px] font-black flex items-center",
-                      state === "error" ? "bg-white text-black border-2 border-black" : "bg-black text-white",
+                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+                      highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                     ].join(" ")}
-                  >
-                    {state === "saving"
-                      ? "speichert…"
-                      : state === "saved"
-                        ? "gespeichert"
-                        : state === "error"
-                          ? "Fehler"
-                          : "ok"}
-                  </div>
-                </div>
-
-                {/* barcode creation moved to /overview */}
-
-                <div className="mt-4 flex items-center gap-3 min-w-0">
-                  <button
-                    className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
-                    onClick={() => {
-                      const next = Math.max(0, qty - 1);
-                      setQuantities((m) => ({ ...m, [p.id]: next }));
-                      scheduleSave(p.id, next);
+                    onClick={(e) => {
+                      // Click-to-focus quantity input (fast)
+                      if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
+                      if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
                       qtyInputs.current[p.id]?.focus();
                     }}
-                    aria-label="minus"
-                  >
-                    −
-                  </button>
+                    onTouchStart={(e) => {
+                      const t = e.target as HTMLElement;
+                      const tag = t.tagName.toLowerCase();
+                      if (tag === "button" || tag === "input") return;
+                      longPressFiredRef.current = false;
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = setTimeout(() => {
+                        longPressFiredRef.current = true;
+                        setEditingId(p.id);
+                        focusQtyInput(p.id);
+                      }, 500);
+                    }}
+                    onTouchEnd={(e) => {
+                      const t = e.target as HTMLElement;
+                      const tag = t.tagName.toLowerCase();
+                      if (tag === "button" || tag === "input") return;
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = null;
+                      if (longPressFiredRef.current) return;
 
-                  <input
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={String(qty)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value.replace(/[^\d]/g, ""));
-                      const next = Number.isFinite(v) ? v : 0;
-                      setQuantities((m) => ({ ...m, [p.id]: next }));
-                      scheduleSave(p.id, next);
-                    }}
-                    onFocus={(e) => {
-                      // select all for quick overwrite
-                      e.currentTarget.select();
-                    }}
-                    onBlur={() => {
-                      // ensure save fires immediately when leaving field
-                      if (timers.current[p.id]) clearTimeout(timers.current[p.id]);
-                      void runSave(p.id);
+                      const cur = quantitiesRef.current[p.id] ?? 0;
+                      const next = cur + 1;
+                      quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
+                      setQuantities((prev) => ({ ...prev, [p.id]: next }));
+                      void saveImmediate(p.id, next);
+                      setHighlightId(p.id);
+                      setTimeout(() => setHighlightId(null), 350);
                     }}
                     ref={(el) => {
-                      qtyInputs.current[p.id] = el;
+                      rowRefs.current[p.id] = el;
                     }}
-                    className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                    aria-label="quantity"
-                  />
-
-                  <button
-                    className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
-                    onClick={() => {
-                      const next = qty + 1;
-                      setQuantities((m) => ({ ...m, [p.id]: next }));
-                      scheduleSave(p.id, next);
-                      qtyInputs.current[p.id]?.focus();
-                    }}
-                    aria-label="plus"
                   >
-                    +
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <div className="text-lg font-black text-black">
+                          {formatProductName(p)}
+                        </div>
+                      </div>
+
+                      <div
+                        className={[
+                          "h-10 px-4 rounded-full text-[15px] font-black flex items-center",
+                          state === "error"
+                            ? "bg-white text-black border-2 border-black"
+                            : "bg-black text-white",
+                        ].join(" ")}
+                      >
+                        {state === "saving"
+                          ? "speichert…"
+                          : state === "saved"
+                            ? "gespeichert"
+                            : state === "error"
+                              ? "Fehler"
+                              : "ok"}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-3 min-w-0">
+                      <button
+                        className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
+                        onClick={() => {
+                          const next = Math.max(0, qty - 1);
+                          setQuantities((m) => ({ ...m, [p.id]: next }));
+                          scheduleSave(p.id, next);
+                          qtyInputs.current[p.id]?.focus();
+                        }}
+                        aria-label="minus"
+                      >
+                        −
+                      </button>
+
+                      {editingId === p.id ? (
+                        <input
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={String(qty)}
+                          onChange={(e) => {
+                            const v = Number(e.target.value.replace(/[^\d]/g, ""));
+                            const next = Number.isFinite(v) ? v : 0;
+                            quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
+                            setQuantities((m) => ({ ...m, [p.id]: next }));
+                            scheduleSave(p.id, next);
+                          }}
+                          onFocus={(e) => {
+                            e.currentTarget.select();
+                          }}
+                          onBlur={() => {
+                            if (timers.current[p.id]) clearTimeout(timers.current[p.id]);
+                            void runSave(p.id);
+                            setEditingId((cur) => (cur === p.id ? null : cur));
+                          }}
+                          ref={(el) => {
+                            qtyInputs.current[p.id] = el;
+                          }}
+                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                          aria-label="quantity"
+                          autoFocus
+                        />
+                      ) : (
+                        <div
+                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none"
+                          aria-label="quantity"
+                        >
+                          {qty}
+                        </div>
+                      )}
+
+                      <button
+                        className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
+                        onClick={() => {
+                          const next = qty + 1;
+                          setQuantities((m) => ({ ...m, [p.id]: next }));
+                          scheduleSave(p.id, next);
+                          qtyInputs.current[p.id]?.focus();
+                        }}
+                        aria-label="plus"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
 
         <div className="mt-6">
           <ButtonSecondary className="" onClick={() => router.replace("/")}>
@@ -592,7 +632,8 @@ function LocationInner() {
                         if (!unknownBarcode) return;
                         try {
                           await createProductWithBarcode({
-                            name: newProductName.trim() || offSuggestion,
+                            brand: newProductBrand.trim() ? newProductBrand.trim() : null,
+                            product_name: newProductName.trim() ? newProductName.trim() : null,
                             zusatz: newProductZusatz.trim()
                               ? newProductZusatz.trim()
                               : null,
@@ -615,6 +656,7 @@ function LocationInner() {
                             (p) => p.barcode === unknownBarcode
                           );
                           setUnknownBarcode(null);
+                          setNewProductBrand("");
                           setNewProductName("");
                           setNewProductZusatz("");
                           setNewProductShortName("");
@@ -643,6 +685,7 @@ function LocationInner() {
                       className="h-12"
                       onClick={() => {
                         setUnknownBarcode(null);
+                        setNewProductBrand("");
                         setNewProductName("");
                         setNewProductZusatz("");
                         setNewProductShortName("");
@@ -661,12 +704,21 @@ function LocationInner() {
             </div>
 
             <div className="mt-4">
-                <div className="text-sm font-black text-black">Name</div>
+              <div className="text-sm font-black text-black">Brand</div>
+              <Input
+                value={newProductBrand}
+                onChange={(ev) => setNewProductBrand(ev.target.value)}
+                placeholder='z.B. "Red Bull"'
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-black text-black">Produkt</div>
               <Input
                 value={newProductName}
                 onChange={(ev) => setNewProductName(ev.target.value)}
-                placeholder="z.B. Coca-Cola"
-                autoFocus
+                placeholder='z.B. "Zero"'
               />
             </div>
 
@@ -702,7 +754,8 @@ function LocationInner() {
                   if (!unknownBarcode) return;
                   try {
                     await createProductWithBarcode({
-                      name: newProductName.trim(),
+                      brand: newProductBrand.trim() ? newProductBrand.trim() : null,
+                      product_name: newProductName.trim() ? newProductName.trim() : null,
                       zusatz: newProductZusatz.trim() ? newProductZusatz.trim() : null,
                       short_name: newProductShortName.trim()
                         ? newProductShortName.trim()
@@ -720,6 +773,7 @@ function LocationInner() {
                     });
                     const created = prods.find((p) => p.barcode === unknownBarcode);
                     setUnknownBarcode(null);
+                    setNewProductBrand("");
                     setNewProductName("");
                     setNewProductZusatz("");
                     setNewProductShortName("");
@@ -746,6 +800,7 @@ function LocationInner() {
                 className="w-full h-14 text-lg"
                 onClick={() => {
                   setUnknownBarcode(null);
+                  setNewProductBrand("");
                   setNewProductName("");
                   setNewProductZusatz("");
                   setNewProductShortName("");

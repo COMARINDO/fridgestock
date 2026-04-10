@@ -68,8 +68,8 @@ export async function resolveInventoryLocation(locationId: string): Promise<{
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select("id,name,zusatz,min_quantity,barcode,short_name")
-    .order("name");
+    .select("id,brand,product_name,zusatz,barcode,short_name")
+    .order("brand");
   if (error) throw error;
   return (data ?? []) as Product[];
 }
@@ -78,7 +78,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select("id,name,zusatz,min_quantity,barcode,short_name")
+    .select("id,brand,product_name,zusatz,barcode,short_name")
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
@@ -126,15 +126,13 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,name,zusatz,min_quantity,barcode,short_name,inventory:inventory!left(quantity,location_id)"
+        "id,brand,product_name,zusatz,barcode,short_name,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
     if (!error && Array.isArray(data)) {
       const rows = data as Array<
         Product & {
-          short_name?: string | null;
-          zusatz?: string | null;
           inventory?: Array<{ quantity?: number | null; location_id?: string | null }>;
         }
       >;
@@ -143,9 +141,9 @@ export async function listProductsWithInventoryForLocation(
       if (rows.length > 0) {
         return rows.map((p) => ({
           id: p.id,
-          name: p.name,
+          brand: p.brand ?? null,
+          product_name: p.product_name ?? null,
           zusatz: p.zusatz ?? null,
-          min_quantity: p.min_quantity,
           barcode: p.barcode ?? null,
           short_name: p.short_name ?? null,
           quantity:
@@ -253,17 +251,19 @@ export async function setInventoryQuantity(args: {
 }
 
 export async function createProductWithBarcode(args: {
-  name: string;
+  brand?: string | null;
+  product_name?: string | null;
   zusatz?: string | null;
   barcode: string;
-  min_quantity?: number;
   short_name?: string | null;
 }) {
+  if (!args.brand?.trim()) throw new Error("Brand fehlt.");
+  if (!args.product_name?.trim()) throw new Error("Produkt fehlt.");
   const { error } = await from("products").insert({
-    name: args.name,
+    brand: args.brand ?? "",
+    product_name: args.product_name ?? "",
     zusatz: args.zusatz ?? null,
     barcode: args.barcode,
-    min_quantity: args.min_quantity ?? 0,
     short_name: args.short_name ?? null,
   });
   if (error) throw error;

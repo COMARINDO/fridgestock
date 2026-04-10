@@ -1,8 +1,10 @@
 export function suggestShortName(args: {
-  name: string;
+  brand?: string | null;
+  product_name?: string | null;
   zusatz?: string | null;
 }): string {
-  const name = (args.name ?? "").trim();
+  const name =
+    (args.brand ?? "").trim() || (args.product_name ?? "").trim();
   const zusatz = (args.zusatz ?? "").trim();
 
   const firstWord = name.split(/\s+/).filter(Boolean)[0] ?? "";

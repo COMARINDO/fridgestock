@@ -6,9 +6,9 @@ export type User = {
 
 export type Product = {
   id: string; // uuid
-  name: string;
+  brand: string;
+  product_name: string;
   zusatz?: string | null;
-  min_quantity: number;
   barcode?: string | null;
   short_name?: string | null;
 };

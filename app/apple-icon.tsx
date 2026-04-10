@@ -36,7 +36,7 @@ export default async function AppleIcon({
           borderRadius: Math.round(size * 0.22),
         }}
       >
-        FS
+        B
       </div>
     ),
     { width: size, height: size }

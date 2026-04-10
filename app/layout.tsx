@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/app/providers";
 
 export const metadata: Metadata = {
-  title: "Penzi Sachen Zähler",
+  title: "Bstand",
   description: "Schnelle mobile Inventory-App.",
 };
 

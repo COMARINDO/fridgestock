@@ -12,16 +12,16 @@ create table if not exists public.users (
 -- Products
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  brand text not null,
+  product_name text not null,
   zusatz text,
-  min_quantity integer not null default 0,
   barcode text unique,
   short_name text
 );
 
--- Optional: treat (name, zusatz) as product identity
-create unique index if not exists products_name_zusatz_unique
-  on public.products(name, coalesce(zusatz, ''));
+-- No duplicate products: brand + product_name + zusatz
+create unique index if not exists products_brand_product_zusatz_unique
+  on public.products(brand, product_name, coalesce(zusatz, ''));
 
 -- Locations (tree)
 create table if not exists public.locations (

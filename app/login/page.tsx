@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Input, Button } from "@/app/_components/ui";
 import { listLocations } from "@/lib/db";
 import { useAuth } from "@/app/providers";
@@ -57,9 +58,10 @@ export default function LoginPage() {
   return (
     <div className="flex-1 flex flex-col">
       <div className="w-full px-4 pt-8">
-        <h1 className="text-3xl font-black tracking-tight text-black">
-          Penzi Sachen Zähler
-        </h1>
+        <div className="flex items-center gap-3">
+          <Image src="/logo.svg" alt="Bstand" width={40} height={40} />
+          <h1 className="text-3xl font-black tracking-tight text-black">Bstand</h1>
+        </div>
         <p className="mt-2 text-[15px] text-black">
           Location wählen, Passwort eingeben, los.
         </p>

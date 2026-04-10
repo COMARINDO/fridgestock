@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
@@ -9,6 +10,7 @@ import type { Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 import { suggestShortName } from "@/lib/shortName";
+import { formatProductName } from "@/lib/formatProductName";
 
 type Row = Product & { quantity: number };
 
@@ -72,7 +74,12 @@ function OverviewInner() {
   const visible = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return rows;
-    return rows.filter((r) => r.name.toLowerCase().includes(t));
+    return rows.filter((r) => {
+      const hay = `${r.brand ?? ""} ${r.product_name ?? ""} ${r.zusatz ?? ""}`
+        .trim()
+        .toLowerCase();
+      return hay.includes(t);
+    });
   }, [rows, q]);
 
   return (
@@ -80,9 +87,12 @@ function OverviewInner() {
       <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
         <div className="w-full px-4 py-4">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[13px] text-black">Global</div>
-              <div className="text-xl font-black leading-tight text-black">Überblick</div>
+            <div className="flex items-center gap-3 min-w-0">
+              <Image src="/logo.svg" alt="Bstand" width={36} height={36} />
+              <div className="min-w-0">
+                <div className="text-[13px] text-black">Global</div>
+                <div className="text-xl font-black leading-tight text-black">Überblick</div>
+              </div>
             </div>
             <Link href="/" className="text-[15px] font-black text-black">
               Home
@@ -119,8 +129,7 @@ function OverviewInner() {
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0">
                     <div className="text-[18px] font-black truncate text-black">
-                      {r.name}
-                      {r.zusatz ? ` ${r.zusatz}` : ""}
+                      {formatProductName(r)}
                     </div>
                   </div>
                   <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
@@ -133,12 +142,18 @@ function OverviewInner() {
                     <ButtonSecondary
                       className="h-12"
                       onClick={() => {
-                        const label = `${r.name}${r.zusatz ? ` ${r.zusatz}` : ""}`;
-                        setBarcodeModal({ productId: r.id, productName: label });
+                        setBarcodeModal({
+                          productId: r.id,
+                          productName: formatProductName(r),
+                        });
                         const existing = (r.short_name ?? "").trim();
                         setShortName(
                           existing ||
-                            suggestShortName({ name: r.name, zusatz: r.zusatz })
+                            suggestShortName({
+                              brand: r.brand,
+                              product_name: r.product_name,
+                              zusatz: r.zusatz,
+                            })
                         );
                         setGenBarcode("");
                         setBarcodeErr(null);

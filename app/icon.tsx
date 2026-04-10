@@ -37,7 +37,7 @@ export default async function Icon({ id }: { id: Promise<string | number> }) {
           borderRadius: Math.round(size * 0.18),
         }}
       >
-        FS
+        B
       </div>
     ),
     { width: size, height: size }
