@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
@@ -39,7 +37,7 @@ function LocationInner() {
   const locationId = params?.id ?? "";
   const { location: sessionLocation } = useAuth();
 
-  const [location, setLocation] = useState<Location | null>(null);
+  const [, setLocation] = useState<Location | null>(null);
   const [inventoryLoc, setInventoryLoc] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -376,16 +374,6 @@ function LocationInner() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
-        <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
-          <div className="w-full px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Image src="/logo.png" alt="Bstand" width={44} height={44} />
-            </div>
-            <Link href="/" className="text-sm font-black text-black">
-              Home
-            </Link>
-          </div>
-        </header>
         <main className="w-full px-4 py-6">
           <div className="rounded-2xl bg-red-50 p-4 text-red-800">{error}</div>
         </main>
@@ -395,38 +383,6 @@ function LocationInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-10 border-b-2 border-black bg-[var(--background)]">
-        <div className="w-full px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Image src="/logo.png" alt="Bstand" width={44} height={44} />
-              <div className="min-w-0">
-                <div className="text-xl font-black leading-tight text-black truncate">
-                  {inventoryLoc && location?.parent_id
-                    ? `${inventoryLoc.name} – ${location.name}`
-                    : (location?.name ?? "…")}
-                </div>
-                {inventoryLoc && location?.parent_id ? (
-                  <div className="mt-1 text-[14px] text-black truncate">
-                    Bestand von:{" "}
-                    <span className="font-black">{inventoryLoc.name}</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/" className="text-[15px] font-black text-black">
-                Home
-              </Link>
-              <Link href="/overview" className="text-[15px] font-black text-black">
-                Überblick
-              </Link>
-            </div>
-          </div>
-
-        </div>
-      </header>
-
       <main className="w-full px-4 py-4 pb-28">
         {Object.entries(groupProducts(visibleProducts)).map(([brand, items]) => (
           <div key={brand} className="mt-2">

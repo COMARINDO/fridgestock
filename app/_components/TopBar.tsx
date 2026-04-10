@@ -21,9 +21,6 @@ export function TopBar() {
             aria-label="Bstand Home"
           >
             <Image src="/logo.png" alt="Bstand" width={48} height={48} priority />
-            <div className="font-black text-black text-[18px] tracking-tight truncate">
-              Bstand
-            </div>
           </Link>
 
           <div className="flex items-center gap-2">
