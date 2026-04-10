@@ -8,7 +8,6 @@ import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import {
   getGlobalOverviewByProduct,
-  getProductStockByLocation,
   getWeeklyUsageByLocationProduct,
   listInventoryAll,
   listLocations,
@@ -64,12 +63,8 @@ function OverviewInner() {
     productId: string;
     title: string;
     total: number;
+    forecastTotal: number;
   } | null>(null);
-  const [detailBusy, setDetailBusy] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [detailRows, setDetailRows] = useState<
-    Array<{ location_id: string; location_name: string; quantity: number }>
-  >([]);
 
   const [editOpen, setEditOpen] = useState<{
     productId: string;
@@ -155,19 +150,21 @@ function OverviewInner() {
     });
   }, [rows, q]);
 
-  async function openDetail(r: Row) {
-    setDetailOpen({ productId: r.id, title: formatProductName(r), total: r.quantity });
-    setDetailBusy(true);
-    setDetailError(null);
-    setDetailRows([]);
-    try {
-      const data = await getProductStockByLocation(r.id);
-      setDetailRows(data);
-    } catch (e: unknown) {
-      setDetailError(errorMessage(e, "Konnte Bestand nicht laden."));
-    } finally {
-      setDetailBusy(false);
+  function forecastTotalForProduct(productId: string): number {
+    let sum = 0;
+    for (const loc of parentLocations) {
+      sum += Number(forecastByLocationProduct[loc.id]?.[productId] ?? 0);
     }
+    return Math.max(0, sum);
+  }
+
+  function openDetail(r: Row) {
+    setDetailOpen({
+      productId: r.id,
+      title: formatProductName(r),
+      total: r.quantity,
+      forecastTotal: forecastTotalForProduct(r.id),
+    });
   }
 
   return (
@@ -343,41 +340,26 @@ function OverviewInner() {
                       {formatProductName(r)}
                     </div>
                   </div>
-                  <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                    {r.quantity}
+                  <div className="flex items-center gap-2">
+                    <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                      {r.quantity}
+                    </div>
+                    {(() => {
+                      const forecast = forecastTotalForProduct(r.id);
+                      const enough = r.quantity >= forecast;
+                      return (
+                        <div
+                          className={[
+                            "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
+                            enough ? "bg-emerald-700" : "bg-red-700",
+                          ].join(" ")}
+                          title="Forecast (7 Tage)"
+                        >
+                          {forecast}
+                        </div>
+                      );
+                    })()}
                   </div>
-                </div>
-
-                <div className="mt-3 grid gap-2">
-                  {parentLocations.map((loc) => {
-                    const stock = Number(stockByLocationProduct[loc.id]?.[r.id] ?? 0);
-                    const forecast = Number(forecastByLocationProduct[loc.id]?.[r.id] ?? 0);
-                    const enough = stock >= forecast;
-                    return (
-                      <div
-                        key={loc.id}
-                        className="flex items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0 text-[15px] font-black text-black truncate">
-                          {loc.name}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                            {stock}
-                          </div>
-                          <div
-                            className={[
-                              "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
-                              enough ? "bg-emerald-700" : "bg-red-700",
-                            ].join(" ")}
-                            title="Forecast (7 Tage)"
-                          >
-                            {forecast}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
 
                 {!r.barcode ? (
@@ -417,7 +399,7 @@ function OverviewInner() {
           <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-black">Bestand pro Platzerl</div>
+                <div className="text-xs text-black">Details</div>
                 <div className="text-2xl font-black leading-tight truncate text-black">
                   {detailOpen.title}
                 </div>
@@ -425,6 +407,16 @@ function OverviewInner() {
               <div className="flex items-center gap-2">
                 <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
                   {detailOpen.total}
+                </div>
+                <div
+                  className={[
+                    "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
+                    detailOpen.total >= detailOpen.forecastTotal
+                      ? "bg-emerald-700"
+                      : "bg-red-700",
+                  ].join(" ")}
+                >
+                  {detailOpen.forecastTotal}
                 </div>
                 <button
                   className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
@@ -440,35 +432,40 @@ function OverviewInner() {
               />
             </div>
 
-            {detailError ? (
-              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
-                {detailError}
-              </div>
-            ) : null}
-
-            {detailBusy ? (
-              <div className="mt-4 text-black">Lade…</div>
-            ) : (
-              <div className="mt-4 grid gap-2">
-                {detailRows.length === 0 ? (
-                  <div className="text-black">Kein Bestand.</div>
-                ) : (
-                  detailRows.map((row) => (
-                    <div
-                      key={row.location_id}
-                      className="w-full rounded-3xl border-2 border-black bg-white px-4 py-3 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0 font-black text-black truncate">
-                        {row.location_name}
-                      </div>
+            <div className="mt-4 grid gap-2">
+              {parentLocations.map((loc) => {
+                const stock = Number(
+                  stockByLocationProduct[loc.id]?.[detailOpen.productId] ?? 0
+                );
+                const forecast = Number(
+                  forecastByLocationProduct[loc.id]?.[detailOpen.productId] ?? 0
+                );
+                const enough = stock >= forecast;
+                return (
+                  <div
+                    key={loc.id}
+                    className="w-full rounded-3xl border-2 border-black bg-white px-4 py-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 font-black text-black truncate">
+                      {loc.name}
+                    </div>
+                    <div className="flex items-center gap-2">
                       <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                        {row.quantity}
+                        {stock}
+                      </div>
+                      <div
+                        className={[
+                          "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
+                          enough ? "bg-emerald-700" : "bg-red-700",
+                        ].join(" ")}
+                      >
+                        {forecast}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       ) : null}
