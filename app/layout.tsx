@@ -18,7 +18,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[var(--background)] text-black">
         <AuthProvider>
           <TopBar />
-          <div className="flex-1 flex flex-col pt-24">{children}</div>
+          <div className="flex-1 flex flex-col pt-[120px]">{children}</div>
         </AuthProvider>
       </body>
     </html>

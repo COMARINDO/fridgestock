@@ -336,51 +336,76 @@ export async function getWeeklyUsageByProduct(args?: {
   const multiplier = args?.multiplier ?? 1;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const rows = await (async () => {
-      const supabase = getSupabase() as unknown as {
-        from: (t: string) => {
-          select: (columns: string) => {
-            gte: (
-              column: string,
-              value: string
-            ) => Promise<{ data: unknown; error: unknown }>;
-          };
-        };
-      };
-
-      const { data, error } = await supabase
-        .from("inventory_history")
-        .select("location_id,product_id,quantity,timestamp")
-        .gte("timestamp", sinceIso);
-      if (error) throw error;
-      return (data ?? []) as Array<{
-        location_id: string;
-        product_id: string;
-        quantity: number;
-        timestamp: string;
-      }>;
-    })();
-
-  // Per (location, product): min/max over last N days.
-  const minmax = new Map<string, { min: number; max: number }>();
-  for (const r of rows) {
-    const key = `${r.location_id}:${r.product_id}`;
-    const cur = minmax.get(key);
-    if (!cur) {
-      minmax.set(key, { min: r.quantity ?? 0, max: r.quantity ?? 0 });
-      continue;
+  // Preferred: SQL window function (lag) via RPC.
+  try {
+    const supabase = getSupabase() as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, unknown>
+      ) => Promise<{ data: unknown; error: unknown }>;
+    };
+    const { data, error } = await supabase.rpc("usage_by_location_product_since", {
+      p_since: sinceIso,
+    });
+    if (error) throw error;
+    if (Array.isArray(data)) {
+      const usageByProduct = new Map<string, number>();
+      for (const row of data as Array<{ product_id?: string; usage?: number }>) {
+        const pid = typeof row.product_id === "string" ? row.product_id : "";
+        if (!pid) continue;
+        usageByProduct.set(pid, (usageByProduct.get(pid) ?? 0) + Number(row.usage ?? 0));
+      }
+      const out: Record<string, number> = {};
+      for (const [pid, usage] of usageByProduct.entries()) {
+        out[pid] = Math.round(Math.max(0, usage) * multiplier);
+      }
+      return out;
     }
-    const q = r.quantity ?? 0;
-    if (q < cur.min) cur.min = q;
-    if (q > cur.max) cur.max = q;
+  } catch {
+    // fall back below
   }
 
-  // Sum usage across locations for each product.
+  // Fallback: compute from raw history (sum of negative diffs).
+  const rows = await (async () => {
+    const supabase = getSupabase() as unknown as {
+      from: (t: string) => {
+        select: (columns: string) => {
+          gte: (column: string, value: string) => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+
+    const { data, error } = await supabase
+      .from("inventory_history")
+      .select("location_id,product_id,quantity,timestamp")
+      .gte("timestamp", sinceIso);
+    if (error) throw error;
+    return (data ?? []) as Array<{
+      location_id: string;
+      product_id: string;
+      quantity: number;
+      timestamp: string;
+    }>;
+  })();
+
+  const byKey = new Map<string, Array<{ t: number; q: number }>>();
+  for (const r of rows) {
+    const key = `${r.location_id}:${r.product_id}`;
+    const arr = byKey.get(key) ?? [];
+    arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
+    byKey.set(key, arr);
+  }
+
   const usageByProduct = new Map<string, number>();
-  for (const [key, mm] of minmax.entries()) {
+  for (const [key, arr] of byKey.entries()) {
+    arr.sort((a, b) => a.t - b.t);
+    let usage = 0;
+    for (let i = 1; i < arr.length; i++) {
+      const diff = arr[i]!.q - arr[i - 1]!.q;
+      if (diff < 0) usage += -diff;
+    }
     const productId = key.split(":")[1] ?? "";
     if (!productId) continue;
-    const usage = Math.max(0, mm.max - mm.min);
     usageByProduct.set(productId, (usageByProduct.get(productId) ?? 0) + usage);
   }
 
@@ -399,52 +424,80 @@ export async function getWeeklyUsageByLocationProduct(args?: {
   const multiplier = args?.multiplier ?? 1;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
+  // Preferred: SQL window function (lag) via RPC.
+  try {
+    const supabase = getSupabase() as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, unknown>
+      ) => Promise<{ data: unknown; error: unknown }>;
+    };
+    const { data, error } = await supabase.rpc("usage_by_location_product_since", {
+      p_since: sinceIso,
+    });
+    if (error) throw error;
+    if (Array.isArray(data)) {
+      const out: Record<string, Record<string, number>> = {};
+      for (const row of data as Array<{
+        location_id?: string;
+        product_id?: string;
+        usage?: number;
+      }>) {
+        const lid = typeof row.location_id === "string" ? row.location_id : "";
+        const pid = typeof row.product_id === "string" ? row.product_id : "";
+        if (!lid || !pid) continue;
+        if (!out[lid]) out[lid] = {};
+        out[lid][pid] = Math.round(Math.max(0, Number(row.usage ?? 0)) * multiplier);
+      }
+      return out;
+    }
+  } catch {
+    // fall back below
+  }
+
+  // Fallback: compute from raw history (sum of negative diffs).
   const rows = await (async () => {
-      const supabase = getSupabase() as unknown as {
-        from: (t: string) => {
-          select: (columns: string) => {
-            gte: (
-              column: string,
-              value: string
-            ) => Promise<{ data: unknown; error: unknown }>;
-          };
+    const supabase = getSupabase() as unknown as {
+      from: (t: string) => {
+        select: (columns: string) => {
+          gte: (column: string, value: string) => Promise<{ data: unknown; error: unknown }>;
         };
       };
+    };
 
-      const { data, error } = await supabase
-        .from("inventory_history")
-        .select("location_id,product_id,quantity,timestamp")
-        .gte("timestamp", sinceIso);
-      if (error) throw error;
-      return (data ?? []) as Array<{
-        location_id: string;
-        product_id: string;
-        quantity: number;
-        timestamp: string;
-      }>;
-    })();
+    const { data, error } = await supabase
+      .from("inventory_history")
+      .select("location_id,product_id,quantity,timestamp")
+      .gte("timestamp", sinceIso);
+    if (error) throw error;
+    return (data ?? []) as Array<{
+      location_id: string;
+      product_id: string;
+      quantity: number;
+      timestamp: string;
+    }>;
+  })();
 
-  const minmax = new Map<string, { min: number; max: number }>();
+  const byKey = new Map<string, Array<{ t: number; q: number }>>();
   for (const r of rows) {
     const key = `${r.location_id}:${r.product_id}`;
-    const cur = minmax.get(key);
-    const q = r.quantity ?? 0;
-    if (!cur) {
-      minmax.set(key, { min: q, max: q });
-      continue;
-    }
-    if (q < cur.min) cur.min = q;
-    if (q > cur.max) cur.max = q;
+    const arr = byKey.get(key) ?? [];
+    arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
+    byKey.set(key, arr);
   }
 
   const out: Record<string, Record<string, number>> = {};
-  for (const [key, mm] of minmax.entries()) {
+  for (const [key, arr] of byKey.entries()) {
+    arr.sort((a, b) => a.t - b.t);
+    let usage = 0;
+    for (let i = 1; i < arr.length; i++) {
+      const diff = arr[i]!.q - arr[i - 1]!.q;
+      if (diff < 0) usage += -diff;
+    }
     const [locationId, productId] = key.split(":");
     if (!locationId || !productId) continue;
-    const usage = Math.max(0, mm.max - mm.min);
-    const scaled = Math.round(usage * multiplier);
     if (!out[locationId]) out[locationId] = {};
-    out[locationId][productId] = scaled;
+    out[locationId][productId] = Math.round(usage * multiplier);
   }
   return out;
 }
