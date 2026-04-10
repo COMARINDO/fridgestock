@@ -11,6 +11,7 @@ import {
   listProductsWithInventoryForLocation,
   createProductWithBarcode,
   setInventoryQuantity,
+  getLastUpdateByLocation,
 } from "@/lib/db";
 import type { Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
@@ -19,7 +20,6 @@ import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library
 import { suggestShortName } from "@/lib/shortName";
 import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
-import { groupProducts } from "@/lib/groupProducts";
 
 export default function LocationPage() {
   return (
@@ -38,6 +38,9 @@ function LocationInner() {
   const [, setLocation] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [lastUpdateByProduct, setLastUpdateByProduct] = useState<Record<string, string>>(
+    {}
+  );
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -109,6 +112,12 @@ function LocationInner() {
         const q: Record<string, number> = {};
         for (const p of rows) q[p.id] = p.quantity ?? 0;
         setQuantities(q);
+
+        try {
+          setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+        } catch {
+          // ignore
+        }
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Daten nicht laden."));
       }
@@ -360,7 +369,12 @@ function LocationInner() {
     };
   }, [scannerOpen, canWrite, handleBarcode]);
 
-  const visibleProducts = useMemo(() => products, [products]);
+  const visibleProducts = useMemo(() => {
+    const arr = [...products];
+    const label = (p: Product) => formatProductName(p).toLowerCase();
+    arr.sort((a, b) => label(a).localeCompare(label(b)));
+    return arr;
+  }, [products]);
 
   if (error) {
     return (
@@ -375,11 +389,8 @@ function LocationInner() {
   return (
     <div className="flex-1 flex flex-col">
       <main className="w-full px-4 py-4 pb-28">
-        {Object.entries(groupProducts(visibleProducts)).map(([brand, items]) => (
-          <div key={brand} className="mt-2">
-            <div className="text-[18px] font-black text-black">{brand}</div>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {items.map((p) => {
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {visibleProducts.map((p) => {
                 const qty = quantities[p.id] ?? 0;
 
                 return (
@@ -466,15 +477,33 @@ function LocationInner() {
                       rowRefs.current[p.id] = el;
                     }}
                   >
-                    <div className="flex items-start justify-between gap-3 min-w-0">
-                      <div className="min-w-0">
-                        <div className="text-lg font-black text-black">
-                          {formatProductName(p)}
-                        </div>
+                    <div className="text-center">
+                      <div className="text-lg font-black text-black">
+                        {formatProductName(p)}
                       </div>
+                  {(() => {
+                    const ts = lastUpdateByProduct[p.id];
+                    if (!ts) return null;
+                    const ageMs = Date.now() - Date.parse(ts);
+                    const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+                    const hours = Math.floor(ageMs / (60 * 60 * 1000));
+                    const label =
+                      days >= 1 ? `Update: vor ${days} Tagen` : `Update: vor ${hours} Std.`;
+                    const stale = ageMs > 3 * 24 * 60 * 60 * 1000;
+                    return (
+                      <div
+                        className={[
+                          "mt-1 text-[13px] font-black",
+                          stale ? "text-orange-700" : "text-black/60",
+                        ].join(" ")}
+                      >
+                        {label}
+                      </div>
+                    );
+                  })()}
                     </div>
 
-                    <div className="mt-4 flex items-center gap-3 min-w-0">
+                    <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
                       <button
                         className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
                         onClick={() => {
@@ -524,6 +553,22 @@ function LocationInner() {
                         </div>
                       )}
 
+                  {(() => {
+                    const min = Number(p.min_quantity ?? 0);
+                    const ok = qty >= min;
+                    return (
+                      <div
+                        className={[
+                          "h-14 w-14 rounded-2xl border-2 border-black flex items-center justify-center text-[12px] font-black",
+                          ok ? "bg-emerald-700 text-white" : "bg-red-700 text-white",
+                        ].join(" ")}
+                        title={`Minimum: ${min}`}
+                      >
+                        MIN
+                      </div>
+                    );
+                  })()}
+
                       <button
                         className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
                         onTouchStart={(e) => {
@@ -565,10 +610,8 @@ function LocationInner() {
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </div>
-        ))}
+          })}
+        </div>
 
         <div className="mt-6">
           <ButtonSecondary className="" onClick={() => router.replace("/")}>

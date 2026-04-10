@@ -57,7 +57,7 @@ export async function getLocation(id: string): Promise<Location | null> {
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select("id,brand,product_name,zusatz,barcode,short_name")
+    .select("id,brand,product_name,zusatz,barcode,short_name,min_quantity")
     .order("brand");
   if (error) throw error;
   return (data ?? []) as Product[];
@@ -67,7 +67,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select("id,brand,product_name,zusatz,barcode,short_name")
+    .select("id,brand,product_name,zusatz,barcode,short_name,min_quantity")
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
@@ -115,7 +115,7 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,brand,product_name,zusatz,barcode,short_name,inventory:inventory!left(quantity,location_id)"
+        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
@@ -135,6 +135,7 @@ export async function listProductsWithInventoryForLocation(
           zusatz: p.zusatz ?? null,
           barcode: p.barcode ?? null,
           short_name: p.short_name ?? null,
+          min_quantity: (p as unknown as { min_quantity?: number | null }).min_quantity ?? 0,
           quantity:
             Array.isArray(p.inventory) && p.inventory.length > 0
               ? Number(p.inventory[0]?.quantity ?? 0)
@@ -238,6 +239,7 @@ export async function createProductWithBarcode(args: {
   zusatz?: string | null;
   barcode: string;
   short_name?: string | null;
+  min_quantity?: number | null;
 }) {
   if (!args.brand?.trim()) throw new Error("Brand fehlt.");
   if (!args.product_name?.trim()) throw new Error("Produkt fehlt.");
@@ -247,6 +249,7 @@ export async function createProductWithBarcode(args: {
     zusatz: args.zusatz ?? null,
     barcode: args.barcode,
     short_name: args.short_name ?? null,
+    min_quantity: args.min_quantity ?? 0,
   });
   if (error) throw error;
 }
@@ -278,6 +281,7 @@ export async function updateProduct(args: {
   zusatz: string | null;
   barcode: string | null;
   short_name: string | null;
+  min_quantity?: number | null;
 }) {
   const supabase = getSupabase() as unknown as {
     from: (t: string) => {
@@ -295,9 +299,31 @@ export async function updateProduct(args: {
       zusatz: args.zusatz,
       barcode: args.barcode,
       short_name: args.short_name,
+      ...(args.min_quantity !== undefined ? { min_quantity: args.min_quantity } : {}),
     })
     .eq("id", args.productId);
   if (error) throw error;
+}
+
+export async function getLastUpdateByLocation(locationId: string): Promise<
+  Record<string, string>
+> {
+  const loc = locationId.trim();
+  if (!loc) return {};
+
+  // Best-effort simple query: get recent history and keep first per product.
+  const { data, error } = await from("inventory_history")
+    .select("product_id,timestamp")
+    .eq("location_id", loc)
+    .order("timestamp", { ascending: false })
+    .limit(2000);
+  if (error) throw error;
+
+  const out: Record<string, string> = {};
+  for (const row of (data ?? []) as Array<{ product_id: string; timestamp: string }>) {
+    if (!out[row.product_id]) out[row.product_id] = row.timestamp;
+  }
+  return out;
 }
 
 export async function getProductStockByLocation(productId: string): Promise<

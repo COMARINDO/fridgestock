@@ -11,6 +11,7 @@ export type Product = {
   zusatz?: string | null;
   barcode?: string | null;
   short_name?: string | null;
+  min_quantity?: number | null;
 };
 
 export type Location = {

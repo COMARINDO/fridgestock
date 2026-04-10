@@ -16,7 +16,8 @@ create table if not exists public.products (
   product_name text not null,
   zusatz text,
   barcode text unique,
-  short_name text
+  short_name text,
+  min_quantity integer not null default 0
 );
 
 -- No duplicate products: brand + product_name + zusatz
