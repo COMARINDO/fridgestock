@@ -71,6 +71,13 @@ function LocationInner() {
   const lastScanRef = useRef<{ code: string; at: number }>({ code: "", at: 0 });
   const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
+  const touchScrollRef = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+  const plusTouchRef = useRef<Record<string, { x: number; y: number; moved: boolean }>>({});
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -403,6 +410,14 @@ function LocationInner() {
                       const t = e.target as HTMLElement;
                       const tag = t.tagName.toLowerCase();
                       if (tag === "button" || tag === "input") return;
+                      const touch = e.touches[0];
+                      if (!touch) return;
+                      touchScrollRef.current = {
+                        id: p.id,
+                        x: touch.clientX,
+                        y: touch.clientY,
+                        moved: false,
+                      };
                       longPressFiredRef.current = false;
                       if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
                       touchTimerRef.current = setTimeout(() => {
@@ -411,6 +426,18 @@ function LocationInner() {
                         focusQtyInput(p.id);
                       }, 500);
                     }}
+                    onTouchMove={(e) => {
+                      const touch = e.touches[0];
+                      const s = touchScrollRef.current;
+                      if (!touch || !s || s.id !== p.id) return;
+                      const dx = touch.clientX - s.x;
+                      const dy = touch.clientY - s.y;
+                      if (Math.hypot(dx, dy) > 10) {
+                        s.moved = true;
+                        if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                        touchTimerRef.current = null;
+                      }
+                    }}
                     onTouchEnd={(e) => {
                       const t = e.target as HTMLElement;
                       const tag = t.tagName.toLowerCase();
@@ -418,6 +445,9 @@ function LocationInner() {
                       if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
                       touchTimerRef.current = null;
                       if (longPressFiredRef.current) return;
+                      const s = touchScrollRef.current;
+                      touchScrollRef.current = null;
+                      if (s?.id === p.id && s.moved) return;
 
                       const cur = quantitiesRef.current[p.id] ?? 0;
                       const next = cur + 1;
@@ -508,7 +538,33 @@ function LocationInner() {
 
                       <button
                         className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
+                        onTouchStart={(e) => {
+                          const touch = e.touches[0];
+                          if (!touch) return;
+                          plusTouchRef.current[p.id] = {
+                            x: touch.clientX,
+                            y: touch.clientY,
+                            moved: false,
+                          };
+                        }}
+                        onTouchMove={(e) => {
+                          const touch = e.touches[0];
+                          const s = plusTouchRef.current[p.id];
+                          if (!touch || !s) return;
+                          const dx = touch.clientX - s.x;
+                          const dy = touch.clientY - s.y;
+                          if (Math.hypot(dx, dy) > 10) s.moved = true;
+                        }}
+                        onTouchEnd={(e) => {
+                          const s = plusTouchRef.current[p.id];
+                          if (s?.moved) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }
+                        }}
                         onClick={() => {
+                          const s = plusTouchRef.current[p.id];
+                          if (s?.moved) return;
                           const next = qty + 1;
                           setQuantities((m) => ({ ...m, [p.id]: next }));
                           scheduleSave(p.id, next);
