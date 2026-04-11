@@ -12,6 +12,10 @@ export type Product = {
   barcode?: string | null;
   short_name?: string | null;
   min_quantity?: number | null;
+  /** Admin-only fields (optional in DB) */
+  supplier?: string | null;
+  purchase_price?: number | null;
+  selling_price?: number | null;
 };
 
 export type Location = {

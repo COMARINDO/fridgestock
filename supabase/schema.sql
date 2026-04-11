@@ -20,6 +20,11 @@ create table if not exists public.products (
   min_quantity integer not null default 0
 );
 
+-- Admin pricing (optional columns; run if table already exists without them)
+alter table public.products add column if not exists supplier text;
+alter table public.products add column if not exists purchase_price numeric;
+alter table public.products add column if not exists selling_price numeric;
+
 -- No duplicate products: brand + product_name + zusatz
 create unique index if not exists products_brand_product_zusatz_unique
   on public.products(brand, product_name, coalesce(zusatz, ''));

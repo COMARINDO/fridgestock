@@ -24,6 +24,7 @@ import {
   stockSignal,
   DEFAULT_CRATE_SIZE,
 } from "@/lib/inventoryInsights";
+import { useAdmin } from "@/app/admin-provider";
 
 type Row = Product & { quantity: number };
 
@@ -36,6 +37,7 @@ export default function OverviewPage() {
 }
 
 function OverviewInner() {
+  const { isAdmin } = useAdmin();
   const [rows, setRows] = useState<Row[]>([]);
   const [parentLocations, setParentLocations] = useState<Location[]>([]);
   const [stockByLocationProduct, setStockByLocationProduct] = useState<
@@ -277,7 +279,7 @@ function OverviewInner() {
           </div>
         ) : null}
 
-        {!busy && topByUsage.length > 0 ? (
+        {!busy && isAdmin && topByUsage.length > 0 ? (
           <div className="mt-4">
             <div className="text-xs font-black text-black/60">Top Verkäufe (7 Tage)</div>
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -297,7 +299,7 @@ function OverviewInner() {
           </div>
         ) : null}
 
-        {!busy && slowMovers.length > 0 ? (
+        {!busy && isAdmin && slowMovers.length > 0 ? (
           <div className="mt-3">
             <div className="text-xs font-black text-black/60">Langsame Artikel</div>
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -347,13 +349,14 @@ function OverviewInner() {
                     : perf === "normal"
                       ? "bg-emerald-100 text-black"
                       : "bg-violet-200 text-black";
+              const cardLeftBorder = isAdmin ? signalBorder : "border-l-black/25";
 
               return (
               <div
                 key={r.id}
                 className={[
                   "relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
-                  signalBorder,
+                  cardLeftBorder,
                 ].join(" ")}
                 onClick={(e) => {
                   // Tap should do nothing.
@@ -469,38 +472,46 @@ function OverviewInner() {
                   </div>
                 ) : null}
                 <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="min-w-0 flex items-start gap-2">
-                    <span
-                      className={[
-                        "mt-1.5 h-3 w-3 shrink-0 rounded-full",
-                        sig === "ok"
-                          ? "bg-emerald-600"
-                          : sig === "low"
-                            ? "bg-amber-500"
-                            : "bg-red-600",
-                      ].join(" ")}
-                      title={
-                        sig === "ok"
-                          ? "Genug Bestand (≥ 7-Tage-Verbrauch)"
-                          : sig === "low"
-                            ? "Niedrig: Bestand unter 7-Tage-Verbrauch"
-                            : "Kritisch: kein Bestand bei erwartetem Verbrauch"
-                      }
-                    />
+                  {isAdmin ? (
+                    <div className="min-w-0 flex items-start gap-2">
+                      <span
+                        className={[
+                          "mt-1.5 h-3 w-3 shrink-0 rounded-full",
+                          sig === "ok"
+                            ? "bg-emerald-600"
+                            : sig === "low"
+                              ? "bg-amber-500"
+                              : "bg-red-600",
+                        ].join(" ")}
+                        title={
+                          sig === "ok"
+                            ? "Genug Bestand (≥ 7-Tage-Verbrauch)"
+                            : sig === "low"
+                              ? "Niedrig: Bestand unter 7-Tage-Verbrauch"
+                              : "Kritisch: kein Bestand bei erwartetem Verbrauch"
+                        }
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[18px] font-black truncate text-black">
+                          {formatProductName(r)}
+                        </div>
+                        <div
+                          className={[
+                            "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-black",
+                            perfClass,
+                          ].join(" ")}
+                        >
+                          {performanceLabel(perf)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
                     <div className="min-w-0">
                       <div className="text-[18px] font-black truncate text-black">
                         {formatProductName(r)}
                       </div>
-                      <div
-                        className={[
-                          "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-black",
-                          perfClass,
-                        ].join(" ")}
-                      >
-                        {performanceLabel(perf)}
-                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">

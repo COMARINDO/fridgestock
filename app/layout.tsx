@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/app/providers";
+import { AdminProvider } from "@/app/admin-provider";
 import { TopBar } from "@/app/_components/TopBar";
 
 export const metadata: Metadata = {
@@ -17,8 +18,10 @@ export default function RootLayout({
     <html lang="de" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-[var(--background)] text-black">
         <AuthProvider>
-          <TopBar />
-          <div className="flex-1 flex flex-col pt-[120px]">{children}</div>
+          <AdminProvider>
+            <TopBar />
+            <div className="flex-1 flex flex-col pt-[120px]">{children}</div>
+          </AdminProvider>
         </AuthProvider>
       </body>
     </html>

@@ -57,7 +57,9 @@ export async function getLocation(id: string): Promise<Location | null> {
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select("id,brand,product_name,zusatz,barcode,short_name,min_quantity")
+    .select(
+      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price"
+    )
     .order("brand");
   if (error) throw error;
   return (data ?? []) as Product[];
@@ -67,7 +69,9 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select("id,brand,product_name,zusatz,barcode,short_name,min_quantity")
+    .select(
+      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price"
+    )
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
@@ -115,7 +119,7 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,inventory:inventory!left(quantity,location_id)"
+        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
@@ -136,6 +140,11 @@ export async function listProductsWithInventoryForLocation(
           barcode: p.barcode ?? null,
           short_name: p.short_name ?? null,
           min_quantity: (p as unknown as { min_quantity?: number | null }).min_quantity ?? 0,
+          supplier: (p as unknown as { supplier?: string | null }).supplier ?? null,
+          purchase_price:
+            (p as unknown as { purchase_price?: number | null }).purchase_price ?? null,
+          selling_price:
+            (p as unknown as { selling_price?: number | null }).selling_price ?? null,
           quantity:
             Array.isArray(p.inventory) && p.inventory.length > 0
               ? Number(p.inventory[0]?.quantity ?? 0)
@@ -300,6 +309,37 @@ export async function updateProduct(args: {
       barcode: args.barcode,
       short_name: args.short_name,
       ...(args.min_quantity !== undefined ? { min_quantity: args.min_quantity } : {}),
+    })
+    .eq("id", args.productId);
+  if (error) throw error;
+}
+
+export async function updateProductPricing(args: {
+  productId: string;
+  supplier: string | null;
+  purchasePrice: number | null;
+  sellingPrice: number | null;
+}) {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      supplier: args.supplier?.trim() ? args.supplier.trim() : null,
+      purchase_price:
+        args.purchasePrice === null || args.purchasePrice === undefined
+          ? null
+          : args.purchasePrice,
+      selling_price:
+        args.sellingPrice === null || args.sellingPrice === undefined
+          ? null
+          : args.sellingPrice,
     })
     .eq("id", args.productId);
   if (error) throw error;

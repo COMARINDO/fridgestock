@@ -29,6 +29,7 @@ import {
   stockSignal,
   DEFAULT_CRATE_SIZE,
 } from "@/lib/inventoryInsights";
+import { useAdmin } from "@/app/admin-provider";
 
 export default function LocationPage() {
   return (
@@ -43,6 +44,7 @@ function LocationInner() {
   const params = useParams<{ id: string }>();
   const locationId = params?.id ?? "";
   const { location: sessionLocation } = useAuth();
+  const { isAdmin } = useAdmin();
 
   const [, setLocation] = useState<Location | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -450,13 +452,14 @@ function LocationInner() {
                     : sig === "low"
                       ? "border-l-amber-500"
                       : "border-l-red-600";
+                const cardLeftBorder = isAdmin ? signalBorder : "border-l-black/25";
 
                 return (
                   <div
                     key={p.id}
                     className={[
                       "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
-                      signalBorder,
+                      cardLeftBorder,
                       highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                     ].join(" ")}
                     onClick={(e) => {
@@ -552,33 +555,35 @@ function LocationInner() {
                       <div className="text-lg font-black text-black">
                         {formatProductName(p)}
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                        <span
-                          className={[
-                            "rounded-full px-2 py-0.5 text-[11px] font-black",
-                            perfClass,
-                          ].join(" ")}
-                        >
-                          {performanceLabel(perf)}
-                        </span>
-                        <span
-                          className={[
-                            "h-2.5 w-2.5 rounded-full",
-                            sig === "ok"
-                              ? "bg-emerald-600"
-                              : sig === "low"
-                                ? "bg-amber-500"
-                                : "bg-red-600",
-                          ].join(" ")}
-                          title={
-                            sig === "ok"
-                              ? "Genug Bestand"
-                              : sig === "low"
-                                ? "Niedrig"
-                                : "Kritisch"
-                          }
-                        />
-                      </div>
+                      {isAdmin ? (
+                        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                          <span
+                            className={[
+                              "rounded-full px-2 py-0.5 text-[11px] font-black",
+                              perfClass,
+                            ].join(" ")}
+                          >
+                            {performanceLabel(perf)}
+                          </span>
+                          <span
+                            className={[
+                              "h-2.5 w-2.5 rounded-full",
+                              sig === "ok"
+                                ? "bg-emerald-600"
+                                : sig === "low"
+                                  ? "bg-amber-500"
+                                  : "bg-red-600",
+                            ].join(" ")}
+                            title={
+                              sig === "ok"
+                                ? "Genug Bestand"
+                                : sig === "low"
+                                  ? "Niedrig"
+                                  : "Kritisch"
+                            }
+                          />
+                        </div>
+                      ) : null}
                   {(() => {
                     const ts = lastUpdateByProduct[p.id];
                     if (!ts) return null;
