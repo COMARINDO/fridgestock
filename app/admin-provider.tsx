@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { ADMIN_CODE } from "@/lib/adminCode";
 import {
   clearAdminSession,
   readIsAdminFromStorage,
@@ -23,8 +24,6 @@ type AdminContextValue = {
 };
 
 const AdminContext = createContext<AdminContextValue | null>(null);
-
-const ADMIN_CODE = "1402";
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);

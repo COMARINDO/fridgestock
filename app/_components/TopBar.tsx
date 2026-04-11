@@ -21,32 +21,17 @@ export function TopBar() {
       ? "/admin"
       : "/";
 
+  const btnOutline =
+    "h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]";
+  const btnDark =
+    "h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]";
+
   return (
     <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
       <div className="w-full px-4 py-3 min-h-[56px] flex items-center">
-        <div className="flex items-center justify-between gap-3 w-full">
-          {bareLoginScreen ? (
-            <div className="h-11 px-1 inline-flex items-center text-[15px] font-black text-black">
-              Bstand
-            </div>
-          ) : (
-            <Link
-              href={homeHref}
-              className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
-              aria-label="dahoam"
-            >
-              dahoam
-            </Link>
-          )}
-
-          {!bareLoginScreen ? (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/overview"
-                className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
-              >
-                Übersicht
-              </Link>
+        {bareLoginScreen ? null : (
+          <div className="grid w-full grid-cols-3 items-center gap-2">
+            <div className="flex min-w-0 justify-start">
               <button
                 type="button"
                 onClick={() => {
@@ -54,13 +39,27 @@ export function TopBar() {
                   logout();
                   router.replace("/login");
                 }}
-                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
+                className={btnDark}
               >
                 Abmelden
               </button>
             </div>
-          ) : null}
-        </div>
+            <div className="flex min-w-0 justify-center">
+              <Link href="/overview" className={btnOutline}>
+                Übersicht
+              </Link>
+            </div>
+            <div className="flex min-w-0 justify-end">
+              <Link
+                href={homeHref}
+                className={btnOutline}
+                aria-label="Dahoam"
+              >
+                Dahoam
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

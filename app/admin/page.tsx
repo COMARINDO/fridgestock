@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
+import { ADMIN_CODE } from "@/lib/adminCode";
 import { Button, Input } from "@/app/_components/ui";
 import {
   getGlobalOverviewByProduct,
@@ -82,6 +83,7 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
     Record<string, { supplier: string; purchase: string; selling: string }>
   >({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const reload = useCallback(async () => {
     const [data, locations, usage] = await Promise.all([
@@ -174,6 +176,27 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
     return nonzero.slice(0, 5);
   }, [rows, usageTotalByProduct]);
 
+  async function sendBackup() {
+    setBackupBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminCode: ADMIN_CODE }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      window.alert("Backup wurde gesendet");
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Backup konnte nicht gesendet werden."));
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
   async function saveRow(productId: string) {
     const d = draft[productId];
     if (!d) return;
@@ -205,13 +228,23 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
             Lieferant, EK/VK, Deckung, Verbrauch & Performance
           </p>
         </div>
-        <button
-          type="button"
-          className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          onClick={onExit}
-        >
-          Admin-Modus beenden
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={backupBusy}
+            className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99] disabled:opacity-50"
+            onClick={() => void sendBackup()}
+          >
+            {backupBusy ? "Backup…" : "Backup senden"}
+          </button>
+          <button
+            type="button"
+            className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+            onClick={onExit}
+          >
+            Admin-Modus beenden
+          </button>
+        </div>
       </div>
 
       {busy ? (
