@@ -1,55 +1,64 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
 
 export function TopBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { location, logout } = useAuth();
-  const { exitAdmin } = useAdmin();
+  const { isAdmin, exitAdmin } = useAdmin();
 
-  const homeHref = location?.location_id ? `/location/${location.location_id}` : "/";
+  const hasSession = Boolean(location?.location_id) || isAdmin;
+  const bareLoginScreen = pathname === "/login" && !hasSession;
+
+  const homeHref = location?.location_id
+    ? `/location/${location.location_id}`
+    : isAdmin
+      ? "/admin"
+      : "/";
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
-      <div className="w-full px-4 h-[120px] flex items-center">
+      <div className="w-full px-4 py-3 min-h-[56px] flex items-center">
         <div className="flex items-center justify-between gap-3 w-full">
-          <Link
-            href={homeHref}
-            className="flex items-center gap-3 min-w-0 active:scale-[0.99]"
-            aria-label="Bstand Home"
-          >
-            <Image
-              src="/logo.png"
-              alt="Bstand"
-              width={110}
-              height={110}
-              priority
-              className="h-[110px] w-[110px] aspect-square object-contain"
-            />
-          </Link>
-
-          <div className="flex items-center gap-2">
+          {bareLoginScreen ? (
+            <div className="h-11 px-1 inline-flex items-center text-[15px] font-black text-black">
+              Bstand
+            </div>
+          ) : (
             <Link
-              href="/overview"
+              href={homeHref}
               className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
+              aria-label="dahoam"
             >
-              Übersicht
+              dahoam
             </Link>
-            <button
-              onClick={() => {
-                exitAdmin();
-                logout();
-                router.replace("/login");
-              }}
-              className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
-            >
-              Abmelden
-            </button>
-          </div>
+          )}
+
+          {!bareLoginScreen ? (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/overview"
+                className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
+              >
+                Übersicht
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  exitAdmin();
+                  logout();
+                  router.replace("/login");
+                }}
+                className="h-11 px-4 inline-flex items-center rounded-2xl bg-black text-white text-[15px] font-black active:scale-[0.99]"
+              >
+                Abmelden
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

@@ -20,7 +20,7 @@ export default function RootLayout({
         <AuthProvider>
           <AdminProvider>
             <TopBar />
-            <div className="flex-1 flex flex-col pt-[120px]">{children}</div>
+            <div className="flex-1 flex flex-col pt-[72px]">{children}</div>
           </AdminProvider>
         </AuthProvider>
       </body>

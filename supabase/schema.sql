@@ -1,6 +1,6 @@
 -- Fridge Stock App schema
 -- Designed for: simple anon-key access (no Supabase Auth), plain-text passwords.
--- If you enable RLS, you must add policies accordingly.
+-- If you enable RLS: für uneingeschränkten Anon-Zugriff siehe `rls-open-anon.sql`.
 
 -- Users
 create table if not exists public.users (
