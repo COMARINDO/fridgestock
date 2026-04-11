@@ -12,7 +12,8 @@ declare
     'locations',
     'location_users',
     'inventory',
-    'inventory_history'
+    'inventory_history',
+    'order_overrides'
   ];
 begin
   foreach t in array tables

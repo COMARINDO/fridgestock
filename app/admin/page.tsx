@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
@@ -185,7 +186,15 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adminCode: ADMIN_CODE }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const raw = await res.text();
+      let data: { ok?: boolean; error?: string };
+      try {
+        data = JSON.parse(raw) as { ok?: boolean; error?: string };
+      } catch {
+        throw new Error(
+          raw.trim().slice(0, 300) || `Antwort ohne JSON (HTTP ${res.status})`
+        );
+      }
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
@@ -229,6 +238,12 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/admin/orders"
+            className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+          >
+            Bestellübersicht
+          </Link>
           <button
             type="button"
             disabled={backupBusy}

@@ -39,3 +39,10 @@ export type InventoryHistoryRow = {
   timestamp: string;
 };
 
+export type OrderOverrideRow = {
+  location_id: string;
+  product_id: string;
+  quantity: number;
+  updated_at: string;
+};
+

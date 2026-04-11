@@ -25,10 +25,24 @@ function rowsToCsv(headers: string[], rows: Record<string, unknown>[]): string {
   return lines.join("\r\n");
 }
 
+function backupErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 async function fetchAllRows(
   supabase: SupabaseClient,
   table: string,
-  columns: string
+  columns: string,
+  orderColumn: string
 ): Promise<Record<string, unknown>[]> {
   const pageSize = 1000;
   let from = 0;
@@ -37,6 +51,7 @@ async function fetchAllRows(
     const { data, error } = await supabase
       .from(table)
       .select(columns)
+      .order(orderColumn, { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw error;
     const chunk = (data ?? []) as unknown as Record<string, unknown>[];
@@ -50,10 +65,15 @@ async function fetchAllRows(
 function buildBackupCsv(): Promise<string> {
   return (async () => {
     const supabase = getSupabaseAdmin();
-    const locations = await fetchAllRows(supabase, "locations", "*");
-    const products = await fetchAllRows(supabase, "products", "*");
-    const inventory = await fetchAllRows(supabase, "inventory", "*");
-    const inventoryHistory = await fetchAllRows(supabase, "inventory_history", "*");
+    const locations = await fetchAllRows(supabase, "locations", "*", "id");
+    const products = await fetchAllRows(supabase, "products", "*", "id");
+    const inventory = await fetchAllRows(supabase, "inventory", "*", "location_id");
+    const inventoryHistory = await fetchAllRows(
+      supabase,
+      "inventory_history",
+      "*",
+      "id"
+    );
 
     const locHeaders =
       locations[0] != null ? Object.keys(locations[0]) : ["id", "name", "parent_id"];
@@ -101,6 +121,16 @@ export function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Server-Konfiguration: NEXT_PUBLIC_SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY müssen gesetzt sein (z. B. in .env.local).",
+        },
+        { status: 500 }
+      );
+    }
     let body: { adminCode?: string };
     try {
       body = (await request.json()) as { adminCode?: string };
@@ -119,7 +149,11 @@ export async function POST(request: Request) {
 
     if (!resendKey) {
       return NextResponse.json(
-        { ok: false, error: "RESEND_API_KEY is not configured" },
+        {
+          ok: false,
+          error:
+            "RESEND_API_KEY fehlt. Lokal in .env.local setzen; auf Vercel/hosting unter Environment Variables eintragen und neu deployen.",
+        },
         { status: 500 }
       );
     }
@@ -150,7 +184,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Backup failed";
+    console.error("[api/backup]", e);
+    const message = backupErrorMessage(e) || "Backup failed";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

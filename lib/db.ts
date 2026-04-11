@@ -3,6 +3,7 @@ import type {
   InventoryHistoryRow,
   InventoryRow,
   Location,
+  OrderOverrideRow,
   Product,
 } from "@/lib/types";
 
@@ -323,6 +324,107 @@ export async function setInventoryQuantity(args: {
     }
     throw histErr;
   }
+
+  await deleteOrderOverridesForLocation(args.locationId);
+}
+
+/** Entfernt alle manuellen Bestell-Overrides für ein Platzerl (nach neuem Zähl-Snapshot). */
+export async function deleteOrderOverridesForLocation(locationId: string): Promise<void> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      delete: () => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+  const { error } = await supabase.from("order_overrides").delete().eq("location_id", locationId);
+  if (error) throw error;
+}
+
+export async function listOrderOverrides(): Promise<OrderOverrideRow[]> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (columns: string) => {
+        limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+      };
+    };
+  };
+  const { data, error } = await supabase
+    .from("order_overrides")
+    .select("location_id,product_id,quantity,updated_at")
+    .limit(50000);
+  if (error) throw error;
+  return (data ?? []) as OrderOverrideRow[];
+}
+
+export async function upsertOrderOverride(args: {
+  locationId: string;
+  productId: string;
+  quantity: number;
+}): Promise<void> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      upsert: (
+        values: Record<string, unknown>,
+        options: Record<string, unknown>
+      ) => Promise<{ error: unknown }>;
+    };
+  };
+  const q = Math.max(0, Math.floor(Number(args.quantity) || 0));
+  const { error } = await supabase.from("order_overrides").upsert(
+    {
+      location_id: args.locationId,
+      product_id: args.productId,
+      quantity: q,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "location_id,product_id" }
+  );
+  if (error) throw error;
+}
+
+/**
+ * Neuester Snapshot aus inventory_history pro Produkt (Sortierung: Zeit absteigend).
+ */
+export async function getLatestInventorySnapshotsForLocation(
+  locationId: string
+): Promise<Record<string, { quantity: number; timestamp: string }>> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: unknown) => {
+          order: (
+            column: string,
+            options: { ascending: boolean }
+          ) => {
+            limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+    };
+  };
+  const { data, error } = await supabase
+    .from("inventory_history")
+    .select("product_id,quantity,timestamp")
+    .eq("location_id", locationId)
+    .order("timestamp", { ascending: false })
+    .limit(15000);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    product_id: string;
+    quantity: number;
+    timestamp: string;
+  }>;
+  const out: Record<string, { quantity: number; timestamp: string }> = {};
+  for (const row of rows) {
+    if (!out[row.product_id]) {
+      out[row.product_id] = {
+        quantity: Math.max(0, Math.floor(Number(row.quantity) || 0)),
+        timestamp: row.timestamp,
+      };
+    }
+  }
+  return out;
 }
 
 export async function createProductWithBarcode(args: {
