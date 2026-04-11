@@ -1,16 +1,23 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import {
   getCodeRateLimitSnapshot,
   getServerCodeRateLimitSnapshot,
   subscribeCodeRateLimit,
+  type CodeRateLimitSnapshot,
 } from "@/lib/codeRateLimit";
 
-export function useCodeRateLimit() {
-  return useSyncExternalStore(
-    subscribeCodeRateLimit,
-    getCodeRateLimitSnapshot,
-    getServerCodeRateLimitSnapshot
+export function useCodeRateLimit(): CodeRateLimitSnapshot {
+  const [snapshot, setSnapshot] = useState<CodeRateLimitSnapshot>(() =>
+    getServerCodeRateLimitSnapshot()
   );
+
+  useEffect(() => {
+    const sync = () => setSnapshot(getCodeRateLimitSnapshot());
+    sync();
+    return subscribeCodeRateLimit(sync);
+  }, []);
+
+  return snapshot;
 }

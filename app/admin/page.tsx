@@ -36,11 +36,20 @@ function parsePriceInput(s: string): number | null {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { isAdmin, exitAdmin } = useAdmin();
+  const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
 
   useEffect(() => {
+    if (!adminHydrated) return;
     if (!isAdmin) router.replace("/login");
-  }, [isAdmin, router]);
+  }, [adminHydrated, isAdmin, router]);
+
+  if (!adminHydrated) {
+    return (
+      <main className="w-full px-4 py-8 text-center text-black">
+        <p className="font-black">Laden…</p>
+      </main>
+    );
+  }
 
   if (!isAdmin) {
     return (

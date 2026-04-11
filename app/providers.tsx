@@ -3,8 +3,9 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
-  useSyncExternalStore,
+  useState,
 } from "react";
 import {
   clearStoredLocation,
@@ -14,6 +15,8 @@ import {
 import type { SessionLocation } from "@/lib/auth";
 
 type AuthContextValue = {
+  /** true after first client read of session storage (avoids SSR/client mismatch). */
+  authHydrated: boolean;
   location: SessionLocation | null;
   setLocation: (l: SessionLocation | null) => void;
   logout: () => void; // clears selected location
@@ -23,59 +26,42 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SESSION_EVENT = "fridge-session";
 
-let cachedLocation: SessionLocation | null | undefined = undefined;
-
-function readLocationOnce() {
-  if (cachedLocation !== undefined) return cachedLocation;
-  cachedLocation = getStoredLocation();
-  return cachedLocation;
-}
-
-function refreshCachedLocation() {
-  cachedLocation = getStoredLocation();
-}
-
-function subscribe(cb: () => void) {
-  const handler = () => {
-    refreshCachedLocation();
-    cb();
-  };
-
-  window.addEventListener("storage", handler);
-  window.addEventListener(SESSION_EVENT, handler as EventListener);
-  return () => {
-    window.removeEventListener("storage", handler);
-    window.removeEventListener(SESSION_EVENT, handler as EventListener);
-  };
-}
-
-function getSnapshot() {
-  return readLocationOnce();
-}
-
-function getServerSnapshot() {
-  return null;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const location = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [location, setLocationState] = useState<SessionLocation | null>(null);
+  const [authHydrated, setAuthHydrated] = useState(false);
+
+  useEffect(() => {
+    // localStorage only after mount — intentional sync from external store (hydration-safe).
+    /* eslint-disable react-hooks/set-state-in-effect -- hydrate session from storage once */
+    setLocationState(getStoredLocation());
+    setAuthHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    const sync = () => setLocationState(getStoredLocation());
+    window.addEventListener("storage", sync);
+    window.addEventListener(SESSION_EVENT, sync as EventListener);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(SESSION_EVENT, sync as EventListener);
+    };
+  }, []);
 
   const value = useMemo<AuthContextValue>(() => {
     return {
+      authHydrated,
       location,
       setLocation: (l) => {
         if (l) setStoredLocation(l);
         else clearStoredLocation();
-        cachedLocation = l;
+        setLocationState(l);
         window.dispatchEvent(new Event(SESSION_EVENT));
       },
       logout: () => {
         clearStoredLocation();
-        cachedLocation = null;
+        setLocationState(null);
         window.dispatchEvent(new Event(SESSION_EVENT));
       },
     };
-  }, [location]);
+  }, [authHydrated, location]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -85,4 +71,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-

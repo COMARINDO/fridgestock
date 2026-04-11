@@ -8,11 +8,12 @@ import { useAdmin } from "@/app/admin-provider";
 export function TopBar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { location, logout } = useAuth();
-  const { isAdmin, exitAdmin } = useAdmin();
+  const { location, logout, authHydrated } = useAuth();
+  const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
 
+  const sessionReady = authHydrated && adminHydrated;
   const hasSession = Boolean(location?.location_id) || isAdmin;
-  const bareLoginScreen = pathname === "/login" && !hasSession;
+  const bareLoginScreen = pathname === "/login" && (!sessionReady || !hasSession);
 
   const homeHref = location?.location_id
     ? `/location/${location.location_id}`
