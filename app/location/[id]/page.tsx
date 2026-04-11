@@ -661,25 +661,6 @@ function LocationInner() {
                         </div>
                       )}
 
-                  {isAdmin
-                    ? (() => {
-                        const min = Number(weekUsageByProduct[p.id] ?? 0);
-                        if (!min) return null;
-                        const ok = qty >= min;
-                        return (
-                          <div
-                            className={[
-                              "h-14 w-14 rounded-2xl border-2 border-black flex items-center justify-center text-[12px] font-black",
-                              ok ? "bg-emerald-700 text-white" : "bg-red-700 text-white",
-                            ].join(" ")}
-                            title={`Wochenverbrauch (7 Tage): ${min}`}
-                          >
-                            W
-                          </div>
-                        );
-                      })()
-                    : null}
-
                       <button
                         className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
                         onTouchStart={(e) => {
