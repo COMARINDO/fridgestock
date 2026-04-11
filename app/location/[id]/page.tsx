@@ -219,6 +219,17 @@ function LocationInner() {
     }, 0);
   }
 
+  /** Nach setEditingId: Input ist erst nach Render im DOM. */
+  function openQtyEditor(productId: string) {
+    if (!canWrite) return;
+    setEditingId(productId);
+    setTimeout(() => {
+      const el = qtyInputs.current[productId];
+      el?.focus();
+      el?.select?.();
+    }, 50);
+  }
+
   const handleBarcode = useCallback(
     async (codeRaw: string) => {
       if (!canWrite) return;
@@ -628,7 +639,9 @@ function LocationInner() {
                       {editingId === p.id ? (
                         <input
                           inputMode="numeric"
+                          type="tel"
                           pattern="[0-9]*"
+                          enterKeyHint="done"
                           value={String(qty)}
                           onChange={(e) => {
                             const v = Number(e.target.value.replace(/[^\d]/g, ""));
@@ -649,16 +662,27 @@ function LocationInner() {
                             qtyInputs.current[p.id] = el;
                           }}
                           className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                          aria-label="quantity"
+                          aria-label="Menge bearbeiten"
                           autoFocus
                         />
                       ) : (
-                        <div
-                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none"
-                          aria-label="quantity"
+                        <button
+                          type="button"
+                          disabled={!canWrite}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openQtyEditor(p.id);
+                          }}
+                          className={[
+                            "h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none",
+                            canWrite
+                              ? "cursor-pointer active:bg-black/5"
+                              : "cursor-default opacity-80",
+                          ].join(" ")}
+                          aria-label="Menge tippen zum Ändern"
                         >
                           {qty}
-                        </div>
+                        </button>
                       )}
 
                       <button
