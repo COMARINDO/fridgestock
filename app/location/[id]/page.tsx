@@ -12,7 +12,6 @@ import {
   createProductWithBarcode,
   setInventoryQuantity,
   getLastUpdateByLocation,
-  getWeeklyUsageByLocationProduct,
 } from "@/lib/db";
 import type { Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
@@ -21,11 +20,6 @@ import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library
 import { suggestShortName } from "@/lib/shortName";
 import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
-import {
-  classifyProductPerformance,
-  performanceLabel,
-  stockSignal,
-} from "@/lib/inventoryInsights";
 import { useAdmin } from "@/app/admin-provider";
 
 export default function LocationPage() {
@@ -49,7 +43,6 @@ function LocationInner() {
   const [lastUpdateByProduct, setLastUpdateByProduct] = useState<Record<string, string>>(
     {}
   );
-  const [weekUsageByProduct, setWeekUsageByProduct] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -133,12 +126,6 @@ function LocationInner() {
 
         try {
           setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
-        } catch {
-          // ignore
-        }
-        try {
-          const byLoc = await getWeeklyUsageByLocationProduct({ days: 7 });
-          setWeekUsageByProduct((byLoc[locationId] ?? {}) as Record<string, number>);
         } catch {
           // ignore
         }
@@ -441,39 +428,14 @@ function LocationInner() {
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleProducts.map((p) => {
                 const qty = quantities[p.id] ?? 0;
-                const usage7 = Number(weekUsageByProduct[p.id] ?? 0);
-                const perf = classifyProductPerformance(usage7);
-                const sig = stockSignal(qty, usage7);
-                const perfClass =
-                  perf === "dead"
-                    ? "bg-black/10 text-black"
-                    : perf === "slow"
-                      ? "bg-sky-100 text-black"
-                      : perf === "normal"
-                        ? "bg-emerald-100 text-black"
-                        : "bg-violet-200 text-black";
-                const signalBorder =
-                  sig === "ok"
-                    ? "border-l-emerald-600"
-                    : sig === "low"
-                      ? "border-l-amber-500"
-                      : "border-l-red-600";
 
                 return (
                   <div
                     key={p.id}
-                    className={
-                      isAdmin
-                        ? [
-                            "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
-                            signalBorder,
-                            highlightId === p.id ? "ring-2 ring-emerald-500" : "",
-                          ].join(" ")
-                        : [
-                            "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
-                            highlightId === p.id ? "ring-2 ring-emerald-500" : "",
-                          ].join(" ")
-                    }
+                    className={[
+                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+                      highlightId === p.id ? "ring-2 ring-emerald-500" : "",
+                    ].join(" ")}
                     onClick={(e) => {
                       // Click-to-focus quantity input (fast)
                       if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
@@ -567,35 +529,6 @@ function LocationInner() {
                       <div className="text-lg font-black text-black">
                         {formatProductName(p)}
                       </div>
-                      {isAdmin ? (
-                        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                          <span
-                            className={[
-                              "rounded-full px-2 py-0.5 text-[11px] font-black",
-                              perfClass,
-                            ].join(" ")}
-                          >
-                            {performanceLabel(perf)}
-                          </span>
-                          <span
-                            className={[
-                              "h-2.5 w-2.5 rounded-full",
-                              sig === "ok"
-                                ? "bg-emerald-600"
-                                : sig === "low"
-                                  ? "bg-amber-500"
-                                  : "bg-red-600",
-                            ].join(" ")}
-                            title={
-                              sig === "ok"
-                                ? "Genug Bestand"
-                                : sig === "low"
-                                  ? "Niedrig"
-                                  : "Kritisch"
-                            }
-                          />
-                        </div>
-                      ) : null}
                   {isAdmin
                     ? (() => {
                         const ts = lastUpdateByProduct[p.id];
