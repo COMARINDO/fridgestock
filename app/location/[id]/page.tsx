@@ -12,8 +12,10 @@ import {
   createProductWithBarcode,
   setInventoryQuantity,
   getLastUpdateByLocation,
+  getInventoryHistoryForProduct,
+  deleteInventoryHistoryEntry,
 } from "@/lib/db";
-import type { Location, Product } from "@/lib/types";
+import type { InventoryHistoryRow, Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
@@ -21,6 +23,22 @@ import { suggestShortName } from "@/lib/shortName";
 import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
 import { useAdmin } from "@/app/admin-provider";
+
+function formatHistoryTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
 
 export default function LocationPage() {
   return (
@@ -87,9 +105,10 @@ function LocationInner() {
     productId: string;
     productName: string;
   } | null>(null);
-  const [quickQty, setQuickQty] = useState("");
-  const [quickBusy, setQuickBusy] = useState(false);
-  const [quickErr, setQuickErr] = useState<string | null>(null);
+  const [quickHistoryRows, setQuickHistoryRows] = useState<InventoryHistoryRow[]>([]);
+  const [quickHistoryLoading, setQuickHistoryLoading] = useState(false);
+  const [historyDeleteId, setHistoryDeleteId] = useState<string | null>(null);
+  const [historyErr, setHistoryErr] = useState<string | null>(null);
 
   const [refillOpen, setRefillOpen] = useState<{
     productId: string;
@@ -134,6 +153,35 @@ function LocationInner() {
       }
     })();
   }, [locationId, router]);
+
+  useEffect(() => {
+    if (!quickEdit || !locationId) {
+      setQuickHistoryRows([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setHistoryErr(null);
+      setQuickHistoryLoading(true);
+      try {
+        const rows = await getInventoryHistoryForProduct(
+          locationId,
+          quickEdit.productId,
+          5
+        );
+        if (!cancelled) setQuickHistoryRows(rows);
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setHistoryErr(errorMessage(e, "Konnte Verlauf nicht laden."));
+        }
+      } finally {
+        if (!cancelled) setQuickHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quickEdit, locationId]);
 
   const canWrite = useMemo(() => {
     const assigned = sessionLocation?.location_id;
@@ -196,6 +244,35 @@ function LocationInner() {
     await saveImmediate(productId, next);
     setRefillToast(`+${d} hinzugefügt`);
     window.setTimeout(() => setRefillToast(null), 2500);
+  }
+
+  async function deleteHistoryRow(row: InventoryHistoryRow) {
+    if (!locationId || !canWrite) return;
+    setHistoryDeleteId(row.id);
+    setHistoryErr(null);
+    try {
+      const { newQuantity } = await deleteInventoryHistoryEntry({
+        id: row.id,
+        locationId,
+        productId: row.product_id,
+      });
+      quantitiesRef.current = {
+        ...quantitiesRef.current,
+        [row.product_id]: newQuantity,
+      };
+      setQuantities((m) => ({ ...m, [row.product_id]: newQuantity }));
+      const rows = await getInventoryHistoryForProduct(
+        locationId,
+        row.product_id,
+        5
+      );
+      setQuickHistoryRows(rows);
+      setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+    } catch (e: unknown) {
+      setHistoryErr(errorMessage(e, "Eintrag konnte nicht gelöscht werden."));
+    } finally {
+      setHistoryDeleteId(null);
+    }
   }
 
   function focusQtyInput(productId: string) {
@@ -501,12 +578,11 @@ function LocationInner() {
                         }
                         // Nach rechts wischen: Schnellbearbeitung (absolute Menge).
                         if (dx > 50 && Math.abs(dy) < 25) {
-                          setQuickErr(null);
+                          setHistoryErr(null);
                           setQuickEdit({
                             productId: p.id,
                             productName: formatProductName(p),
                           });
-                          setQuickQty(String(quantitiesRef.current[p.id] ?? 0));
                           return;
                         }
                         // Scrolling/movement cancels tap actions.
@@ -1179,80 +1255,68 @@ function LocationInner() {
 
       {quickEdit ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+          <div className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-black">Bestand bearbeiten</div>
+                <div className="text-xs text-black">Letzte Änderungen</div>
                 <div className="text-2xl font-black leading-tight truncate text-black">
                   {quickEdit.productName}
                 </div>
               </div>
               <button
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                type="button"
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99] shrink-0"
                 onClick={() => setQuickEdit(null)}
               >
                 Schließen
               </button>
             </div>
 
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Menge</div>
-              <Input
-                value={quickQty}
-                onChange={(e) => setQuickQty(e.target.value.replace(/[^\d]/g, ""))}
-                inputMode="numeric"
-                type="tel"
-                className="mt-2 h-14 text-[22px] font-black text-center tracking-widest"
-                autoFocus
-              />
-            </div>
+            <p className="mt-2 text-sm text-black/60">
+              Die letzten fünf gespeicherten Bestände (neueste zuerst). Löschen
+              entfernt den Eintrag und stellt den Bestand auf den nächstälteren
+              Stand zurück.
+            </p>
 
-            <div className="mt-4">
-              <ButtonSecondary
-                className="h-14 text-lg"
-                onClick={() => {
-                  const cur = Number(quickQty || "0");
-                  setQuickQty(String(Math.max(0, cur + 24)));
-                }}
-              >
-                +24
-              </ButtonSecondary>
-            </div>
+            {quickHistoryLoading ? (
+              <div className="mt-6 text-black font-black">Lade…</div>
+            ) : null}
 
-            {quickErr ? (
-              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">
-                {quickErr}
+            {historyErr ? (
+              <div className="mt-4 rounded-3xl bg-red-50 p-4 text-red-800">{historyErr}</div>
+            ) : null}
+
+            {!quickHistoryLoading && !historyErr && quickHistoryRows.length === 0 ? (
+              <div className="mt-6 rounded-2xl border-2 border-dashed border-black/25 p-4 text-center text-sm font-black text-black/60">
+                Noch keine Einträge im Verlauf.
               </div>
             ) : null}
 
-            <div className="mt-4">
-              <Button
-                className="h-14 text-lg"
-                disabled={quickBusy || !canWrite}
-                onClick={async () => {
-                  if (!quickEdit) return;
-                  const n = Number(quickQty || "0");
-                  const next = Number.isFinite(n) ? Math.max(0, n) : 0;
-                  setQuickBusy(true);
-                  setQuickErr(null);
-                  try {
-                    quantitiesRef.current = {
-                      ...quantitiesRef.current,
-                      [quickEdit.productId]: next,
-                    };
-                    setQuantities((m) => ({ ...m, [quickEdit.productId]: next }));
-                    await saveImmediate(quickEdit.productId, next);
-                    setQuickEdit(null);
-                  } catch (e: unknown) {
-                    setQuickErr(errorMessage(e, "Konnte Bestand nicht speichern."));
-                  } finally {
-                    setQuickBusy(false);
-                  }
-                }}
-              >
-                {quickBusy ? "Speichert…" : "Speichern"}
-              </Button>
-            </div>
+            <ul className="mt-4 space-y-2">
+              {quickHistoryRows.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl border-2 border-black bg-white px-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-lg font-black text-black tabular-nums">
+                      Bestand: {row.quantity}
+                    </div>
+                    <div className="text-sm font-black text-black/60">
+                      {formatHistoryTimestamp(row.timestamp)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canWrite || historyDeleteId === row.id}
+                    onClick={() => void deleteHistoryRow(row)}
+                    className="h-10 shrink-0 rounded-2xl border-2 border-red-700 bg-red-50 px-3 text-sm font-black text-red-800 active:scale-[0.99] disabled:opacity-40"
+                  >
+                    {historyDeleteId === row.id ? "…" : "Löschen"}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       ) : null}

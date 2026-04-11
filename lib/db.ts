@@ -197,6 +197,89 @@ export async function getInventoryHistoryForLocation(
   return (data ?? []) as InventoryHistoryRow[];
 }
 
+/** Latest snapshots for one product at a location (newest first). */
+export async function getInventoryHistoryForProduct(
+  locationId: string,
+  productId: string,
+  limit = 5
+): Promise<InventoryHistoryRow[]> {
+  const { data, error } = await from("inventory_history")
+    .select("id,user_id,location_id,product_id,quantity,timestamp")
+    .eq("location_id", locationId)
+    .eq("product_id", productId)
+    .order("timestamp", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as InventoryHistoryRow[];
+}
+
+/**
+ * Removes one history row and syncs `inventory` to the latest remaining snapshot (or 0).
+ */
+export async function deleteInventoryHistoryEntry(args: {
+  id: string;
+  locationId: string;
+  productId: string;
+}): Promise<{ newQuantity: number }> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      delete: () => {
+        eq: (c: string, v: unknown) => {
+          eq: (c2: string, v2: unknown) => {
+            eq: (c3: string, v3: unknown) => Promise<{ error: unknown }>;
+          };
+        };
+      };
+      select: (cols: string) => {
+        eq: (c: string, v: unknown) => {
+          eq: (c2: string, v2: unknown) => {
+            order: (col: string, opts: { ascending: boolean }) => {
+              limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+            };
+          };
+        };
+      };
+      upsert: (
+        values: Record<string, unknown>,
+        options: Record<string, unknown>
+      ) => Promise<{ error: unknown }>;
+    };
+  };
+
+  const { error: delErr } = await supabase
+    .from("inventory_history")
+    .delete()
+    .eq("id", args.id)
+    .eq("location_id", args.locationId)
+    .eq("product_id", args.productId);
+  if (delErr) throw delErr;
+
+  const { data: latestRows, error: qErr } = await supabase
+    .from("inventory_history")
+    .select("quantity")
+    .eq("location_id", args.locationId)
+    .eq("product_id", args.productId)
+    .order("timestamp", { ascending: false })
+    .limit(1);
+  if (qErr) throw qErr;
+
+  const row = (latestRows ?? []) as Array<{ quantity: number }>;
+  const newQuantity =
+    row.length > 0 ? Math.max(0, Math.floor(Number(row[0].quantity) || 0)) : 0;
+
+  const { error: upErr } = await supabase.from("inventory").upsert(
+    {
+      location_id: args.locationId,
+      product_id: args.productId,
+      quantity: newQuantity,
+    },
+    { onConflict: "location_id,product_id" }
+  );
+  if (upErr) throw upErr;
+
+  return { newQuantity };
+}
+
 export async function setInventoryQuantity(args: {
   locationId: string;
   productId: string;
