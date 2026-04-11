@@ -220,6 +220,14 @@ function OverviewInner() {
     return nonzero.slice(0, 5);
   }, [rows, usageTotalByProduct]);
 
+  const nameSortedVisible = useMemo(() => {
+    const arr = [...visible];
+    arr.sort((a, b) => formatProductName(a).localeCompare(formatProductName(b)));
+    return arr;
+  }, [visible]);
+
+  const displayRows = isAdmin ? sortedVisible : nameSortedVisible;
+
   function openDetail(r: Row) {
     setDetailOpen({
       productId: r.id,
@@ -241,7 +249,7 @@ function OverviewInner() {
           />
         </div>
 
-        {!busy && rows.length > 0 ? (
+        {!busy && rows.length > 0 && isAdmin ? (
           <div className="mt-4 flex flex-wrap gap-2 items-center">
             <span className="text-xs font-black text-black/60 w-full sm:w-auto">
               Sortieren:
@@ -329,7 +337,7 @@ function OverviewInner() {
           <div className="mt-6 text-black">Keine Produkte.</div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {sortedVisible.map((r) => {
+            {displayRows.map((r) => {
               const usageTotal = usageTotalByProduct[r.id] ?? 0;
               const orderTotal = orderTotalByProduct[r.id] ?? 0;
               const sig = stockSignal(r.quantity, usageTotal);
@@ -349,14 +357,168 @@ function OverviewInner() {
                     : perf === "normal"
                       ? "bg-emerald-100 text-black"
                       : "bg-violet-200 text-black";
-              const cardLeftBorder = isAdmin ? signalBorder : "border-l-black/25";
+
+              if (!isAdmin) {
+                return (
+                  <div
+                    key={r.id}
+                    className="relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onTouchStart={(e) => {
+                      const t = e.target as HTMLElement;
+                      const tag = t.tagName.toLowerCase();
+                      if (tag === "button" || tag === "input") return;
+
+                      longPressFiredRef.current = false;
+                      const touch = e.touches[0];
+                      if (!touch) return;
+
+                      touchStartRef.current = {
+                        id: r.id,
+                        x: touch.clientX,
+                        y: touch.clientY,
+                        moved: false,
+                        scrollLock: false,
+                      };
+
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = setTimeout(() => {
+                        longPressFiredRef.current = true;
+                        setSwipeHint(null);
+                        setEditError(null);
+                        setEditOpen({
+                          productId: r.id,
+                          brand: r.brand ?? "",
+                          product_name: r.product_name ?? "",
+                          zusatz: (r.zusatz ?? "").trim(),
+                          barcode: (r.barcode ?? "").trim(),
+                          short_name: (r.short_name ?? "").trim(),
+                        });
+                      }, 500);
+                    }}
+                    onTouchMove={(e) => {
+                      const touch = e.touches[0];
+                      const start = touchStartRef.current;
+                      if (!touch || !start || start.id !== r.id) return;
+                      if (longPressFiredRef.current) return;
+
+                      const dx = touch.clientX - start.x;
+                      const dy = touch.clientY - start.y;
+
+                      if (!start.scrollLock) {
+                        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+                          start.scrollLock = true;
+                          setSwipeHint(null);
+                          if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                          touchTimerRef.current = null;
+                          return;
+                        }
+                        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+                          start.moved = true;
+                          if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                          touchTimerRef.current = null;
+                        }
+                      }
+
+                      if (!start.scrollLock && dx < 0) {
+                        const opacity = Math.max(0, Math.min(1, Math.abs(dx) / 80));
+                        setSwipeHint({ id: r.id, opacity });
+                      } else {
+                        setSwipeHint(null);
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      const t = e.target as HTMLElement;
+                      const tag = t.tagName.toLowerCase();
+                      if (tag === "button" || tag === "input") return;
+
+                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+                      touchTimerRef.current = null;
+                      if (longPressFiredRef.current) return;
+
+                      const touch = e.changedTouches[0];
+                      const start = touchStartRef.current;
+                      touchStartRef.current = null;
+                      setSwipeHint(null);
+                      if (!touch || !start || start.id !== r.id) return;
+                      if (start.scrollLock) return;
+
+                      const dx = touch.clientX - start.x;
+                      const dy = touch.clientY - start.y;
+
+                      if (dx < -50 && Math.abs(dy) < 25) {
+                        setSwipeFx({ id: r.id, t: Date.now() });
+                        setTimeout(() => {
+                          setSwipeFx((s) => (s?.id === r.id ? null : s));
+                        }, 180);
+                        void openDetail(r);
+                        return;
+                      }
+
+                      if (start.moved) return;
+                    }}
+                  >
+                    {swipeHint?.id === r.id ? (
+                      <div
+                        className="pointer-events-none absolute inset-0 rounded-3xl border-2 border-black"
+                        style={{ opacity: swipeHint.opacity * 0.25 }}
+                      />
+                    ) : null}
+                    {swipeFx?.id === r.id ? (
+                      <div className="pointer-events-none absolute right-4 top-4 text-[12px] font-black text-black/60">
+                        ◀
+                      </div>
+                    ) : null}
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0 text-[18px] font-black leading-tight text-black">
+                        {formatProductName(r)}
+                      </div>
+                      <div className="shrink-0 text-2xl font-black tabular-nums text-black">
+                        {r.quantity}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm font-medium tabular-nums text-black/60">
+                      7d: {usageTotal}
+                    </div>
+                    {!r.barcode ? (
+                      <div className="mt-3">
+                        <ButtonSecondary
+                          className="h-12"
+                          onClick={() => {
+                            setBarcodeModal({
+                              productId: r.id,
+                              productName: formatProductName(r),
+                            });
+                            const existing = (r.short_name ?? "").trim();
+                            setShortName(
+                              existing ||
+                                suggestShortName({
+                                  brand: r.brand,
+                                  product_name: r.product_name,
+                                  zusatz: r.zusatz,
+                                })
+                            );
+                            setGenBarcode("");
+                            setBarcodeErr(null);
+                          }}
+                        >
+                          Barcode erstellen
+                        </ButtonSecondary>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
 
               return (
               <div
                 key={r.id}
                 className={[
                   "relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
-                  cardLeftBorder,
+                  signalBorder,
                 ].join(" ")}
                 onClick={(e) => {
                   // Tap should do nothing.
@@ -472,7 +634,6 @@ function OverviewInner() {
                   </div>
                 ) : null}
                 <div className="flex items-start justify-between gap-3 min-w-0">
-                  {isAdmin ? (
                     <div className="min-w-0 flex items-start gap-2">
                       <span
                         className={[
@@ -505,13 +666,6 @@ function OverviewInner() {
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="min-w-0">
-                      <div className="text-[18px] font-black truncate text-black">
-                        {formatProductName(r)}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">

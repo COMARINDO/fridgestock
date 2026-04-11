@@ -23,11 +23,8 @@ import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
 import {
   classifyProductPerformance,
-  computeOrderQuantity,
   performanceLabel,
-  roundOrderToCrate,
   stockSignal,
-  DEFAULT_CRATE_SIZE,
 } from "@/lib/inventoryInsights";
 import { useAdmin } from "@/app/admin-provider";
 
@@ -434,10 +431,8 @@ function LocationInner() {
           {visibleProducts.map((p) => {
                 const qty = quantities[p.id] ?? 0;
                 const usage7 = Number(weekUsageByProduct[p.id] ?? 0);
-                const orderQ = computeOrderQuantity(usage7, qty);
                 const perf = classifyProductPerformance(usage7);
                 const sig = stockSignal(qty, usage7);
-                const orderCrate = roundOrderToCrate(orderQ, DEFAULT_CRATE_SIZE);
                 const perfClass =
                   perf === "dead"
                     ? "bg-black/10 text-black"
@@ -452,16 +447,22 @@ function LocationInner() {
                     : sig === "low"
                       ? "border-l-amber-500"
                       : "border-l-red-600";
-                const cardLeftBorder = isAdmin ? signalBorder : "border-l-black/25";
 
                 return (
                   <div
                     key={p.id}
-                    className={[
-                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
-                      cardLeftBorder,
-                      highlightId === p.id ? "ring-2 ring-emerald-500" : "",
-                    ].join(" ")}
+                    className={
+                      isAdmin
+                        ? [
+                            "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
+                            signalBorder,
+                            highlightId === p.id ? "ring-2 ring-emerald-500" : "",
+                          ].join(" ")
+                        : [
+                            "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+                            highlightId === p.id ? "ring-2 ring-emerald-500" : "",
+                          ].join(" ")
+                    }
                     onClick={(e) => {
                       // Click-to-focus quantity input (fast)
                       if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
@@ -584,39 +585,30 @@ function LocationInner() {
                           />
                         </div>
                       ) : null}
-                  {(() => {
-                    const ts = lastUpdateByProduct[p.id];
-                    if (!ts) return null;
-                    const ageMs = Date.now() - Date.parse(ts);
-                    const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-                    const hours = Math.floor(ageMs / (60 * 60 * 1000));
-                    const label =
-                      days >= 1 ? `Update: vor ${days} Tagen` : `Update: vor ${hours} Std.`;
-                    const stale = ageMs > 3 * 24 * 60 * 60 * 1000;
-                    return (
-                      <div
-                        className={[
-                          "mt-1 text-[13px] font-black",
-                          stale ? "text-orange-700" : "text-black/60",
-                        ].join(" ")}
-                      >
-                        {label}
-                      </div>
-                    );
-                  })()}
-                      <div className="mt-2 text-[12px] font-black text-black/80">
-                        7d: {usage7}
-                        {" · "}
-                        <span className={orderQ > 0 ? "text-red-700" : "text-emerald-700"}>
-                          Bestell: {orderQ}
-                        </span>
-                        {orderQ > 0 ? (
-                          <span className="text-black/55">
-                            {" "}
-                            (Kiste {DEFAULT_CRATE_SIZE}: {orderCrate})
-                          </span>
-                        ) : null}
-                      </div>
+                  {isAdmin
+                    ? (() => {
+                        const ts = lastUpdateByProduct[p.id];
+                        if (!ts) return null;
+                        const ageMs = Date.now() - Date.parse(ts);
+                        const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+                        const hours = Math.floor(ageMs / (60 * 60 * 1000));
+                        const label =
+                          days >= 1
+                            ? `Update: vor ${days} Tagen`
+                            : `Update: vor ${hours} Std.`;
+                        const stale = ageMs > 3 * 24 * 60 * 60 * 1000;
+                        return (
+                          <div
+                            className={[
+                              "mt-1 text-[13px] font-black",
+                              stale ? "text-orange-700" : "text-black/60",
+                            ].join(" ")}
+                          >
+                            {label}
+                          </div>
+                        );
+                      })()
+                    : null}
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
@@ -669,22 +661,24 @@ function LocationInner() {
                         </div>
                       )}
 
-                  {(() => {
-                    const min = Number(weekUsageByProduct[p.id] ?? 0);
-                    if (!min) return null;
-                    const ok = qty >= min;
-                    return (
-                      <div
-                        className={[
-                          "h-14 w-14 rounded-2xl border-2 border-black flex items-center justify-center text-[12px] font-black",
-                          ok ? "bg-emerald-700 text-white" : "bg-red-700 text-white",
-                        ].join(" ")}
-                        title={`Wochenverbrauch (7 Tage): ${min}`}
-                      >
-                        W
-                      </div>
-                    );
-                  })()}
+                  {isAdmin
+                    ? (() => {
+                        const min = Number(weekUsageByProduct[p.id] ?? 0);
+                        if (!min) return null;
+                        const ok = qty >= min;
+                        return (
+                          <div
+                            className={[
+                              "h-14 w-14 rounded-2xl border-2 border-black flex items-center justify-center text-[12px] font-black",
+                              ok ? "bg-emerald-700 text-white" : "bg-red-700 text-white",
+                            ].join(" ")}
+                            title={`Wochenverbrauch (7 Tage): ${min}`}
+                          >
+                            W
+                          </div>
+                        );
+                      })()
+                    : null}
 
                       <button
                         className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
