@@ -12,6 +12,7 @@ import {
   createProductWithBarcode,
   setInventoryQuantity,
   getLastUpdateByLocation,
+  getWeeklyUsageByLocationProduct,
 } from "@/lib/db";
 import type { Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
@@ -20,6 +21,14 @@ import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library
 import { suggestShortName } from "@/lib/shortName";
 import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
+import {
+  classifyProductPerformance,
+  computeOrderQuantity,
+  performanceLabel,
+  roundOrderToCrate,
+  stockSignal,
+  DEFAULT_CRATE_SIZE,
+} from "@/lib/inventoryInsights";
 
 export default function LocationPage() {
   return (
@@ -41,6 +50,7 @@ function LocationInner() {
   const [lastUpdateByProduct, setLastUpdateByProduct] = useState<Record<string, string>>(
     {}
   );
+  const [weekUsageByProduct, setWeekUsageByProduct] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -89,6 +99,15 @@ function LocationInner() {
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickErr, setQuickErr] = useState<string | null>(null);
 
+  const [refillOpen, setRefillOpen] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
+  const [refillCustom, setRefillCustom] = useState("");
+  const [refillBusy, setRefillBusy] = useState(false);
+  const [refillErr, setRefillErr] = useState<string | null>(null);
+  const [refillToast, setRefillToast] = useState<string | null>(null);
+
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
@@ -115,6 +134,12 @@ function LocationInner() {
 
         try {
           setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+        } catch {
+          // ignore
+        }
+        try {
+          const byLoc = await getWeeklyUsageByLocationProduct({ days: 7 });
+          setWeekUsageByProduct((byLoc[locationId] ?? {}) as Record<string, number>);
         } catch {
           // ignore
         }
@@ -171,6 +196,20 @@ function LocationInner() {
     } catch {
       // ignore
     }
+  }
+
+  /** Refill: add to current stock only (positive deltas). Same snapshot path as other saves. */
+  async function applyRefillAdd(productId: string, delta: number) {
+    if (!locationId || !canWrite) return;
+    const d = Math.floor(Number(delta));
+    if (!Number.isFinite(d) || d <= 0) return;
+    const cur = quantitiesRef.current[productId] ?? 0;
+    const next = cur + d;
+    quantitiesRef.current = { ...quantitiesRef.current, [productId]: next };
+    setQuantities((m) => ({ ...m, [productId]: next }));
+    await saveImmediate(productId, next);
+    setRefillToast(`+${d} hinzugefügt`);
+    window.setTimeout(() => setRefillToast(null), 2500);
   }
 
   function focusQtyInput(productId: string) {
@@ -392,12 +431,32 @@ function LocationInner() {
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleProducts.map((p) => {
                 const qty = quantities[p.id] ?? 0;
+                const usage7 = Number(weekUsageByProduct[p.id] ?? 0);
+                const orderQ = computeOrderQuantity(usage7, qty);
+                const perf = classifyProductPerformance(usage7);
+                const sig = stockSignal(qty, usage7);
+                const orderCrate = roundOrderToCrate(orderQ, DEFAULT_CRATE_SIZE);
+                const perfClass =
+                  perf === "dead"
+                    ? "bg-black/10 text-black"
+                    : perf === "slow"
+                      ? "bg-sky-100 text-black"
+                      : perf === "normal"
+                        ? "bg-emerald-100 text-black"
+                        : "bg-violet-200 text-black";
+                const signalBorder =
+                  sig === "ok"
+                    ? "border-l-emerald-600"
+                    : sig === "low"
+                      ? "border-l-amber-500"
+                      : "border-l-red-600";
 
                 return (
                   <div
                     key={p.id}
                     className={[
-                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
+                      signalBorder,
                       highlightId === p.id ? "ring-2 ring-emerald-500" : "",
                     ].join(" ")}
                     onClick={(e) => {
@@ -451,8 +510,20 @@ function LocationInner() {
                       if (touch && s?.id === p.id) {
                         const dx = touch.clientX - s.x;
                         const dy = touch.clientY - s.y;
-                        // Swipe LEFT opens quick edit.
+                        // Nach links wischen: Nachfüll-Menü (negatives dx).
                         if (dx < -50 && Math.abs(dy) < 25) {
+                          if (canWrite) {
+                            setRefillErr(null);
+                            setRefillCustom("");
+                            setRefillOpen({
+                              productId: p.id,
+                              productName: formatProductName(p),
+                            });
+                          }
+                          return;
+                        }
+                        // Nach rechts wischen: Schnellbearbeitung (absolute Menge).
+                        if (dx > 50 && Math.abs(dy) < 25) {
                           setQuickErr(null);
                           setQuickEdit({
                             productId: p.id,
@@ -481,6 +552,33 @@ function LocationInner() {
                       <div className="text-lg font-black text-black">
                         {formatProductName(p)}
                       </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                        <span
+                          className={[
+                            "rounded-full px-2 py-0.5 text-[11px] font-black",
+                            perfClass,
+                          ].join(" ")}
+                        >
+                          {performanceLabel(perf)}
+                        </span>
+                        <span
+                          className={[
+                            "h-2.5 w-2.5 rounded-full",
+                            sig === "ok"
+                              ? "bg-emerald-600"
+                              : sig === "low"
+                                ? "bg-amber-500"
+                                : "bg-red-600",
+                          ].join(" ")}
+                          title={
+                            sig === "ok"
+                              ? "Genug Bestand"
+                              : sig === "low"
+                                ? "Niedrig"
+                                : "Kritisch"
+                          }
+                        />
+                      </div>
                   {(() => {
                     const ts = lastUpdateByProduct[p.id];
                     if (!ts) return null;
@@ -501,6 +599,19 @@ function LocationInner() {
                       </div>
                     );
                   })()}
+                      <div className="mt-2 text-[12px] font-black text-black/80">
+                        7d: {usage7}
+                        {" · "}
+                        <span className={orderQ > 0 ? "text-red-700" : "text-emerald-700"}>
+                          Bestell: {orderQ}
+                        </span>
+                        {orderQ > 0 ? (
+                          <span className="text-black/55">
+                            {" "}
+                            (Kiste {DEFAULT_CRATE_SIZE}: {orderCrate})
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
@@ -554,7 +665,8 @@ function LocationInner() {
                       )}
 
                   {(() => {
-                    const min = Number(p.min_quantity ?? 0);
+                    const min = Number(weekUsageByProduct[p.id] ?? 0);
+                    if (!min) return null;
                     const ok = qty >= min;
                     return (
                       <div
@@ -562,9 +674,9 @@ function LocationInner() {
                           "h-14 w-14 rounded-2xl border-2 border-black flex items-center justify-center text-[12px] font-black",
                           ok ? "bg-emerald-700 text-white" : "bg-red-700 text-white",
                         ].join(" ")}
-                        title={`Minimum: ${min}`}
+                        title={`Wochenverbrauch (7 Tage): ${min}`}
                       >
-                        MIN
+                        W
                       </div>
                     );
                   })()}
@@ -1008,6 +1120,122 @@ function LocationInner() {
                 </ButtonSecondary>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {refillToast ? (
+        <div className="fixed bottom-28 left-4 right-4 z-[60] rounded-2xl border-2 border-black bg-emerald-700 px-4 py-3 text-center text-sm font-black text-white shadow-lg">
+          {refillToast}
+        </div>
+      ) : null}
+
+      {refillOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Nachfüllen</div>
+                <div className="text-2xl font-black leading-tight truncate text-black">
+                  {refillOpen.productName}
+                </div>
+                <div className="mt-1 text-sm font-black text-black/60">
+                  Aktuell: {quantities[refillOpen.productId] ?? 0}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                onClick={() => setRefillOpen(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                className="h-14 text-lg"
+                disabled={refillBusy || !canWrite}
+                onClick={async () => {
+                  if (!refillOpen) return;
+                  setRefillBusy(true);
+                  setRefillErr(null);
+                  try {
+                    await applyRefillAdd(refillOpen.productId, 12);
+                    setRefillOpen(null);
+                  } finally {
+                    setRefillBusy(false);
+                  }
+                }}
+              >
+                +12
+              </Button>
+              <Button
+                type="button"
+                className="h-14 text-lg"
+                disabled={refillBusy || !canWrite}
+                onClick={async () => {
+                  if (!refillOpen) return;
+                  setRefillBusy(true);
+                  setRefillErr(null);
+                  try {
+                    await applyRefillAdd(refillOpen.productId, 24);
+                    setRefillOpen(null);
+                  } finally {
+                    setRefillBusy(false);
+                  }
+                }}
+              >
+                +24
+              </Button>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-sm font-black text-black">Eigene Menge (nur Plus)</div>
+              <Input
+                value={refillCustom}
+                onChange={(e) => {
+                  setRefillCustom(e.target.value.replace(/[^\d]/g, ""));
+                  setRefillErr(null);
+                }}
+                inputMode="numeric"
+                type="tel"
+                placeholder="z.B. 6"
+                className="mt-2 h-14 text-[22px] font-black text-center tracking-widest"
+              />
+            </div>
+
+            {refillErr ? (
+              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">{refillErr}</div>
+            ) : null}
+
+            <div className="mt-4">
+              <Button
+                type="button"
+                className="h-14 text-lg"
+                disabled={refillBusy || !canWrite}
+                onClick={async () => {
+                  if (!refillOpen) return;
+                  const n = Number(refillCustom);
+                  if (!Number.isFinite(n) || n <= 0) {
+                    setRefillErr("Bitte eine Zahl größer als 0 eingeben.");
+                    return;
+                  }
+                  setRefillBusy(true);
+                  setRefillErr(null);
+                  try {
+                    await applyRefillAdd(refillOpen.productId, n);
+                    setRefillOpen(null);
+                    setRefillCustom("");
+                  } finally {
+                    setRefillBusy(false);
+                  }
+                }}
+              >
+                {refillBusy ? "Speichert…" : "Hinzufügen"}
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

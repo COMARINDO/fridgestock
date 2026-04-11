@@ -16,6 +16,14 @@ import { errorMessage } from "@/lib/error";
 import JsBarcode from "jsbarcode";
 import { suggestShortName } from "@/lib/shortName";
 import { formatProductName } from "@/lib/formatProductName";
+import {
+  classifyProductPerformance,
+  computeOrderQuantity,
+  performanceLabel,
+  roundOrderToCrate,
+  stockSignal,
+  DEFAULT_CRATE_SIZE,
+} from "@/lib/inventoryInsights";
 
 type Row = Product & { quantity: number };
 
@@ -53,11 +61,14 @@ function OverviewInner() {
     null
   );
 
+  const [sortMode, setSortMode] = useState<"name" | "order" | "usage">("order");
+
   const [detailOpen, setDetailOpen] = useState<{
     productId: string;
     title: string;
     total: number;
     forecastTotal: number;
+    orderTotal: number;
   } | null>(null);
 
   const [editOpen, setEditOpen] = useState<{
@@ -144,20 +155,76 @@ function OverviewInner() {
     });
   }, [rows, q]);
 
-  function forecastTotalForProduct(productId: string): number {
-    let sum = 0;
-    for (const loc of parentLocations) {
-      sum += Number(forecastByLocationProduct[loc.id]?.[productId] ?? 0);
+  const usageTotalByProduct = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of rows) {
+      let sum = 0;
+      for (const loc of parentLocations) {
+        sum += Number(forecastByLocationProduct[loc.id]?.[r.id] ?? 0);
+      }
+      m[r.id] = Math.max(0, sum);
     }
-    return Math.max(0, sum);
-  }
+    return m;
+  }, [rows, parentLocations, forecastByLocationProduct]);
+
+  const orderTotalByProduct = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of rows) {
+      let sum = 0;
+      for (const loc of parentLocations) {
+        const stock = Number(stockByLocationProduct[loc.id]?.[r.id] ?? 0);
+        const usage = Number(forecastByLocationProduct[loc.id]?.[r.id] ?? 0);
+        sum += computeOrderQuantity(usage, stock);
+      }
+      m[r.id] = sum;
+    }
+    return m;
+  }, [rows, parentLocations, stockByLocationProduct, forecastByLocationProduct]);
+
+  const sortedVisible = useMemo(() => {
+    const arr = [...visible];
+    if (sortMode === "name") {
+      arr.sort((a, b) => formatProductName(a).localeCompare(formatProductName(b)));
+      return arr;
+    }
+    if (sortMode === "usage") {
+      arr.sort(
+        (a, b) =>
+          (usageTotalByProduct[b.id] ?? 0) - (usageTotalByProduct[a.id] ?? 0)
+      );
+      return arr;
+    }
+    arr.sort(
+      (a, b) =>
+        (orderTotalByProduct[b.id] ?? 0) - (orderTotalByProduct[a.id] ?? 0)
+    );
+    return arr;
+  }, [visible, sortMode, orderTotalByProduct, usageTotalByProduct]);
+
+  const topByUsage = useMemo(() => {
+    const arr = [...rows].sort(
+      (a, b) =>
+        (usageTotalByProduct[b.id] ?? 0) - (usageTotalByProduct[a.id] ?? 0)
+    );
+    return arr.slice(0, 5);
+  }, [rows, usageTotalByProduct]);
+
+  const slowMovers = useMemo(() => {
+    const nonzero = rows.filter((r) => (usageTotalByProduct[r.id] ?? 0) > 0);
+    nonzero.sort(
+      (a, b) =>
+        (usageTotalByProduct[a.id] ?? 0) - (usageTotalByProduct[b.id] ?? 0)
+    );
+    return nonzero.slice(0, 5);
+  }, [rows, usageTotalByProduct]);
 
   function openDetail(r: Row) {
     setDetailOpen({
       productId: r.id,
       title: formatProductName(r),
       total: r.quantity,
-      forecastTotal: forecastTotalForProduct(r.id),
+      forecastTotal: usageTotalByProduct[r.id] ?? 0,
+      orderTotal: orderTotalByProduct[r.id] ?? 0,
     });
   }
 
@@ -172,6 +239,84 @@ function OverviewInner() {
           />
         </div>
 
+        {!busy && rows.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-black text-black/60 w-full sm:w-auto">
+              Sortieren:
+            </span>
+            <button
+              type="button"
+              className={[
+                "h-9 px-3 rounded-2xl border-2 border-black text-xs font-black",
+                sortMode === "order" ? "bg-black text-white" : "bg-white text-black",
+              ].join(" ")}
+              onClick={() => setSortMode("order")}
+            >
+              Bestellbedarf
+            </button>
+            <button
+              type="button"
+              className={[
+                "h-9 px-3 rounded-2xl border-2 border-black text-xs font-black",
+                sortMode === "usage" ? "bg-black text-white" : "bg-white text-black",
+              ].join(" ")}
+              onClick={() => setSortMode("usage")}
+            >
+              Verbrauch
+            </button>
+            <button
+              type="button"
+              className={[
+                "h-9 px-3 rounded-2xl border-2 border-black text-xs font-black",
+                sortMode === "name" ? "bg-black text-white" : "bg-white text-black",
+              ].join(" ")}
+              onClick={() => setSortMode("name")}
+            >
+              A–Z
+            </button>
+          </div>
+        ) : null}
+
+        {!busy && topByUsage.length > 0 ? (
+          <div className="mt-4">
+            <div className="text-xs font-black text-black/60">Top Verkäufe (7 Tage)</div>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {topByUsage.map((r) => (
+                <div
+                  key={r.id}
+                  className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2">
+                  <div className="text-[12px] font-black text-black truncate">
+                    {formatProductName(r)}
+                  </div>
+                  <div className="text-[11px] font-black text-black/60">
+                    {usageTotalByProduct[r.id] ?? 0} / 7d
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!busy && slowMovers.length > 0 ? (
+          <div className="mt-3">
+            <div className="text-xs font-black text-black/60">Langsame Artikel</div>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {slowMovers.map((r) => (
+                <div
+                  key={r.id}
+                  className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2">
+                  <div className="text-[12px] font-black text-black truncate">
+                    {formatProductName(r)}
+                  </div>
+                  <div className="text-[11px] font-black text-black/60">
+                    {usageTotalByProduct[r.id] ?? 0} / 7d
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {error ? (
           <div className="rounded-3xl bg-red-50 p-4 text-red-800">{error}</div>
         ) : null}
@@ -182,10 +327,34 @@ function OverviewInner() {
           <div className="mt-6 text-black">Keine Produkte.</div>
         ) : (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {visible.map((r) => (
+            {sortedVisible.map((r) => {
+              const usageTotal = usageTotalByProduct[r.id] ?? 0;
+              const orderTotal = orderTotalByProduct[r.id] ?? 0;
+              const sig = stockSignal(r.quantity, usageTotal);
+              const perf = classifyProductPerformance(usageTotal);
+              const orderCrate = roundOrderToCrate(orderTotal, DEFAULT_CRATE_SIZE);
+              const signalBorder =
+                sig === "ok"
+                  ? "border-l-emerald-600"
+                  : sig === "low"
+                    ? "border-l-amber-500"
+                    : "border-l-red-600";
+              const perfClass =
+                perf === "dead"
+                  ? "bg-black/10 text-black"
+                  : perf === "slow"
+                    ? "bg-sky-100 text-black"
+                    : perf === "normal"
+                      ? "bg-emerald-100 text-black"
+                      : "bg-violet-200 text-black";
+
+              return (
               <div
                 key={r.id}
-                className="relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                className={[
+                  "relative w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm border-l-4",
+                  signalBorder,
+                ].join(" ")}
                 onClick={(e) => {
                   // Tap should do nothing.
                   e.preventDefault();
@@ -300,31 +469,77 @@ function OverviewInner() {
                   </div>
                 ) : null}
                 <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="min-w-0">
-                    <div className="text-[18px] font-black truncate text-black">
-                      {formatProductName(r)}
+                  <div className="min-w-0 flex items-start gap-2">
+                    <span
+                      className={[
+                        "mt-1.5 h-3 w-3 shrink-0 rounded-full",
+                        sig === "ok"
+                          ? "bg-emerald-600"
+                          : sig === "low"
+                            ? "bg-amber-500"
+                            : "bg-red-600",
+                      ].join(" ")}
+                      title={
+                        sig === "ok"
+                          ? "Genug Bestand (≥ 7-Tage-Verbrauch)"
+                          : sig === "low"
+                            ? "Niedrig: Bestand unter 7-Tage-Verbrauch"
+                            : "Kritisch: kein Bestand bei erwartetem Verbrauch"
+                      }
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[18px] font-black truncate text-black">
+                        {formatProductName(r)}
+                      </div>
+                      <div
+                        className={[
+                          "mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-black",
+                          perfClass,
+                        ].join(" ")}
+                      >
+                        {performanceLabel(perf)}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
-                      {r.quantity}
-                    </div>
-                    {(() => {
-                      const forecast = forecastTotalForProduct(r.id);
-                      const enough = r.quantity >= forecast;
-                      return (
-                        <div
-                          className={[
-                            "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
-                            enough ? "bg-emerald-700" : "bg-red-700",
-                          ].join(" ")}
-                          title="Forecast (7 Tage)"
-                        >
-                          {forecast}
-                        </div>
-                      );
-                    })()}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div
+                    className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
+                    title="Bestand (alle Platzerl)"
+                  >
+                    {r.quantity}
                   </div>
+                  <div
+                    className="h-10 px-3 rounded-full bg-white text-black border-2 border-black text-[14px] font-black flex items-center"
+                    title="Verbrauch (7 Tage, Summe)"
+                  >
+                    {usageTotal}
+                  </div>
+                  <div
+                    className={[
+                      "h-10 px-3 rounded-full text-[14px] font-black flex items-center border-2",
+                      orderTotal > 0
+                        ? "bg-red-700 text-white border-red-800"
+                        : "bg-emerald-700 text-white border-emerald-800",
+                    ].join(" ")}
+                    title={
+                      orderTotal > 0
+                        ? `Bestellung: ${orderTotal} (Kiste ${DEFAULT_CRATE_SIZE}: ${orderCrate})`
+                        : "Kein Bestellbedarf (Summe)"
+                    }
+                  >
+                    {orderTotal}
+                  </div>
+                </div>
+                <div className="mt-2 text-[11px] font-black text-black/55">
+                  Bestand · 7d · Bestellung
+                  {orderTotal > 0 ? (
+                    <span className="text-black">
+                      {" "}
+                      · Kiste {DEFAULT_CRATE_SIZE}: {orderCrate}
+                    </span>
+                  ) : null}
                 </div>
 
                 {!r.barcode ? (
@@ -354,7 +569,8 @@ function OverviewInner() {
                   </div>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </main>
@@ -369,19 +585,29 @@ function OverviewInner() {
                   {detailOpen.title}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                <div
+                  className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
+                  title="Bestand gesamt"
+                >
                   {detailOpen.total}
                 </div>
                 <div
-                  className={[
-                    "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
-                    detailOpen.total >= detailOpen.forecastTotal
-                      ? "bg-emerald-700"
-                      : "bg-red-700",
-                  ].join(" ")}
+                  className="h-10 px-3 rounded-full bg-white text-black border-2 border-black text-[14px] font-black flex items-center"
+                  title="Verbrauch 7 Tage"
                 >
                   {detailOpen.forecastTotal}
+                </div>
+                <div
+                  className={[
+                    "h-10 px-3 rounded-full text-[14px] font-black flex items-center border-2",
+                    detailOpen.orderTotal > 0
+                      ? "bg-red-700 text-white border-red-800"
+                      : "bg-emerald-700 text-white border-emerald-800",
+                  ].join(" ")}
+                  title="Bestellbedarf (Summe)"
+                >
+                  {detailOpen.orderTotal}
                 </div>
                 <button
                   className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
@@ -397,6 +623,10 @@ function OverviewInner() {
               />
             </div>
 
+            <div className="mt-2 text-[11px] font-black text-black/55">
+              Bestand · 7d · Bestellung
+            </div>
+
             <div className="mt-4 grid gap-2">
               {parentLocations.map((loc) => {
                 const stock = Number(
@@ -405,7 +635,8 @@ function OverviewInner() {
                 const forecast = Number(
                   forecastByLocationProduct[loc.id]?.[detailOpen.productId] ?? 0
                 );
-                const enough = stock >= forecast;
+                const orderLoc = computeOrderQuantity(forecast, stock);
+                const orderCrateLoc = roundOrderToCrate(orderLoc, DEFAULT_CRATE_SIZE);
                 return (
                   <div
                     key={loc.id}
@@ -414,17 +645,33 @@ function OverviewInner() {
                     <div className="min-w-0 font-black text-black truncate">
                       {loc.name}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-10 px-4 rounded-full bg-black text-white text-[16px] font-black flex items-center">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div
+                        className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
+                        title="Bestand"
+                      >
                         {stock}
                       </div>
                       <div
-                        className={[
-                          "h-10 px-4 rounded-full text-white text-[16px] font-black flex items-center",
-                          enough ? "bg-emerald-700" : "bg-red-700",
-                        ].join(" ")}
+                        className="h-10 px-3 rounded-full bg-white text-black border-2 border-black text-[14px] font-black flex items-center"
+                        title="Verbrauch 7 Tage"
                       >
                         {forecast}
+                      </div>
+                      <div
+                        className={[
+                          "h-10 px-3 rounded-full text-[14px] font-black flex items-center border-2",
+                          orderLoc > 0
+                            ? "bg-red-700 text-white border-red-800"
+                            : "bg-emerald-700 text-white border-emerald-800",
+                        ].join(" ")}
+                        title={
+                          orderLoc > 0
+                            ? `Bestellung ${orderLoc} (Kiste ${DEFAULT_CRATE_SIZE}: ${orderCrateLoc})`
+                            : "Kein Bestellbedarf"
+                        }
+                      >
+                        {orderLoc}
                       </div>
                     </div>
                   </div>
