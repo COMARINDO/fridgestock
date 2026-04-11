@@ -9,7 +9,7 @@ import { useAdmin } from "@/app/admin-provider";
 export function TopBar() {
   const router = useRouter();
   const { location, logout } = useAuth();
-  const { isAdmin } = useAdmin();
+  const { exitAdmin } = useAdmin();
 
   const homeHref = location?.location_id ? `/location/${location.location_id}` : "/";
 
@@ -34,15 +34,6 @@ export function TopBar() {
 
           <div className="flex items-center gap-2">
             <Link
-              href="/admin"
-              className={[
-                "h-11 px-3 inline-flex items-center rounded-2xl border-2 border-black text-[13px] font-black active:scale-[0.99]",
-                isAdmin ? "bg-emerald-200 text-black" : "bg-white/80 text-black/70",
-              ].join(" ")}
-            >
-              Admin
-            </Link>
-            <Link
               href="/overview"
               className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]"
             >
@@ -50,6 +41,7 @@ export function TopBar() {
             </Link>
             <button
               onClick={() => {
+                exitAdmin();
                 logout();
                 router.replace("/login");
               }}

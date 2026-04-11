@@ -203,23 +203,6 @@ function OverviewInner() {
     return arr;
   }, [visible, sortMode, orderTotalByProduct, usageTotalByProduct]);
 
-  const topByUsage = useMemo(() => {
-    const arr = [...rows].sort(
-      (a, b) =>
-        (usageTotalByProduct[b.id] ?? 0) - (usageTotalByProduct[a.id] ?? 0)
-    );
-    return arr.slice(0, 5);
-  }, [rows, usageTotalByProduct]);
-
-  const slowMovers = useMemo(() => {
-    const nonzero = rows.filter((r) => (usageTotalByProduct[r.id] ?? 0) > 0);
-    nonzero.sort(
-      (a, b) =>
-        (usageTotalByProduct[a.id] ?? 0) - (usageTotalByProduct[b.id] ?? 0)
-    );
-    return nonzero.slice(0, 5);
-  }, [rows, usageTotalByProduct]);
-
   const nameSortedVisible = useMemo(() => {
     const arr = [...visible];
     arr.sort((a, b) => formatProductName(a).localeCompare(formatProductName(b)));
@@ -284,46 +267,6 @@ function OverviewInner() {
             >
               A–Z
             </button>
-          </div>
-        ) : null}
-
-        {!busy && isAdmin && topByUsage.length > 0 ? (
-          <div className="mt-4">
-            <div className="text-xs font-black text-black/60">Top Verkäufe (7 Tage)</div>
-            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-              {topByUsage.map((r) => (
-                <div
-                  key={r.id}
-                  className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2">
-                  <div className="text-[12px] font-black text-black truncate">
-                    {formatProductName(r)}
-                  </div>
-                  <div className="text-[11px] font-black text-black/60">
-                    {usageTotalByProduct[r.id] ?? 0} / 7d
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {!busy && isAdmin && slowMovers.length > 0 ? (
-          <div className="mt-3">
-            <div className="text-xs font-black text-black/60">Langsame Artikel</div>
-            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-              {slowMovers.map((r) => (
-                <div
-                  key={r.id}
-                  className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2">
-                  <div className="text-[12px] font-black text-black truncate">
-                    {formatProductName(r)}
-                  </div>
-                  <div className="text-[11px] font-black text-black/60">
-                    {usageTotalByProduct[r.id] ?? 0} / 7d
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         ) : null}
 

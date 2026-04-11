@@ -36,50 +36,17 @@ function parsePriceInput(s: string): number | null {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { isAdmin, tryEnterWithCode, exitAdmin } = useAdmin();
-  const [code, setCode] = useState("");
-  const [codeErr, setCodeErr] = useState<string | null>(null);
+  const { isAdmin, exitAdmin } = useAdmin();
+
+  useEffect(() => {
+    if (!isAdmin) router.replace("/login");
+  }, [isAdmin, router]);
 
   if (!isAdmin) {
     return (
-      <main className="w-full px-4 py-6 pb-10 max-w-lg mx-auto">
-        <h1 className="text-2xl font-black text-black">Admin-Zugang</h1>
-        <p className="mt-2 text-sm text-black/70">Code eingeben, um den Admin-Bereich zu öffnen.</p>
-        <div className="mt-6">
-          <Input
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value.replace(/[^\d]/g, ""));
-              setCodeErr(null);
-            }}
-            inputMode="numeric"
-            type="tel"
-            placeholder="Code"
-            className="h-14 text-center text-2xl font-black tracking-widest"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                if (tryEnterWithCode(code)) setCodeErr(null);
-                else setCodeErr("Ungültiger Code.");
-              }
-            }}
-          />
-        </div>
-        <div className="mt-4">
-          <Button
-            className="h-14 w-full text-lg"
-            onClick={() => {
-              if (tryEnterWithCode(code)) setCodeErr(null);
-              else setCodeErr("Ungültiger Code.");
-            }}
-          >
-            Entsperren
-          </Button>
-        </div>
-        {codeErr ? (
-          <div className="mt-4 rounded-3xl bg-red-50 p-4 text-red-800 font-black">{codeErr}</div>
-        ) : null}
+      <main className="w-full px-4 py-8 text-center text-black">
+        <p className="font-black">Weiterleitung…</p>
+        <p className="mt-2 text-sm text-black/60">Admin: Code 1402 auf der Login-Seite.</p>
       </main>
     );
   }
@@ -88,7 +55,7 @@ export default function AdminPage() {
     <AdminDashboard
       onExit={() => {
         exitAdmin();
-        router.replace("/");
+        router.replace("/login");
       }}
     />
   );
@@ -181,6 +148,23 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
     return { ek, vk, profit };
   }, [rows]);
 
+  const topByUsage = useMemo(() => {
+    const arr = [...rows].sort(
+      (a, b) =>
+        (usageTotalByProduct[b.id] ?? 0) - (usageTotalByProduct[a.id] ?? 0)
+    );
+    return arr.slice(0, 5);
+  }, [rows, usageTotalByProduct]);
+
+  const slowMovers = useMemo(() => {
+    const nonzero = rows.filter((r) => (usageTotalByProduct[r.id] ?? 0) > 0);
+    nonzero.sort(
+      (a, b) =>
+        (usageTotalByProduct[a.id] ?? 0) - (usageTotalByProduct[b.id] ?? 0)
+    );
+    return nonzero.slice(0, 5);
+  }, [rows, usageTotalByProduct]);
+
   async function saveRow(productId: string) {
     const d = draft[productId];
     if (!d) return;
@@ -243,6 +227,48 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
               <div className="mt-1 text-xl font-black text-black">{formatEur(stats.profit)}</div>
             </div>
           </div>
+
+          {topByUsage.length > 0 ? (
+            <div className="mt-6">
+              <div className="text-xs font-black text-black/60">Top Verkäufe (7 Tage)</div>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                {topByUsage.map((r) => (
+                  <div
+                    key={r.id}
+                    className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2"
+                  >
+                    <div className="text-[12px] font-black text-black truncate">
+                      {formatProductName(r)}
+                    </div>
+                    <div className="text-[11px] font-black text-black/60">
+                      {usageTotalByProduct[r.id] ?? 0} / 7d
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {slowMovers.length > 0 ? (
+            <div className="mt-4">
+              <div className="text-xs font-black text-black/60">Langsame Artikel</div>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                {slowMovers.map((r) => (
+                  <div
+                    key={r.id}
+                    className="shrink-0 max-w-[200px] rounded-2xl border-2 border-black bg-white px-3 py-2"
+                  >
+                    <div className="text-[12px] font-black text-black truncate">
+                      {formatProductName(r)}
+                    </div>
+                    <div className="text-[11px] font-black text-black/60">
+                      {usageTotalByProduct[r.id] ?? 0} / 7d
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[720px] text-left text-sm">

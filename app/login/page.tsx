@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Input, Button } from "@/app/_components/ui";
 import { listLocations } from "@/lib/db";
 import { useAuth } from "@/app/providers";
+import { useAdmin } from "@/app/admin-provider";
 import { errorMessage } from "@/lib/error";
 import type { Location } from "@/lib/types";
 
@@ -18,6 +19,7 @@ const accessMap: Record<string, string> = {
 export default function LoginPage() {
   const router = useRouter();
   const { location, setLocation } = useAuth();
+  const { tryEnterWithCode } = useAdmin();
   const [locations, setLocations] = useState<Location[]>([]);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,15 @@ export default function LoginPage() {
       const c = code.trim();
       if (!c) {
         setError("Ungültiger Code");
+        return;
+      }
+      if (tryEnterWithCode(c)) {
+        try {
+          navigator.vibrate?.(40);
+        } catch {}
+        setLocation(null);
+        setCode("");
+        router.replace("/admin");
         return;
       }
       const locationName = accessMap[c];
