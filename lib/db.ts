@@ -328,8 +328,26 @@ export async function setInventoryQuantity(args: {
   await deleteOrderOverridesForLocation(args.locationId);
 }
 
+async function getInventoryQuantityForProductAtLocation(
+  locationId: string,
+  productId: string
+): Promise<number> {
+  const { data, error } = await from("inventory")
+    .select("quantity")
+    .eq("location_id", locationId)
+    .eq("product_id", productId)
+    .maybeSingle();
+  if (error) throw error;
+  return Math.max(
+    0,
+    Math.floor(Number((data as { quantity?: number } | null)?.quantity ?? 0))
+  );
+}
+
 /**
  * Atomarer Lagertransfer (RPC): zwei inventory-Updates, zwei history-Zeilen, Overrides für beide Orte löschen.
+ * `void` RPCs liefern bei Erfolg oft `data: null` — das ist kein Fehler; nur `error` zählt.
+ * Liefert die SQL-Funktion Zeilen (`new_from_quantity` / `new_to_quantity`), werden diese bevorzugt.
  */
 export async function transferStock(args: {
   productId: string;
@@ -340,6 +358,11 @@ export async function transferStock(args: {
   const q = Math.floor(Number(args.quantity) || 0);
   if (q <= 0) throw new Error("Menge muss größer als 0 sein.");
 
+  const [beforeFrom, beforeTo] = await Promise.all([
+    getInventoryQuantityForProductAtLocation(args.fromLocationId, args.productId),
+    getInventoryQuantityForProductAtLocation(args.toLocationId, args.productId),
+  ]);
+
   const supabase = getSupabase() as unknown as {
     rpc: (
       fn: string,
@@ -348,29 +371,58 @@ export async function transferStock(args: {
   };
 
   const { data, error } = await supabase.rpc("transfer_stock", {
-    p_product_id: args.productId,
     p_from_location_id: args.fromLocationId,
-    p_to_location_id: args.toLocationId,
+    p_product_id: args.productId,
     p_quantity: q,
+    p_to_location_id: args.toLocationId,
   });
 
-  if (error) throw error;
+  console.log("transfer_stock result:", { data, error });
 
-  const rows = data as
-    | Array<{
-        new_from_quantity: number;
-        new_to_quantity: number;
-      }>
-    | null;
-  const row = rows?.[0];
-  if (!row) {
-    throw new Error("transfer_stock: keine Antwort vom Server.");
+  if (error) {
+    console.error("transfer_stock error:", error);
+    throw error;
   }
 
-  return {
-    newFromQuantity: Number(row.new_from_quantity),
-    newToQuantity: Number(row.new_to_quantity),
-  };
+  // Erfolg: `data` darf null/leer sein (void). Niemals an `!data` scheitern.
+  if (data != null) {
+    const rows = data as unknown;
+    if (Array.isArray(rows) && rows.length > 0) {
+      const row = rows[0] as Record<string, unknown>;
+      const nf = row.new_from_quantity ?? row.newFromQuantity;
+      const nt = row.new_to_quantity ?? row.newToQuantity;
+      if (
+        nf !== undefined &&
+        nf !== null &&
+        nt !== undefined &&
+        nt !== null &&
+        Number.isFinite(Number(nf)) &&
+        Number.isFinite(Number(nt))
+      ) {
+        return {
+          newFromQuantity: Number(nf),
+          newToQuantity: Number(nt),
+        };
+      }
+    }
+  }
+
+  try {
+    const [newFromQuantity, newToQuantity] = await Promise.all([
+      getInventoryQuantityForProductAtLocation(args.fromLocationId, args.productId),
+      getInventoryQuantityForProductAtLocation(args.toLocationId, args.productId),
+    ]);
+    return { newFromQuantity, newToQuantity };
+  } catch (refetchErr) {
+    console.error(
+      "transfer_stock: Nachlese fehlgeschlagen, verwende erwartete Mengen (RPC war erfolgreich)",
+      refetchErr
+    );
+    return {
+      newFromQuantity: Math.max(0, beforeFrom - q),
+      newToQuantity: Math.max(0, beforeTo + q),
+    };
+  }
 }
 
 /** Entfernt alle manuellen Bestell-Overrides für ein Platzerl (nach neuem Zähl-Snapshot). */
