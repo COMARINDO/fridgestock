@@ -25,6 +25,16 @@ export function computeCentralWarehouseOrder(input: {
   return { totalUsage7d: total, orderQuantity };
 }
 
+/** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch 7d − Bestand)). */
+export function computeLocalOutletOrder(input: {
+  usage7d: number;
+  stock: number;
+}): { orderQuantity: number } {
+  const u = Math.max(0, Math.round(Number(input.usage7d) || 0));
+  const s = Math.max(0, Math.floor(Number(input.stock) || 0));
+  return { orderQuantity: Math.max(0, Math.round(u - s)) };
+}
+
 /**
  * Bestellvorschlag aus 7-Tage-Verbrauch und zuletzt gezähltem Bestand (Snapshot).
  * order_quantity = max(0, usage_7d - estimated_stock)
