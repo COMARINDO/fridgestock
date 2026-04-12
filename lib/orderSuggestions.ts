@@ -1,4 +1,31 @@
 /**
+ * Zentrales Lager (Rabenstein): Nachfrage = Verbrauch Teich + Verbrauch Rabenstein,
+ * Bestand nur Rabenstein. Teich-Bestand fließt nicht ein.
+ *
+ * Standard: order = max(0, round(total_usage_7d - stock_rabenstein))
+ * Optional: order = max(0, ceil(total_usage_7d * 1.1 - stock_rabenstein))
+ */
+export const CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER = false;
+
+export function computeCentralWarehouseOrder(input: {
+  usageTeich7d: number;
+  usageRabenstein7d: number;
+  stockRabenstein: number;
+}): { totalUsage7d: number; orderQuantity: number } {
+  const uT = Math.max(0, Math.round(Number(input.usageTeich7d) || 0));
+  const uR = Math.max(0, Math.round(Number(input.usageRabenstein7d) || 0));
+  const total = uT + uR;
+  const stock = Math.max(0, Math.floor(Number(input.stockRabenstein) || 0));
+
+  if (CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER) {
+    const orderQuantity = Math.max(0, Math.ceil(total * 1.1 - stock));
+    return { totalUsage7d: total, orderQuantity };
+  }
+  const orderQuantity = Math.max(0, Math.round(total - stock));
+  return { totalUsage7d: total, orderQuantity };
+}
+
+/**
  * Bestellvorschlag aus 7-Tage-Verbrauch und zuletzt gezähltem Bestand (Snapshot).
  * order_quantity = max(0, usage_7d - estimated_stock)
  */

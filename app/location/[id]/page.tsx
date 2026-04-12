@@ -14,7 +14,10 @@ import {
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
   deleteInventoryHistoryEntry,
+  listLocations,
+  transferStock,
 } from "@/lib/db";
+import { RABENSTEIN_NAME, TEICH_NAME } from "@/lib/locationConstants";
 import type { InventoryHistoryRow, Location, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
@@ -55,7 +58,8 @@ function LocationInner() {
   const { location: sessionLocation } = useAuth();
   const { isAdmin } = useAdmin();
 
-  const [, setLocation] = useState<Location | null>(null);
+  const [currentLocation, setLocation] = useState<Location | null>(null);
+  const [rabensteinId, setRabensteinId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [lastUpdateByProduct, setLastUpdateByProduct] = useState<Record<string, string>>(
@@ -135,6 +139,11 @@ function LocationInner() {
         const loc = await getLocation(locationId);
         if (!loc) throw new Error("Platzerl nicht gefunden.");
         const rows = await listProductsWithInventoryForLocation(locationId);
+        const allLocs = await listLocations();
+        const rab = allLocs.find(
+          (l) => l.name.trim().toLowerCase() === RABENSTEIN_NAME.toLowerCase()
+        );
+        setRabensteinId(rab?.id ?? null);
 
         setLocation(loc);
         setProducts(rows);
@@ -189,6 +198,11 @@ function LocationInner() {
     return assigned === locationId;
   }, [sessionLocation?.location_id, locationId]);
 
+  const isTeichLocation = useMemo(
+    () => currentLocation?.name.trim().toLowerCase() === TEICH_NAME.toLowerCase(),
+    [currentLocation?.name]
+  );
+
   async function runSave(productId: string) {
     if (!locationId) return;
     if (!canWrite) return;
@@ -232,11 +246,47 @@ function LocationInner() {
     }
   }
 
-  /** Refill: add to current stock only (positive deltas). Same snapshot path as other saves. */
-  async function applyRefillAdd(productId: string, delta: number) {
-    if (!locationId || !canWrite) return;
+  /**
+   * Positives Delta: an anderen Platzerl wie bisher; am Teich atomar von Rabenstein.
+   */
+  async function addPositiveDelta(productId: string, delta: number): Promise<boolean> {
+    if (!locationId || !canWrite) return false;
     const d = Math.floor(Number(delta));
-    if (!Number.isFinite(d) || d <= 0) return;
+    if (!Number.isFinite(d) || d <= 0) return false;
+
+    if (isTeichLocation) {
+      if (!rabensteinId) {
+        setError(
+          "Rabenstein (Lager) wurde nicht gefunden. Bitte Seite neu laden."
+        );
+        return false;
+      }
+      try {
+        const { newToQuantity } = await transferStock({
+          productId,
+          fromLocationId: rabensteinId,
+          toLocationId: locationId,
+          quantity: d,
+        });
+        quantitiesRef.current = {
+          ...quantitiesRef.current,
+          [productId]: newToQuantity,
+        };
+        setQuantities((m) => ({ ...m, [productId]: newToQuantity }));
+        try {
+          setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+        } catch {
+          // ignore
+        }
+        setRefillToast(`+${d} von ${RABENSTEIN_NAME}`);
+        window.setTimeout(() => setRefillToast(null), 2500);
+        return true;
+      } catch (e: unknown) {
+        setError(errorMessage(e, "Transfer fehlgeschlagen."));
+        return false;
+      }
+    }
+
     const cur = quantitiesRef.current[productId] ?? 0;
     const next = cur + d;
     quantitiesRef.current = { ...quantitiesRef.current, [productId]: next };
@@ -244,6 +294,7 @@ function LocationInner() {
     await saveImmediate(productId, next);
     setRefillToast(`+${d} hinzugefügt`);
     window.setTimeout(() => setRefillToast(null), 2500);
+    return true;
   }
 
   async function deleteHistoryRow(row: InventoryHistoryRow) {
@@ -589,13 +640,13 @@ function LocationInner() {
                         if (s.moved) return;
                       }
 
-                      const cur = quantitiesRef.current[p.id] ?? 0;
-                      const next = cur + 1;
-                      quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
-                      setQuantities((prev) => ({ ...prev, [p.id]: next }));
-                      void saveImmediate(p.id, next);
-                      setHighlightId(p.id);
-                      setTimeout(() => setHighlightId(null), 350);
+                      void (async () => {
+                        const ok = await addPositiveDelta(p.id, 1);
+                        if (ok) {
+                          setHighlightId(p.id);
+                          setTimeout(() => setHighlightId(null), 350);
+                        }
+                      })();
                     }}
                     ref={(el) => {
                       rowRefs.current[p.id] = el;
@@ -723,10 +774,10 @@ function LocationInner() {
                         onClick={() => {
                           const s = plusTouchRef.current[p.id];
                           if (s?.moved) return;
-                          const next = qty + 1;
-                          setQuantities((m) => ({ ...m, [p.id]: next }));
-                          scheduleSave(p.id, next);
-                          qtyInputs.current[p.id]?.focus();
+                          void (async () => {
+                            const ok = await addPositiveDelta(p.id, 1);
+                            if (ok) qtyInputs.current[p.id]?.focus();
+                          })();
                         }}
                         aria-label="plus"
                       >
@@ -1113,14 +1164,18 @@ function LocationInner() {
                 <Button
                   className="w-full h-14 text-lg"
                   onClick={() => {
-                    const cur = quantities[scanSheet.productId] ?? 0;
-                    const inc = Number(addQty || "1");
-                    const add = Number.isFinite(inc) ? Math.max(0, inc) : 1;
-                    const next = cur + add;
-                    setQuantities((m) => ({ ...m, [scanSheet.productId]: next }));
-                    scheduleSave(scanSheet.productId, next);
-                    setScanSheet(null);
-                    setTimeout(() => qtyInputs.current[scanSheet.productId]?.focus(), 50);
+                    void (async () => {
+                      const inc = Number(addQty || "1");
+                      const add = Number.isFinite(inc) ? Math.max(0, inc) : 1;
+                      const ok = await addPositiveDelta(scanSheet.productId, add);
+                      if (ok) {
+                        setScanSheet(null);
+                        setTimeout(
+                          () => qtyInputs.current[scanSheet.productId]?.focus(),
+                          50
+                        );
+                      }
+                    })();
                   }}
                 >
                   Speichern
@@ -1153,8 +1208,14 @@ function LocationInner() {
                   {refillOpen.productName}
                 </div>
                 <div className="mt-1 text-sm font-black text-black/60">
-                  Aktuell: {quantities[refillOpen.productId] ?? 0}
+                  Aktuell Teich: {quantities[refillOpen.productId] ?? 0}
                 </div>
+                {isTeichLocation ? (
+                  <div className="mt-2 text-xs font-black text-emerald-900">
+                    Buchung von {RABENSTEIN_NAME} (Lager) — gleiche Menge wird dort
+                    abgezogen.
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -1175,8 +1236,8 @@ function LocationInner() {
                   setRefillBusy(true);
                   setRefillErr(null);
                   try {
-                    await applyRefillAdd(refillOpen.productId, 12);
-                    setRefillOpen(null);
+                    const ok = await addPositiveDelta(refillOpen.productId, 12);
+                    if (ok) setRefillOpen(null);
                   } finally {
                     setRefillBusy(false);
                   }
@@ -1193,8 +1254,8 @@ function LocationInner() {
                   setRefillBusy(true);
                   setRefillErr(null);
                   try {
-                    await applyRefillAdd(refillOpen.productId, 24);
-                    setRefillOpen(null);
+                    const ok = await addPositiveDelta(refillOpen.productId, 24);
+                    if (ok) setRefillOpen(null);
                   } finally {
                     setRefillBusy(false);
                   }
@@ -1238,9 +1299,11 @@ function LocationInner() {
                   setRefillBusy(true);
                   setRefillErr(null);
                   try {
-                    await applyRefillAdd(refillOpen.productId, n);
-                    setRefillOpen(null);
-                    setRefillCustom("");
+                    const ok = await addPositiveDelta(refillOpen.productId, n);
+                    if (ok) {
+                      setRefillOpen(null);
+                      setRefillCustom("");
+                    }
                   } finally {
                     setRefillBusy(false);
                   }

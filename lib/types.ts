@@ -37,6 +37,8 @@ export type InventoryHistoryRow = {
   product_id: string; // uuid
   quantity: number;
   timestamp: string;
+  /** Internal Rabenstein↔Teich transfer; excluded from usage lag. */
+  is_transfer?: boolean;
 };
 
 export type OrderOverrideRow = {

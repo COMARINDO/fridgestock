@@ -62,8 +62,11 @@ create table if not exists public.inventory_history (
   location_id uuid not null references public.locations(id) on delete cascade,
   product_id uuid not null references public.products(id) on delete cascade,
   quantity integer not null,
-  timestamp timestamptz not null default now()
+  timestamp timestamptz not null default now(),
+  is_transfer boolean not null default false
 );
+
+alter table public.inventory_history add column if not exists is_transfer boolean not null default false;
 
 create index if not exists inventory_history_loc_prod_time_idx
   on public.inventory_history(location_id, product_id, timestamp desc);
@@ -113,6 +116,7 @@ as $$
       ) as prev_quantity
     from public.inventory_history ih
     where ih.timestamp >= p_since
+      and not ih.is_transfer
   ),
   diffs as (
     select

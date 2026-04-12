@@ -328,6 +328,51 @@ export async function setInventoryQuantity(args: {
   await deleteOrderOverridesForLocation(args.locationId);
 }
 
+/**
+ * Atomarer Lagertransfer (RPC): zwei inventory-Updates, zwei history-Zeilen, Overrides für beide Orte löschen.
+ */
+export async function transferStock(args: {
+  productId: string;
+  fromLocationId: string;
+  toLocationId: string;
+  quantity: number;
+}): Promise<{ newFromQuantity: number; newToQuantity: number }> {
+  const q = Math.floor(Number(args.quantity) || 0);
+  if (q <= 0) throw new Error("Menge muss größer als 0 sein.");
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const { data, error } = await supabase.rpc("transfer_stock", {
+    p_product_id: args.productId,
+    p_from_location_id: args.fromLocationId,
+    p_to_location_id: args.toLocationId,
+    p_quantity: q,
+  });
+
+  if (error) throw error;
+
+  const rows = data as
+    | Array<{
+        new_from_quantity: number;
+        new_to_quantity: number;
+      }>
+    | null;
+  const row = rows?.[0];
+  if (!row) {
+    throw new Error("transfer_stock: keine Antwort vom Server.");
+  }
+
+  return {
+    newFromQuantity: Number(row.new_from_quantity),
+    newToQuantity: Number(row.new_to_quantity),
+  };
+}
+
 /** Entfernt alle manuellen Bestell-Overrides für ein Platzerl (nach neuem Zähl-Snapshot). */
 export async function deleteOrderOverridesForLocation(locationId: string): Promise<void> {
   const supabase = getSupabase() as unknown as {
@@ -628,7 +673,7 @@ export async function getWeeklyUsageByProduct(args?: {
 
     const { data, error } = await supabase
       .from("inventory_history")
-      .select("location_id,product_id,quantity,timestamp")
+      .select("location_id,product_id,quantity,timestamp,is_transfer")
       .gte("timestamp", sinceIso);
     if (error) throw error;
     return (data ?? []) as Array<{
@@ -636,11 +681,13 @@ export async function getWeeklyUsageByProduct(args?: {
       product_id: string;
       quantity: number;
       timestamp: string;
+      is_transfer?: boolean;
     }>;
   })();
 
   const byKey = new Map<string, Array<{ t: number; q: number }>>();
   for (const r of rows) {
+    if (r.is_transfer) continue;
     const key = `${r.location_id}:${r.product_id}`;
     const arr = byKey.get(key) ?? [];
     arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
@@ -718,7 +765,7 @@ export async function getWeeklyUsageByLocationProduct(args?: {
 
     const { data, error } = await supabase
       .from("inventory_history")
-      .select("location_id,product_id,quantity,timestamp")
+      .select("location_id,product_id,quantity,timestamp,is_transfer")
       .gte("timestamp", sinceIso);
     if (error) throw error;
     return (data ?? []) as Array<{
@@ -726,11 +773,13 @@ export async function getWeeklyUsageByLocationProduct(args?: {
       product_id: string;
       quantity: number;
       timestamp: string;
+      is_transfer?: boolean;
     }>;
   })();
 
   const byKey = new Map<string, Array<{ t: number; q: number }>>();
   for (const r of rows) {
+    if (r.is_transfer) continue;
     const key = `${r.location_id}:${r.product_id}`;
     const arr = byKey.get(key) ?? [];
     arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
