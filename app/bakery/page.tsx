@@ -4,7 +4,8 @@ import Link from "next/link";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
-import { isBakeryEnabled } from "@/lib/flags";
+import { enableBakeryLocally, isBakeryEnabled } from "@/lib/flags";
+import { Button } from "@/app/_components/ui";
 
 export default function BakeryHomePage() {
   return (
@@ -26,6 +27,24 @@ function BakeryHomeInner() {
           <p className="mt-2 text-sm font-black text-black/70">
             Modul ist deaktiviert. Setze <code>NEXT_PUBLIC_ENABLE_BAKERY=true</code>.
           </p>
+          {isAdmin ? (
+            <div className="mt-4">
+              <Button
+                className="h-12 text-[15px]"
+                onClick={() => {
+                  enableBakeryLocally();
+                  // hard navigation to re-evaluate flag in all screens
+                  window.location.href = "/bakery";
+                }}
+              >
+                Modul auf diesem Gerät aktivieren
+              </Button>
+              <div className="mt-2 text-[11px] font-black text-black/55">
+                Hinweis: Das ist nur ein Geräte-Override. Für alle Geräte: Env im Deployment setzen
+                und neu deployen.
+              </div>
+            </div>
+          ) : null}
           <div className="mt-4">
             <Link
               href="/overview"
