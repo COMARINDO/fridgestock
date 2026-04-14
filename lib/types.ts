@@ -48,3 +48,26 @@ export type OrderOverrideRow = {
   updated_at: string;
 };
 
+export type BakeryProduct = {
+  id: string; // uuid
+  name: string;
+  unit: string;
+  sort_order: number;
+  active: boolean;
+};
+
+export type BakeryOrder = {
+  id: string; // uuid
+  location_id: string; // uuid
+  delivery_date: string; // YYYY-MM-DD
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BakeryOrderItem = {
+  order_id: string; // uuid
+  product_id: string; // uuid
+  quantity: number;
+};
+

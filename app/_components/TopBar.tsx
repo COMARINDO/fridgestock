@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
+import { isBakeryEnabled } from "@/lib/flags";
 
 export function TopBar() {
   const router = useRouter();
@@ -20,6 +21,8 @@ export function TopBar() {
     : isAdmin
       ? "/admin"
       : "/";
+
+  const showBakery = isBakeryEnabled() && (Boolean(location?.location_id) || isAdmin);
 
   const btnOutline =
     "h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-[15px] font-black text-black active:scale-[0.99]";
@@ -45,9 +48,15 @@ export function TopBar() {
               </button>
             </div>
             <div className="flex min-w-0 justify-center">
-              <Link href="/overview" className={btnOutline}>
-                Übersicht
-              </Link>
+              {showBakery ? (
+                <Link href="/bakery" className={btnOutline}>
+                  Bäckerei
+                </Link>
+              ) : (
+                <Link href="/overview" className={btnOutline}>
+                  Übersicht
+                </Link>
+              )}
             </div>
             <div className="flex min-w-0 justify-end">
               <Link

@@ -1,5 +1,8 @@
 import { getSupabase } from "@/lib/supabase";
 import type {
+  BakeryOrder,
+  BakeryOrderItem,
+  BakeryProduct,
   InventoryHistoryRow,
   InventoryRow,
   Location,
@@ -45,6 +48,11 @@ export async function listLocations(): Promise<Location[]> {
   if (error) throw error;
   // App uses only the 4 main Platzerl. Hide legacy sub-locations (Lager/Kühlschrank).
   return ((data ?? []) as Location[]).filter((l) => MAIN_LOCATION_NAMES.has(l.name));
+}
+
+/** Bakery module: uses the same 4 platzerl; backstube is handled separately (admin). */
+export async function listBakeryOrderLocations(): Promise<Location[]> {
+  return listLocations();
 }
 
 export async function getLocation(id: string): Promise<Location | null> {
@@ -852,5 +860,177 @@ export async function getWeeklyUsageByLocationProduct(args?: {
     out[locationId][productId] = Math.round(usage * multiplier);
   }
   return out;
+}
+
+// -----------------------
+// Bakery ordering module
+// -----------------------
+
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function defaultBakeryDeliveryDate(): string {
+  // Default: tomorrow (local time)
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return toIsoDate(d);
+}
+
+export async function listBakeryProducts(): Promise<BakeryProduct[]> {
+  const { data, error } = await from("bakery_products")
+    .select("id,name,unit,sort_order,active")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  if (error) throw error;
+  return (data ?? []) as BakeryProduct[];
+}
+
+export async function getOrCreateBakeryDraftOrder(args: {
+  locationId: string;
+  deliveryDate: string; // YYYY-MM-DD
+}): Promise<BakeryOrder> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      upsert: (
+        values: Record<string, unknown>,
+        options: Record<string, unknown>
+      ) => {
+        select: (cols: string) => {
+          maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+      select: (cols: string) => {
+        eq: (c: string, v: unknown) => {
+          eq: (c2: string, v2: unknown) => {
+            maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+    };
+  };
+
+  const deliveryDate = args.deliveryDate.trim();
+  const locationId = args.locationId.trim();
+  if (!locationId) throw new Error("Location fehlt.");
+  if (!deliveryDate) throw new Error("Lieferdatum fehlt.");
+
+  // Create if missing.
+  const { data: upData, error: upErr } = await supabase
+    .from("bakery_orders")
+    .upsert(
+      { location_id: locationId, delivery_date: deliveryDate, status: "draft" },
+      { onConflict: "location_id,delivery_date" }
+    )
+    .select("id,location_id,delivery_date,status,created_at,updated_at")
+    .maybeSingle();
+  if (upErr) throw upErr;
+  if (upData) return upData as BakeryOrder;
+
+  const { data, error } = await supabase
+    .from("bakery_orders")
+    .select("id,location_id,delivery_date,status,created_at,updated_at")
+    .eq("location_id", locationId)
+    .eq("delivery_date", deliveryDate)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Bestellung konnte nicht erstellt werden.");
+  return data as BakeryOrder;
+}
+
+export async function listBakeryOrderItems(orderId: string): Promise<BakeryOrderItem[]> {
+  const oid = orderId.trim();
+  if (!oid) return [];
+  const { data, error } = await from("bakery_order_items")
+    .select("order_id,product_id,quantity")
+    .eq("order_id", oid);
+  if (error) throw error;
+  return (data ?? []) as BakeryOrderItem[];
+}
+
+export async function upsertBakeryOrderItems(args: {
+  orderId: string;
+  items: Array<{ productId: string; quantity: number }>;
+}): Promise<void> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      upsert: (
+        values: Array<Record<string, unknown>>,
+        options: Record<string, unknown>
+      ) => Promise<{ error: unknown }>;
+    };
+  };
+  const oid = args.orderId.trim();
+  if (!oid) throw new Error("Order fehlt.");
+
+  const rows = args.items.map((it) => ({
+    order_id: oid,
+    product_id: it.productId,
+    quantity: Math.max(0, Math.floor(Number(it.quantity) || 0)),
+  }));
+
+  const { error } = await supabase.from("bakery_order_items").upsert(rows, {
+    onConflict: "order_id,product_id",
+  });
+  if (error) throw error;
+}
+
+export async function listBakeryOrdersForDate(args: {
+  deliveryDate: string;
+}): Promise<
+  Array<
+    BakeryOrder & {
+      items: Array<
+        BakeryOrderItem & { product?: { id: string; name: string; unit: string; sort_order: number } }
+      >;
+    }
+  >
+> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (c: string, v: unknown) => {
+          order: (c2: string, o?: { ascending?: boolean; foreignTable?: string }) => Promise<{
+            data: unknown;
+            error: unknown;
+          }>;
+        };
+      };
+    };
+  };
+
+  const date = args.deliveryDate.trim();
+  if (!date) return [];
+
+  const { data, error } = await supabase
+    .from("bakery_orders")
+    .select(
+      "id,location_id,delivery_date,status,created_at,updated_at,bakery_order_items(order_id,product_id,quantity,bakery_products(id,name,unit,sort_order))"
+    )
+    .eq("delivery_date", date)
+    .order("location_id");
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<
+    BakeryOrder & {
+      bakery_order_items?: Array<
+        BakeryOrderItem & { bakery_products?: { id: string; name: string; unit: string; sort_order: number } }
+      >;
+    }
+  >;
+
+  return rows.map((r) => ({
+    ...r,
+    items: (r.bakery_order_items ?? []).map((it) => ({
+      order_id: it.order_id,
+      product_id: it.product_id,
+      quantity: it.quantity,
+      product: it.bakery_products,
+    })),
+  }));
 }
 

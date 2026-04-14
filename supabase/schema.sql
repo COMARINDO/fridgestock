@@ -134,4 +134,7 @@ as $$
   group by location_id, product_id;
 $$;
 
+-- Bakery module (optional)
+-- See `supabase/bakery.sql` for additive bakery ordering tables.
+
 
