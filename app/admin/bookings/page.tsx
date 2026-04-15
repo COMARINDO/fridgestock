@@ -8,6 +8,7 @@ import { Button, Input } from "@/app/_components/ui";
 import {
   listInventoryHistoryAdmin,
   listLocations,
+  deleteInventoryHistoryEntry,
   moveInventoryHistoryToLocation,
   previewMoveInventoryHistoryCount,
 } from "@/lib/db";
@@ -63,6 +64,8 @@ export default function AdminBookingsPage() {
       is_transfer?: boolean;
     }>
   >([]);
+
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
 
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveFromId, setMoveFromId] = useState("");
@@ -258,6 +261,7 @@ export default function AdminBookingsPage() {
               <th className="p-3 font-black text-black">Produkt</th>
               <th className="p-3 font-black text-black tabular-nums">Menge</th>
               <th className="p-3 font-black text-black">Modus</th>
+              <th className="p-3 font-black text-black text-right">Aktion</th>
             </tr>
           </thead>
           <tbody>
@@ -278,11 +282,43 @@ export default function AdminBookingsPage() {
                     {r.mode ?? (r.is_transfer ? "transfer" : "—")}
                   </span>
                 </td>
+                <td className="p-3 text-right">
+                  <button
+                    type="button"
+                    className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99] disabled:opacity-50"
+                    disabled={deleteBusyId === r.id}
+                    onClick={() => {
+                      void (async () => {
+                        const ok = window.confirm(
+                          `Buchung wirklich löschen?\n\n${r.product_label ?? r.product_id}\n${r.location_name ?? locNameById.get(r.location_id) ?? r.location_id}\n${new Date(r.timestamp).toLocaleString("de-AT")}`
+                        );
+                        if (!ok) return;
+                        setDeleteBusyId(r.id);
+                        setErr(null);
+                        try {
+                          await deleteInventoryHistoryEntry({
+                            id: r.id,
+                            locationId: r.location_id,
+                            productId: r.product_id,
+                          });
+                          await load();
+                        } catch (e: unknown) {
+                          setErr(errorMessage(e, "Löschen fehlgeschlagen."));
+                        } finally {
+                          setDeleteBusyId(null);
+                        }
+                      })();
+                    }}
+                    title="History-Zeile löschen"
+                  >
+                    {deleteBusyId === r.id ? "Löscht…" : "Löschen"}
+                  </button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && !busy ? (
               <tr>
-                <td className="p-4 text-sm font-black text-black/60" colSpan={5}>
+                <td className="p-4 text-sm font-black text-black/60" colSpan={6}>
                   Keine Buchungen.
                 </td>
               </tr>
