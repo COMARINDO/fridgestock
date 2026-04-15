@@ -216,6 +216,29 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                   {props.editingId === p.id ? (
                     props.scanMode === "add" ? (
                       <div className="flex flex-1 min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className="h-14 px-4 rounded-2xl bg-red-700 text-white text-xl font-black active:scale-[0.99]"
+                          disabled={!props.canWrite}
+                          onClick={() => {
+                            void (async () => {
+                              const n = Number(props.inlineAddDraft || "0");
+                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                              if (!d) {
+                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                return;
+                              }
+                              const ok = await props.onRecordAdjustment(p.id, d, "waste");
+                              if (ok) {
+                                props.onSetInlineAddDraft("0");
+                                props.onSetEditingId(null);
+                                props.onFocusQty(p.id);
+                              }
+                            })();
+                          }}
+                        >
+                          -
+                        </button>
                         <input
                           inputMode="numeric"
                           type="tel"
@@ -253,29 +276,6 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           }}
                         >
                           +
-                        </button>
-                        <button
-                          type="button"
-                          className="h-14 px-4 rounded-2xl bg-orange-700 text-white text-xl font-black active:scale-[0.99]"
-                          disabled={!props.canWrite}
-                          onClick={() => {
-                            void (async () => {
-                              const n = Number(props.inlineAddDraft || "0");
-                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-                              if (!d) {
-                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
-                                return;
-                              }
-                              const ok = await props.onRecordAdjustment(p.id, d, "waste");
-                              if (ok) {
-                                props.onSetInlineAddDraft("0");
-                                props.onSetEditingId(null);
-                                props.onFocusQty(p.id);
-                              }
-                            })();
-                          }}
-                        >
-                          -
                         </button>
                       </div>
                     ) : (
