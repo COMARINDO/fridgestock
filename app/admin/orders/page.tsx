@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
+import { getAiToggle } from "@/lib/getAiToggle";
 import {
   getWeeklyUsageByLocationProduct,
   listInventoryAll,
@@ -64,6 +65,7 @@ export default function AdminOrdersPage() {
   const router = useRouter();
   const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
 
+  const [useAi, setUseAi] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [usageByLoc, setUsageByLoc] = useState<
@@ -106,12 +108,28 @@ export default function AdminOrdersPage() {
     if (!isAdmin) router.replace("/login");
   }, [adminHydrated, isAdmin, router]);
 
+  useEffect(() => {
+    try {
+      setUseAi(getAiToggle());
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("useAiConsumption.v1", useAi ? "true" : "false");
+    } catch {
+      // ignore
+    }
+  }, [useAi]);
+
   const reload = useCallback(async () => {
     setErr(null);
     const [locs, prods, usage, invAll, ovs] = await Promise.all([
       listLocations(),
       listProducts(),
-      getWeeklyUsageByLocationProduct({ days: 7 }),
+      getWeeklyUsageByLocationProduct({ days: 7, useAi }),
       listInventoryAll(),
       listOrderOverrides(),
     ]);
@@ -130,7 +148,7 @@ export default function AdminOrdersPage() {
     setUsageByLoc(usage);
     setInventoryQty(invMap);
     setOverrides(ovs);
-  }, []);
+  }, [useAi]);
 
   useEffect(() => {
     if (!adminHydrated || !isAdmin) return;
@@ -427,6 +445,22 @@ export default function AdminOrdersPage() {
             Platzerl Verbrauch 7d minus lokaler Bestand. Reiter{" "}
             <strong>Gesamt</strong>: Summen pro Produkt.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={[
+                "h-10 px-3 rounded-2xl border-2 text-sm font-black transition-colors active:scale-[0.99]",
+                useAi ? "border-emerald-800 bg-emerald-700 text-white" : "border-black bg-white text-black",
+              ].join(" ")}
+              onClick={() => setUseAi((v) => !v)}
+              title="KI-Prognose an/aus"
+            >
+              {useAi ? "KI Prognose aktiv" : "Klassische Berechnung"}
+            </button>
+            <span className="text-xs font-black text-black/50">
+              (Fallback: wenn keine KI-Daten vorhanden sind, wird klassisch gerechnet)
+            </span>
+          </div>
         </div>
         <button
           type="button"

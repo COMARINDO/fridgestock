@@ -7,19 +7,11 @@ import type {
   Product,
 } from "@/lib/types";
 
-type SupabaseLikeError = { status?: number; message?: string };
-function getStatus(e: unknown): number | null {
-  if (e && typeof e === "object" && "status" in e) {
-    const s = (e as SupabaseLikeError).status;
-    return typeof s === "number" ? s : null;
-  }
-  return null;
-}
-
 type QueryResult = { data: unknown; error: unknown };
 type QueryBuilder = PromiseLike<QueryResult> & {
   select: (columns: string) => QueryBuilder;
   eq: (column: string, value: unknown) => QueryBuilder;
+  gte: (column: string, value: string) => QueryBuilder;
   order: (
     column: string,
     options?: { ascending?: boolean }
@@ -46,7 +38,7 @@ const MAIN_LOCATION_NAMES = new Set([
 
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await from("locations")
-    .select("id,name,parent_id")
+    .select("id,name,parent_id,type,warehouse_location_id")
     .order("name");
   if (error) throw error;
   // App uses only the 4 main Platzerl. Hide legacy sub-locations (Lager/Kühlschrank).
@@ -56,7 +48,7 @@ export async function listLocations(): Promise<Location[]> {
 /** Bakery module: uses the same 4 platzerl; backstube is handled separately (admin). */
 export async function getLocation(id: string): Promise<Location | null> {
   const { data, error } = await from("locations")
-    .select("id,name,parent_id")
+    .select("id,name,parent_id,type,warehouse_location_id")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -429,48 +421,26 @@ export async function setInventoryQuantity(args: {
   productId: string;
   quantity: number;
 }) {
-  // Snapshot system (2 calls):
-  // 1) upsert inventory (overwrite quantity)
-  // 2) insert inventory_history (append snapshot)
   const supabase = getSupabase() as unknown as {
-    from: (t: string) => {
-      upsert: (
-        values: Record<string, unknown>,
-        options: Record<string, unknown>
-      ) => Promise<{ error: unknown }>;
-      insert: (values: Record<string, unknown>) => Promise<{ error: unknown }>;
-    };
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
   };
 
-  const { error: upsertErr } = await supabase.from("inventory").upsert(
-    {
-      location_id: args.locationId,
-      product_id: args.productId,
-      quantity: args.quantity,
-    },
-    { onConflict: "location_id,product_id" }
-  );
-  if (upsertErr) throw upsertErr;
-
-  const { error: histErr } = await supabase.from("inventory_history").insert({
-    user_id: null,
-    location_id: args.locationId,
-    product_id: args.productId,
-    quantity: args.quantity,
-    mode: "count",
-    is_transfer: false,
+  const q = Math.max(0, Math.floor(Number(args.quantity) || 0));
+  const { data, error } = await supabase.rpc("set_inventory_quantity", {
+    p_user_id: null,
+    p_location_id: args.locationId,
+    p_product_id: args.productId,
+    p_quantity: q,
   });
-  if (histErr) {
-    const status = getStatus(histErr);
-    if (status === 404) {
-      throw new Error(
-        "Supabase API findet 'inventory_history' nicht (404). Bitte in Supabase den Schema-Cache reloaden (SQL: notify pgrst, 'reload schema';) und prüfen, dass die Tabelle im 'public' Schema liegt und über die API exposed ist."
-      );
-    }
-    throw histErr;
-  }
+  if (error) throw error;
 
   await deleteOrderOverridesForLocation(args.locationId);
+
+  // Keep return shape stable for existing callers (none rely on return today).
+  void data;
 }
 
 export async function addInventoryDelta(args: {
@@ -488,6 +458,32 @@ export async function addInventoryDelta(args: {
   if (d <= 0) throw new Error("Menge muss größer als 0 sein.");
 
   const { data, error } = await supabase.rpc("add_inventory_delta", {
+    p_user_id: null,
+    p_location_id: args.locationId,
+    p_product_id: args.productId,
+    p_delta: d,
+  });
+  if (error) throw error;
+
+  const newQuantity = Math.max(0, Math.floor(Number(data ?? 0) || 0));
+  return { newQuantity };
+}
+
+export async function applyInventoryDelta(args: {
+  locationId: string;
+  productId: string;
+  delta: number;
+}): Promise<{ newQuantity: number }> {
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+  const d = Math.floor(Number(args.delta) || 0);
+  if (d <= 0) throw new Error("Menge muss größer als 0 sein.");
+
+  const { data, error } = await supabase.rpc("apply_inventory_delta", {
     p_user_id: null,
     p_location_id: args.locationId,
     p_product_id: args.productId,
@@ -940,9 +936,11 @@ export async function getWeeklyUsageByProduct(args?: {
 export async function getWeeklyUsageByLocationProduct(args?: {
   days?: number;
   multiplier?: number;
+  useAi?: boolean;
 }): Promise<Record<string, Record<string, number>>> {
   const days = args?.days ?? 7;
   const multiplier = args?.multiplier ?? 1;
+  const useAi = args?.useAi ?? true;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   // Preferred: SQL window function (lag) via RPC.
@@ -970,6 +968,41 @@ export async function getWeeklyUsageByLocationProduct(args?: {
         if (!out[lid]) out[lid] = {};
         out[lid][pid] = Math.round(Math.max(0, Number(row.usage ?? 0)) * multiplier);
       }
+
+      if (useAi) {
+        // Overlay AI-based "suggested_order_7_days" as usage forecast when available.
+        // Best-effort: AI is optional and should never break ordering.
+        try {
+          const sinceAiIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+          const { data: aiRows, error: aiErr } = await from("ai_consumption")
+            .select("location_id,product_id,suggested_order_7_days,is_anomaly,created_at")
+            .gte("created_at", sinceAiIso)
+            .order("created_at", { ascending: false })
+            .limit(5000);
+          if (aiErr) throw aiErr;
+          const seen = new Set<string>();
+          for (const r of (aiRows ?? []) as Array<{
+            location_id?: string;
+            product_id?: string;
+            suggested_order_7_days?: number | null;
+            is_anomaly?: boolean | null;
+          }>) {
+            const lid = typeof r.location_id === "string" ? r.location_id : "";
+            const pid = typeof r.product_id === "string" ? r.product_id : "";
+            if (!lid || !pid) continue;
+            const key = `${lid}:${pid}`;
+            if (seen.has(key)) continue; // keep most recent
+            seen.add(key);
+            if (r.is_anomaly) continue;
+            const s7 = Math.max(0, Math.round(Number(r.suggested_order_7_days ?? 0) || 0));
+            if (!out[lid]) out[lid] = {};
+            if (s7 > 0) out[lid][pid] = Math.round(s7 * multiplier);
+          }
+        } catch {
+          // ignore AI overlay errors
+        }
+      }
+
       return out;
     }
   } catch {

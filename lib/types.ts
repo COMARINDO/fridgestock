@@ -22,6 +22,8 @@ export type Location = {
   id: string; // uuid
   name: string;
   parent_id: string | null; // uuid
+  type?: "warehouse" | "outlet" | "independent" | null;
+  warehouse_location_id?: string | null; // uuid
 };
 
 export type InventoryRow = {

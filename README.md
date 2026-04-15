@@ -11,6 +11,10 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
 - **2) Env Vars setzen**
   - Kopiere `.env.local.example` nach `.env.local`
   - Trage `NEXT_PUBLIC_SUPABASE_URL` und `NEXT_PUBLIC_SUPABASE_ANON_KEY` ein
+  - Für serverseitige Jobs (Backup / AI) zusätzlich:
+    - `SUPABASE_SERVICE_ROLE_KEY`
+    - `OPENAI_API_KEY`
+    - `AI_CONSUMPTION_CRON_SECRET`
 
 - **3) Starten**
 

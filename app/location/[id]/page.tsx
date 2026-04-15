@@ -6,24 +6,16 @@ import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import { useAuth } from "@/app/providers";
 import {
-  getLocation,
   getProductByBarcode,
   listProductsWithInventoryForLocation,
   createProductWithBarcode,
-  addInventoryDelta,
+  applyInventoryDelta,
   setInventoryQuantity,
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
   deleteInventoryHistoryEntry,
-  listLocations,
-  transferStock,
 } from "@/lib/db";
-import {
-  RABENSTEIN_FILIALE_NAME,
-  RABENSTEIN_LAGER_NAME,
-  TEICH_NAME,
-} from "@/lib/locationConstants";
-import type { InventoryHistoryRow, Location, Product } from "@/lib/types";
+import type { InventoryHistoryRow, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
@@ -63,8 +55,6 @@ function LocationInner() {
   const { location: sessionLocation } = useAuth();
   const { isAdmin } = useAdmin();
 
-  const [currentLocation, setLocation] = useState<Location | null>(null);
-  const [rabensteinLagerId, setRabensteinLagerId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [lastUpdateByProduct, setLastUpdateByProduct] = useState<Record<string, string>>(
@@ -141,16 +131,8 @@ function LocationInner() {
     (async () => {
       setError(null);
       try {
-        const loc = await getLocation(locationId);
-        if (!loc) throw new Error("Platzerl nicht gefunden.");
         const rows = await listProductsWithInventoryForLocation(locationId);
-        const allLocs = await listLocations();
-        const lager = allLocs.find(
-          (l) => l.name.trim().toLowerCase() === RABENSTEIN_LAGER_NAME.toLowerCase()
-        );
-        setRabensteinLagerId(lager?.id ?? null);
 
-        setLocation(loc);
         setProducts(rows);
 
         const q: Record<string, number> = {};
@@ -203,18 +185,6 @@ function LocationInner() {
     return assigned === locationId;
   }, [sessionLocation?.location_id, locationId]);
 
-  const isTeichLocation = useMemo(
-    () => currentLocation?.name.trim().toLowerCase() === TEICH_NAME.toLowerCase(),
-    [currentLocation?.name]
-  );
-
-  const isRabensteinFilialeLocation = useMemo(
-    () =>
-      currentLocation?.name.trim().toLowerCase() ===
-      RABENSTEIN_FILIALE_NAME.toLowerCase(),
-    [currentLocation?.name]
-  );
-
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem("fridge.scanMode.v1");
@@ -222,6 +192,23 @@ function LocationInner() {
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const raw = window.localStorage.getItem("fridge.scanMode.v1");
+        if (raw === "set" || raw === "add") setScanMode(raw);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("storage", sync);
+    window.addEventListener("fridge-scanmode", sync as EventListener);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("fridge-scanmode", sync as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -241,10 +228,10 @@ function LocationInner() {
 
     try {
       if (scanMode === "add") {
-        const prev = pendingQty.current[productId] ?? 0;
+        const prev = quantitiesRef.current[productId] ?? 0;
         const delta = Math.max(0, nextQty - prev);
         if (delta > 0) {
-          const { newQuantity } = await addInventoryDelta({
+          const { newQuantity } = await applyInventoryDelta({
             locationId,
             productId,
             delta,
@@ -266,13 +253,11 @@ function LocationInner() {
 
   function scheduleSave(productId: string, nextQty: number) {
     if (!canWrite) return;
-    const prev = quantitiesRef.current[productId] ?? 0;
     pendingQty.current[productId] = nextQty;
 
     if (timers.current[productId]) clearTimeout(timers.current[productId]);
 
     timers.current[productId] = setTimeout(async () => {
-      pendingQty.current[productId] = prev;
       await runSave(productId);
     }, 200); // ~200ms debounce
   }
@@ -286,41 +271,8 @@ function LocationInner() {
     const d = Math.floor(Number(delta));
     if (!Number.isFinite(d) || d <= 0) return false;
 
-    if (isTeichLocation || isRabensteinFilialeLocation) {
-      if (!rabensteinLagerId) {
-        setError(
-          "Rabenstein Lager wurde nicht gefunden. Bitte Seite neu laden."
-        );
-        return false;
-      }
-      try {
-        const { newToQuantity } = await transferStock({
-          productId,
-          fromLocationId: rabensteinLagerId,
-          toLocationId: locationId,
-          quantity: d,
-        });
-        quantitiesRef.current = {
-          ...quantitiesRef.current,
-          [productId]: newToQuantity,
-        };
-        setQuantities((m) => ({ ...m, [productId]: newToQuantity }));
-        try {
-          setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
-        } catch {
-          // ignore
-        }
-        setRefillToast(`+${d} von ${RABENSTEIN_LAGER_NAME}`);
-        window.setTimeout(() => setRefillToast(null), 2500);
-        return true;
-      } catch (e: unknown) {
-        setError(errorMessage(e, "Transfer fehlgeschlagen."));
-        return false;
-      }
-    }
-
     try {
-      const { newQuantity } = await addInventoryDelta({
+      const { newQuantity } = await applyInventoryDelta({
         locationId,
         productId,
         delta: d,
@@ -330,7 +282,7 @@ function LocationInner() {
     } catch {
       return false;
     }
-    setRefillToast(`+${d} hinzugefügt`);
+    setRefillToast(`+${d} gebucht`);
     window.setTimeout(() => setRefillToast(null), 2500);
     return true;
   }
@@ -590,33 +542,7 @@ function LocationInner() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <main className="w-full px-4 py-4 pb-28">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={[
-              "h-11 px-4 rounded-2xl border-2 text-sm font-black transition-colors",
-              scanMode === "set"
-                ? "border-blue-700 bg-blue-700 text-white"
-                : "border-black bg-white text-black active:scale-[0.99]",
-            ].join(" ")}
-            onClick={() => setScanMode("set")}
-          >
-            Inventur
-          </button>
-          <button
-            type="button"
-            className={[
-              "h-11 px-4 rounded-2xl border-2 text-sm font-black transition-colors",
-              scanMode === "add"
-                ? "border-emerald-700 bg-emerald-700 text-white"
-                : "border-black bg-white text-black active:scale-[0.99]",
-            ].join(" ")}
-            onClick={() => setScanMode("add")}
-          >
-            Auffüllen
-          </button>
-        </div>
+      <main className="w-full px-4 pt-2 pb-28">
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleProducts.map((p) => {
                 const qty = quantities[p.id] ?? 0;
@@ -1274,11 +1200,6 @@ function LocationInner() {
                 <div className="mt-1 text-sm font-black text-black/60">
                   Aktuell Teich: {quantities[refillOpen.productId] ?? 0}
                 </div>
-                {isTeichLocation || isRabensteinFilialeLocation ? (
-                  <div className="mt-2 text-xs font-black text-emerald-900">
-                    Buchung von {RABENSTEIN_LAGER_NAME} — gleiche Menge wird dort abgezogen.
-                  </div>
-                ) : null}
               </div>
               <button
                 type="button"
