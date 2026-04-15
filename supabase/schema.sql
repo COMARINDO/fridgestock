@@ -356,6 +356,9 @@ begin
 end;
 $$;
 
+grant execute on function public.apply_inventory_delta(uuid, uuid, uuid, integer) to anon;
+grant execute on function public.apply_inventory_delta(uuid, uuid, uuid, integer) to authenticated;
+
 -- Usage helpers (consumption only, ignore refills)
 -- Calculates usage as sum of negative diffs between consecutive snapshots.
 drop function if exists public.usage_by_location_product_since(timestamptz);

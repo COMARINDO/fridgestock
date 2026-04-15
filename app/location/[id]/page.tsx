@@ -260,9 +260,15 @@ function LocationInner() {
    * am Teich und in der Rabenstein Filiale atomar vom Rabenstein Lager.
    */
   async function addPositiveDelta(productId: string, delta: number): Promise<boolean> {
-    if (!locationId || !canWrite) return false;
+    if (!locationId || !canWrite) {
+      setError("Keine Schreibrechte für dieses Platzerl.");
+      return false;
+    }
     const d = Math.floor(Number(delta));
-    if (!Number.isFinite(d) || d <= 0) return false;
+    if (!Number.isFinite(d) || d <= 0) {
+      setError("Bitte eine Zahl größer als 0 eingeben.");
+      return false;
+    }
 
     try {
       const { newQuantity } = await applyInventoryDelta({
@@ -272,7 +278,8 @@ function LocationInner() {
       });
       quantitiesRef.current = { ...quantitiesRef.current, [productId]: newQuantity };
       setQuantities((m) => ({ ...m, [productId]: newQuantity }));
-    } catch {
+    } catch (e: unknown) {
+      setError(errorMessage(e, "Auffüllen fehlgeschlagen."));
       return false;
     }
     setRefillToast(`+${d} gebucht`);
@@ -654,20 +661,6 @@ function LocationInner() {
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
-                      <button
-                        className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
-                        disabled={!canWrite || scanMode === "add"}
-                        onClick={() => {
-                          if (scanMode === "add") return;
-                          const next = Math.max(0, qty - 1);
-                          setQuantities((m) => ({ ...m, [p.id]: next }));
-                          qtyInputs.current[p.id]?.focus();
-                        }}
-                        aria-label="minus"
-                      >
-                        −
-                      </button>
-
                       {editingId === p.id ? (
                         scanMode === "add" ? (
                           <div className="flex flex-1 min-w-0 items-center gap-2">
@@ -691,11 +684,15 @@ function LocationInner() {
                             <button
                               type="button"
                               className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-sm font-black active:scale-[0.99]"
+                              disabled={!canWrite}
                               onClick={() => {
                                 void (async () => {
                                   const n = Number(inlineAddDraft || "0");
                                   const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-                                  if (!d) return;
+                                  if (!d) {
+                                    setError("Bitte eine Zahl größer als 0 eingeben.");
+                                    return;
+                                  }
                                   const ok = await addPositiveDelta(p.id, d);
                                   if (ok) {
                                     setInlineAddDraft("1");
