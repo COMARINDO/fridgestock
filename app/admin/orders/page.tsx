@@ -20,6 +20,7 @@ import {
 import {
   HOFSTETTEN_NAME,
   KIRCHBERG_NAME,
+  RABENSTEIN_FILIALE_NAME,
   RABENSTEIN_LAGER_NAME,
   TEICH_NAME,
 } from "@/lib/locationConstants";
@@ -43,8 +44,10 @@ type CentralRowModel = {
   name: string;
   stockRabenstein: number;
   stockTeich: number;
+  stockFiliale: number;
   usageTeich7d: number;
   usageRabenstein7d: number;
+  usageFiliale7d: number;
   totalUsage7d: number;
   calculatedOrder: number;
   displayOrder: number;
@@ -92,6 +95,10 @@ export default function AdminOrdersPage() {
   );
   const teichId = useMemo(
     () => resolveLocationIdByName(locations, TEICH_NAME),
+    [locations]
+  );
+  const filialeId = useMemo(
+    () => resolveLocationIdByName(locations, RABENSTEIN_FILIALE_NAME),
     [locations]
   );
   const hofstettenId = useMemo(
@@ -176,6 +183,7 @@ export default function AdminOrdersPage() {
     if (!rabensteinId) return [] as CentralRowModel[];
     const list: CentralRowModel[] = [];
     const tId = teichId;
+    const fId = filialeId;
 
     for (const p of products) {
       const usageTeich = Math.max(
@@ -186,13 +194,19 @@ export default function AdminOrdersPage() {
         0,
         Math.round(usageByLoc[rabensteinId]?.[p.id] ?? 0)
       );
+      const usageFiliale = Math.max(
+        0,
+        Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
+      );
       const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
       const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
+      const stockFiliale = fId ? (inventoryQty[fId]?.[p.id] ?? 0) : 0;
 
       const { totalUsage7d, orderQuantity: calculatedOrder } =
         computeCentralWarehouseOrder({
           usageTeich7d: usageTeich,
           usageRabenstein7d: usageRab,
+          usageFiliale7d: usageFiliale,
           stockRabenstein: stockRab,
         });
 
@@ -203,8 +217,10 @@ export default function AdminOrdersPage() {
       const include =
         usageTeich > 0 ||
         usageRab > 0 ||
+        usageFiliale > 0 ||
         stockRab > 0 ||
         stockTeich > 0 ||
+        stockFiliale > 0 ||
         overridden ||
         calculatedOrder > 0 ||
         displayOrder > 0;
@@ -215,8 +231,10 @@ export default function AdminOrdersPage() {
         name: formatProductName(p),
         stockRabenstein: stockRab,
         stockTeich,
+        stockFiliale,
         usageTeich7d: usageTeich,
         usageRabenstein7d: usageRab,
+        usageFiliale7d: usageFiliale,
         totalUsage7d,
         calculatedOrder,
         displayOrder,
@@ -232,6 +250,7 @@ export default function AdminOrdersPage() {
     overrideByKey,
     rabensteinId,
     teichId,
+    filialeId,
   ]);
 
   const hofstettenRows = useMemo(() => {
@@ -315,61 +334,80 @@ export default function AdminOrdersPage() {
   }, [products, usageByLoc, inventoryQty, overrideByKey, kirchbergId]);
 
   const gesamtRows = useMemo(() => {
-    const byId = new Map<
-      string,
-      {
-        name: string;
-        rabenstein: number;
-        hofstetten: number;
-        kirchberg: number;
+    // Build totals directly from raw inputs so "Gesamt" isn't empty just because
+    // individual tabs filter out zeros.
+    const out: Array<{
+      productId: string;
+      name: string;
+      rabenstein: number;
+      hofstetten: number;
+      kirchberg: number;
+      sum: number;
+    }> = [];
+
+    for (const p of products) {
+      const name = formatProductName(p);
+
+      // Central (lager): demand = Teich + Filiale + Lager usage; stock = Lager stock
+      let central = 0;
+      if (rabensteinId) {
+        const tId = teichId;
+        const fId = filialeId;
+        const usageTeich = Math.max(0, Math.round(tId ? (usageByLoc[tId]?.[p.id] ?? 0) : 0));
+        const usageFiliale = Math.max(
+          0,
+          Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
+        );
+        const usageRab = Math.max(0, Math.round(usageByLoc[rabensteinId]?.[p.id] ?? 0));
+        const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
+        const { orderQuantity } = computeCentralWarehouseOrder({
+          usageTeich7d: usageTeich,
+          usageRabenstein7d: usageRab,
+          usageFiliale7d: usageFiliale,
+          stockRabenstein: stockRab,
+        });
+        const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
+        central = ov ? ov.quantity : orderQuantity;
       }
-    >();
 
-    for (const r of centralRows) {
-      const cur = byId.get(r.productId) ?? {
-        name: r.name,
-        rabenstein: 0,
-        hofstetten: 0,
-        kirchberg: 0,
-      };
-      cur.name = r.name;
-      cur.rabenstein = r.displayOrder;
-      byId.set(r.productId, cur);
-    }
-    for (const r of hofstettenRows) {
-      const cur = byId.get(r.productId) ?? {
-        name: r.name,
-        rabenstein: 0,
-        hofstetten: 0,
-        kirchberg: 0,
-      };
-      cur.name = r.name;
-      cur.hofstetten = r.displayOrder;
-      byId.set(r.productId, cur);
-    }
-    for (const r of kirchbergRows) {
-      const cur = byId.get(r.productId) ?? {
-        name: r.name,
-        rabenstein: 0,
-        hofstetten: 0,
-        kirchberg: 0,
-      };
-      cur.name = r.name;
-      cur.kirchberg = r.displayOrder;
-      byId.set(r.productId, cur);
+      // Local outlets
+      let hof = 0;
+      if (hofstettenId) {
+        const usage = Math.max(0, Math.round(usageByLoc[hofstettenId]?.[p.id] ?? 0));
+        const stock = inventoryQty[hofstettenId]?.[p.id] ?? 0;
+        const { orderQuantity } = computeLocalOutletOrder({ usage7d: usage, stock });
+        const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
+        hof = ov ? ov.quantity : orderQuantity;
+      }
+
+      let kir = 0;
+      if (kirchbergId) {
+        const usage = Math.max(0, Math.round(usageByLoc[kirchbergId]?.[p.id] ?? 0));
+        const stock = inventoryQty[kirchbergId]?.[p.id] ?? 0;
+        const { orderQuantity } = computeLocalOutletOrder({ usage7d: usage, stock });
+        const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
+        kir = ov ? ov.quantity : orderQuantity;
+      }
+
+      const sum = central + hof + kir;
+      // Keep the view useful: show only products that need ordering somewhere.
+      if (sum <= 0) continue;
+      out.push({ productId: p.id, name, rabenstein: central, hofstetten: hof, kirchberg: kir, sum });
     }
 
-    const out = Array.from(byId.entries()).map(([productId, v]) => ({
-      productId,
-      name: v.name,
-      rabenstein: v.rabenstein,
-      hofstetten: v.hofstetten,
-      kirchberg: v.kirchberg,
-      sum: v.rabenstein + v.hofstetten + v.kirchberg,
-    }));
     out.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return out;
-  }, [centralRows, hofstettenRows, kirchbergRows]);
+  }, [
+    products,
+    rabensteinId,
+    teichId,
+    filialeId,
+    hofstettenId,
+    kirchbergId,
+    usageByLoc,
+    inventoryQty,
+    overrideByKey,
+  ]);
 
   const sumCentral = useMemo(
     () => centralRows.reduce((s, r) => s + r.displayOrder, 0),
@@ -540,7 +578,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
           <section className="mt-8 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
@@ -555,12 +593,22 @@ export default function AdminOrdersPage() {
                     <span className="text-[11px] font-black text-black/55">7d</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
+                    {RABENSTEIN_FILIALE_NAME}
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">7d</span>
+                  </th>
+                  <th className="p-3 font-black text-black tabular-nums">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">7d</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
                     {TEICH_NAME}
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Bestand</span>
+                  </th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    {RABENSTEIN_FILIALE_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
@@ -589,10 +637,16 @@ export default function AdminOrdersPage() {
                         {r.usageTeich7d}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
+                        {r.usageFiliale7d}
+                      </td>
+                      <td className="p-3 font-black tabular-nums text-black">
                         {r.usageRabenstein7d}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black/80">
                         {r.stockTeich}
+                      </td>
+                      <td className="p-3 font-black tabular-nums text-black/80">
+                        {r.stockFiliale}
                       </td>
                       <td className="p-3">
                         {isEd ? (
@@ -851,7 +905,9 @@ export default function AdminOrdersPage() {
                   <th className="p-3 font-black text-black tabular-nums">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
-                    <span className="text-[11px] font-black text-black/55">+ {TEICH_NAME}</span>
+                    <span className="text-[11px] font-black text-black/55">
+                      + {TEICH_NAME} + {RABENSTEIN_FILIALE_NAME}
+                    </span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">{HOFSTETTEN_NAME}</th>
                   <th className="p-3 font-black text-black tabular-nums">{KIRCHBERG_NAME}</th>

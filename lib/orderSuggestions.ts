@@ -10,11 +10,13 @@ export const CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER = false;
 export function computeCentralWarehouseOrder(input: {
   usageTeich7d: number;
   usageRabenstein7d: number;
+  usageFiliale7d?: number;
   stockRabenstein: number;
 }): { totalUsage7d: number; orderQuantity: number } {
   const uT = Math.max(0, Math.round(Number(input.usageTeich7d) || 0));
   const uR = Math.max(0, Math.round(Number(input.usageRabenstein7d) || 0));
-  const total = uT + uR;
+  const uF = Math.max(0, Math.round(Number(input.usageFiliale7d) || 0));
+  const total = uT + uR + uF;
   const stock = Math.max(0, Math.floor(Number(input.stockRabenstein) || 0));
 
   if (CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER) {
