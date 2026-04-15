@@ -72,8 +72,8 @@ function LocationInner() {
   } | null>(null);
   const [scanMode, setScanMode] = useState<"choose" | "set" | "add">("choose");
   const [setQty, setSetQty] = useState("");
-  const [addQty, setAddQty] = useState("1");
-  const [inlineAddDraft, setInlineAddDraft] = useState("1");
+  const [addQty, setAddQty] = useState("0");
+  const [inlineAddDraft, setInlineAddDraft] = useState("0");
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [newProductBrand, setNewProductBrand] = useState("");
   const [newProductName, setNewProductName] = useState("");
@@ -377,7 +377,7 @@ function LocationInner() {
         setScanSheet(null);
         setScanMode("choose");
         setSetQty(String(quantitiesRef.current[p.id] ?? 0));
-        setAddQty("1");
+        setAddQty("0");
       } catch (e: unknown) {
         setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
       }
@@ -690,7 +690,7 @@ function LocationInner() {
                                   }
                                   const ok = await addPositiveDelta(p.id, d);
                                   if (ok) {
-                                    setInlineAddDraft("1");
+                                    setInlineAddDraft("0");
                                     setEditingId(null);
                                     qtyInputs.current[p.id]?.focus();
                                   }
@@ -769,7 +769,7 @@ function LocationInner() {
                           disabled={!canWrite}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (scanMode === "add") setInlineAddDraft("1");
+                            if (scanMode === "add") setInlineAddDraft("0");
                             openQtyEditor(p.id);
                           }}
                           className={[
@@ -1169,6 +1169,7 @@ function LocationInner() {
                       const add = Number.isFinite(inc) ? Math.max(0, inc) : 1;
                       const ok = await addPositiveDelta(scanSheet.productId, add);
                       if (ok) {
+                        setAddQty("0");
                         setScanSheet(null);
                         setTimeout(
                           () => qtyInputs.current[scanSheet.productId]?.focus(),
