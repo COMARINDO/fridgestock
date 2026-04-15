@@ -73,6 +73,7 @@ function LocationInner() {
   const [scanMode, setScanMode] = useState<"choose" | "set" | "add">("choose");
   const [setQty, setSetQty] = useState("");
   const [addQty, setAddQty] = useState("1");
+  const [inlineAddDraft, setInlineAddDraft] = useState("1");
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [newProductBrand, setNewProductBrand] = useState("");
   const [newProductName, setNewProductName] = useState("");
@@ -96,7 +97,6 @@ function LocationInner() {
     y: number;
     moved: boolean;
   } | null>(null);
-  const plusTouchRef = useRef<Record<string, { x: number; y: number; moved: boolean }>>({});
   const qtyInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -109,13 +109,6 @@ function LocationInner() {
   const [historyDeleteId, setHistoryDeleteId] = useState<string | null>(null);
   const [historyErr, setHistoryErr] = useState<string | null>(null);
 
-  const [refillOpen, setRefillOpen] = useState<{
-    productId: string;
-    productName: string;
-  } | null>(null);
-  const [refillCustom, setRefillCustom] = useState("");
-  const [refillBusy, setRefillBusy] = useState(false);
-  const [refillErr, setRefillErr] = useState<string | null>(null);
   const [refillToast, setRefillToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -605,18 +598,6 @@ function LocationInner() {
                       if (touch && s?.id === p.id) {
                         const dx = touch.clientX - s.x;
                         const dy = touch.clientY - s.y;
-                        // Nach links wischen: Nachfüll-Menü (negatives dx).
-                        if (dx < -50 && Math.abs(dy) < 25) {
-                          if (canWrite) {
-                            setRefillErr(null);
-                            setRefillCustom("");
-                            setRefillOpen({
-                              productId: p.id,
-                              productName: formatProductName(p),
-                            });
-                          }
-                          return;
-                        }
                         // Nach rechts wischen: Schnellbearbeitung (absolute Menge).
                         if (dx > 50 && Math.abs(dy) < 25) {
                           setHistoryErr(null);
@@ -675,10 +656,11 @@ function LocationInner() {
                     <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
                       <button
                         className="h-14 w-14 rounded-2xl border-2 border-black bg-white text-2xl font-black text-black active:scale-[0.99]"
+                        disabled={!canWrite || scanMode === "add"}
                         onClick={() => {
+                          if (scanMode === "add") return;
                           const next = Math.max(0, qty - 1);
                           setQuantities((m) => ({ ...m, [p.id]: next }));
-                          scheduleSave(p.id, next);
                           qtyInputs.current[p.id]?.focus();
                         }}
                         aria-label="minus"
@@ -687,40 +669,108 @@ function LocationInner() {
                       </button>
 
                       {editingId === p.id ? (
-                        <input
-                          inputMode="numeric"
-                          type="tel"
-                          pattern="[0-9]*"
-                          enterKeyHint="done"
-                          value={String(qty)}
-                          onChange={(e) => {
-                            const v = Number(e.target.value.replace(/[^\d]/g, ""));
-                            const next = Number.isFinite(v) ? v : 0;
-                            quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
-                            setQuantities((m) => ({ ...m, [p.id]: next }));
-                            scheduleSave(p.id, next);
-                          }}
-                          onFocus={(e) => {
-                            e.currentTarget.select();
-                          }}
-                          onBlur={() => {
-                            if (timers.current[p.id]) clearTimeout(timers.current[p.id]);
-                            void runSave(p.id);
-                            setEditingId((cur) => (cur === p.id ? null : cur));
-                          }}
-                          ref={(el) => {
-                            qtyInputs.current[p.id] = el;
-                          }}
-                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                          aria-label="Menge bearbeiten"
-                          autoFocus
-                        />
+                        scanMode === "add" ? (
+                          <div className="flex flex-1 min-w-0 items-center gap-2">
+                            <input
+                              inputMode="numeric"
+                              type="tel"
+                              pattern="[0-9]*"
+                              enterKeyHint="done"
+                              value={inlineAddDraft}
+                              onChange={(e) => {
+                                setInlineAddDraft(e.target.value.replace(/[^\d]/g, ""));
+                              }}
+                              onFocus={(e) => e.currentTarget.select()}
+                              ref={(el) => {
+                                qtyInputs.current[p.id] = el;
+                              }}
+                              className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                              aria-label="Auffüllen (+X)"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-sm font-black active:scale-[0.99]"
+                              onClick={() => {
+                                void (async () => {
+                                  const n = Number(inlineAddDraft || "0");
+                                  const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                                  if (!d) return;
+                                  const ok = await addPositiveDelta(p.id, d);
+                                  if (ok) {
+                                    setInlineAddDraft("1");
+                                    setEditingId(null);
+                                    qtyInputs.current[p.id]?.focus();
+                                  }
+                                })();
+                              }}
+                            >
+                              + buchen
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-1 min-w-0 items-center gap-2">
+                            <input
+                              inputMode="numeric"
+                              type="tel"
+                              pattern="[0-9]*"
+                              enterKeyHint="done"
+                              value={String(qty)}
+                              onChange={(e) => {
+                                const v = Number(e.target.value.replace(/[^\d]/g, ""));
+                                const next = Number.isFinite(v) ? v : 0;
+                                quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
+                                setQuantities((m) => ({ ...m, [p.id]: next }));
+                              }}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={() => {
+                                setEditingId((cur) => (cur === p.id ? null : cur));
+                              }}
+                              ref={(el) => {
+                                qtyInputs.current[p.id] = el;
+                              }}
+                              className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                              aria-label="Inventur (absolut)"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="h-14 px-4 rounded-2xl bg-blue-700 text-white text-sm font-black active:scale-[0.99]"
+                              onClick={() => {
+                                void (async () => {
+                                  if (!locationId || !canWrite) return;
+                                  const next = quantitiesRef.current[p.id] ?? 0;
+                                  try {
+                                    await setInventoryQuantity({
+                                      locationId,
+                                      productId: p.id,
+                                      quantity: next,
+                                    });
+                                    try {
+                                      setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+                                    } catch {
+                                      // ignore
+                                    }
+                                    setRefillToast(`Inventur: ${next}`);
+                                    window.setTimeout(() => setRefillToast(null), 2000);
+                                    setEditingId(null);
+                                  } catch {
+                                    // ignore
+                                  }
+                                })();
+                              }}
+                            >
+                              Inventur
+                            </button>
+                          </div>
+                        )
                       ) : (
                         <button
                           type="button"
                           disabled={!canWrite}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (scanMode === "add") setInlineAddDraft("1");
                             openQtyEditor(p.id);
                           }}
                           className={[
@@ -734,45 +784,6 @@ function LocationInner() {
                           {qty}
                         </button>
                       )}
-
-                      <button
-                        className="h-14 w-14 rounded-2xl bg-black text-white text-2xl font-black active:scale-[0.99]"
-                        onTouchStart={(e) => {
-                          const touch = e.touches[0];
-                          if (!touch) return;
-                          plusTouchRef.current[p.id] = {
-                            x: touch.clientX,
-                            y: touch.clientY,
-                            moved: false,
-                          };
-                        }}
-                        onTouchMove={(e) => {
-                          const touch = e.touches[0];
-                          const s = plusTouchRef.current[p.id];
-                          if (!touch || !s) return;
-                          const dx = touch.clientX - s.x;
-                          const dy = touch.clientY - s.y;
-                          if (Math.hypot(dx, dy) > 10) s.moved = true;
-                        }}
-                        onTouchEnd={(e) => {
-                          const s = plusTouchRef.current[p.id];
-                          if (s?.moved) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }
-                        }}
-                        onClick={() => {
-                          const s = plusTouchRef.current[p.id];
-                          if (s?.moved) return;
-                          void (async () => {
-                            const ok = await addPositiveDelta(p.id, 1);
-                            if (ok) qtyInputs.current[p.id]?.focus();
-                          })();
-                        }}
-                        aria-label="plus"
-                      >
-                        +
-                      </button>
                     </div>
                   </div>
                 );
@@ -1185,118 +1196,6 @@ function LocationInner() {
       {refillToast ? (
         <div className="fixed bottom-28 left-4 right-4 z-[60] rounded-2xl border-2 border-black bg-emerald-700 px-4 py-3 text-center text-sm font-black text-white shadow-lg">
           {refillToast}
-        </div>
-      ) : null}
-
-      {refillOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-black">Nachfüllen</div>
-                <div className="text-2xl font-black leading-tight truncate text-black">
-                  {refillOpen.productName}
-                </div>
-                <div className="mt-1 text-sm font-black text-black/60">
-                  Aktuell Teich: {quantities[refillOpen.productId] ?? 0}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
-                onClick={() => setRefillOpen(null)}
-              >
-                Schließen
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                className="h-14 text-lg"
-                disabled={refillBusy || !canWrite}
-                onClick={async () => {
-                  if (!refillOpen) return;
-                  setRefillBusy(true);
-                  setRefillErr(null);
-                  try {
-                    const ok = await addPositiveDelta(refillOpen.productId, 12);
-                    if (ok) setRefillOpen(null);
-                  } finally {
-                    setRefillBusy(false);
-                  }
-                }}
-              >
-                +12
-              </Button>
-              <Button
-                type="button"
-                className="h-14 text-lg"
-                disabled={refillBusy || !canWrite}
-                onClick={async () => {
-                  if (!refillOpen) return;
-                  setRefillBusy(true);
-                  setRefillErr(null);
-                  try {
-                    const ok = await addPositiveDelta(refillOpen.productId, 24);
-                    if (ok) setRefillOpen(null);
-                  } finally {
-                    setRefillBusy(false);
-                  }
-                }}
-              >
-                +24
-              </Button>
-            </div>
-
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Eigene Menge (nur Plus)</div>
-              <Input
-                value={refillCustom}
-                onChange={(e) => {
-                  setRefillCustom(e.target.value.replace(/[^\d]/g, ""));
-                  setRefillErr(null);
-                }}
-                inputMode="numeric"
-                type="tel"
-                placeholder="z.B. 6"
-                className="mt-2 h-14 text-[22px] font-black text-center tracking-widest"
-              />
-            </div>
-
-            {refillErr ? (
-              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">{refillErr}</div>
-            ) : null}
-
-            <div className="mt-4">
-              <Button
-                type="button"
-                className="h-14 text-lg"
-                disabled={refillBusy || !canWrite}
-                onClick={async () => {
-                  if (!refillOpen) return;
-                  const n = Number(refillCustom);
-                  if (!Number.isFinite(n) || n <= 0) {
-                    setRefillErr("Bitte eine Zahl größer als 0 eingeben.");
-                    return;
-                  }
-                  setRefillBusy(true);
-                  setRefillErr(null);
-                  try {
-                    const ok = await addPositiveDelta(refillOpen.productId, n);
-                    if (ok) {
-                      setRefillOpen(null);
-                      setRefillCustom("");
-                    }
-                  } finally {
-                    setRefillBusy(false);
-                  }
-                }}
-              >
-                {refillBusy ? "Speichert…" : "Hinzufügen"}
-              </Button>
-            </div>
-          </div>
         </div>
       ) : null}
 
