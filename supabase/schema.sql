@@ -233,15 +233,13 @@ alter table public.inventory_history add column if not exists mode text;
 -- Optional: basic validation for mode values (null allowed for legacy rows)
 do $$
 begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'inventory_history_mode_check'
-  ) then
-    alter table public.inventory_history
-      add constraint inventory_history_mode_check
-      check (mode is null or mode in ('count','add','transfer'));
+  -- Ensure the check constraint allows all supported modes (drop/recreate if needed).
+  if exists (select 1 from pg_constraint where conname = 'inventory_history_mode_check') then
+    alter table public.inventory_history drop constraint inventory_history_mode_check;
   end if;
+  alter table public.inventory_history
+    add constraint inventory_history_mode_check
+    check (mode is null or mode in ('count','add','transfer','waste','loss'));
 end;
 $$;
 
@@ -417,6 +415,80 @@ $$;
 grant execute on function public.apply_inventory_delta(uuid, uuid, uuid, integer) to anon;
 grant execute on function public.apply_inventory_delta(uuid, uuid, uuid, integer) to authenticated;
 
+-- Inventory adjustments that must NOT count as consumption (loss / waste).
+drop function if exists public.record_inventory_adjustment(uuid, uuid, uuid, integer, text);
+create or replace function public.record_inventory_adjustment(
+  p_user_id uuid,
+  p_location_id uuid,
+  p_product_id uuid,
+  p_delta integer,
+  p_reason text -- 'waste' or 'loss'
+) returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cur int;
+  v_next int;
+begin
+  if p_delta is null or p_delta <= 0 then
+    raise exception 'delta must be positive'
+      using errcode = 'P0001';
+  end if;
+
+  if p_reason not in ('waste', 'loss') then
+    raise exception 'invalid reason'
+      using errcode = 'P0001';
+  end if;
+
+  insert into public.inventory (location_id, product_id, quantity)
+  values (p_location_id, p_product_id, 0)
+  on conflict do nothing;
+
+  select quantity into v_cur
+  from public.inventory
+  where location_id = p_location_id
+    and product_id = p_product_id
+  for update;
+
+  v_cur := coalesce(v_cur, 0);
+
+  if v_cur < p_delta then
+    raise exception 'not enough stock'
+      using errcode = 'P0001';
+  end if;
+
+  v_next := v_cur - p_delta;
+
+  update public.inventory
+  set quantity = v_next
+  where location_id = p_location_id
+    and product_id = p_product_id;
+
+  insert into public.inventory_history (
+    user_id,
+    location_id,
+    product_id,
+    quantity,
+    mode,
+    is_transfer
+  ) values (
+    p_user_id,
+    p_location_id,
+    p_product_id,
+    v_next,
+    p_reason,
+    false
+  );
+
+  return v_next;
+end;
+$$;
+
+grant execute on function public.record_inventory_adjustment(uuid, uuid, uuid, integer, text) to anon;
+grant execute on function public.record_inventory_adjustment(uuid, uuid, uuid, integer, text) to authenticated;
+
 -- Usage helpers (consumption only, ignore refills)
 -- Calculates usage as sum of negative diffs between consecutive snapshots.
 drop function if exists public.usage_by_location_product_since(timestamptz);
@@ -494,21 +566,23 @@ as $$
       and timestamp >= p_since
   )
   select
-    location_id,
-    product_id,
+    d.location_id,
+    d.product_id,
     coalesce(
       sum(
         case
-          when diff < 0
-            and not coalesce(is_transfer, false)
-            and coalesce(mode, '') <> 'transfer'
-            then -diff
+          when d.diff < 0
+            and not coalesce(d.is_transfer, false)
+            and coalesce(d.mode, '') not in ('transfer','waste','loss')
+            then -d.diff
           else 0
         end
       ),
       0
     )::integer as usage
-  from diffs
-  group by location_id, product_id;
+  from diffs d
+  join public.locations l on l.id = d.location_id
+  where coalesce(l.type, '') <> 'warehouse'
+  group by d.location_id, d.product_id;
 $$;
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MutableRefObject } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
 import { useAuth } from "@/app/providers";
@@ -10,6 +11,7 @@ import {
   listProductsWithInventoryForLocation,
   createProductWithBarcode,
   applyInventoryDelta,
+  recordInventoryAdjustment,
   setInventoryQuantity,
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
@@ -29,6 +31,7 @@ import {
   removeFirstFromQueue,
   type OfflineQueueItem,
 } from "@/lib/offlineQueue";
+import { Grid } from "react-window";
 
 function formatHistoryTimestamp(iso: string): string {
   try {
@@ -45,6 +48,339 @@ function formatHistoryTimestamp(iso: string): string {
     return iso;
   }
 }
+
+const VirtualProductGrid = memo(function VirtualProductGrid(props: {
+  products: Product[];
+  quantities: Record<string, number>;
+  highlightId: string | null;
+  isAdmin: boolean;
+  lastUpdateByProduct: Record<string, string>;
+  canWrite: boolean;
+  editingId: string | null;
+  scanMode: "set" | "add" | "choose";
+  inlineAddDraft: string;
+  viewport: { w: number; h: number };
+  onSetEditingId: (id: string | null) => void;
+  onSetInlineAddDraft: (v: string) => void;
+  onSetQuantityDraft: (productId: string, next: number) => void;
+  onSubmitCount: (productId: string) => void;
+  onFocusQty: (productId: string) => void;
+  onOpenQtyEditor: (productId: string) => void;
+  onFocusQtyAndSelect: (productId: string) => void;
+  onAddPositiveDelta: (productId: string, delta: number) => Promise<boolean>;
+  onRecordAdjustment: (productId: string, delta: number, reason: "waste" | "loss") => Promise<boolean>;
+  onOpenQuickEdit: (productId: string, productName: string) => void;
+  rowRefSetter: (productId: string, el: HTMLDivElement | null) => void;
+  qtyInputRefSetter: (productId: string, el: HTMLInputElement | null) => void;
+  touchState: {
+    touchScrollRef: MutableRefObject<{
+      id: string;
+      x: number;
+      y: number;
+      moved: boolean;
+    } | null>;
+    touchTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
+    longPressFiredRef: MutableRefObject<boolean>;
+  };
+  onSetError: (msg: string | null) => void;
+  onSetHighlightId: (id: string | null) => void;
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-window v2 types are too strict for our dynamic cell props usage
+  const GridAny = Grid as unknown as (p: any) => any;
+  const columns = props.viewport.w >= 640 ? 2 : 1;
+  const gap = 12;
+  const gridWidth = Math.max(320, props.viewport.w - 32);
+  const columnWidth =
+    columns === 1 ? gridWidth : Math.floor((gridWidth - gap * (columns - 1)) / columns);
+  const rowHeight = 190;
+  const rowCount = Math.ceil(props.products.length / columns);
+  const gridHeight = Math.max(320, props.viewport.h - 220);
+
+  const Cell = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-window cell args are not reliably typed across bundlers
+    ({ columnIndex, rowIndex, style }: any) => {
+      const idx = rowIndex * columns + columnIndex;
+      if (idx >= props.products.length) return null;
+      const p = props.products[idx] as Product | undefined;
+      if (!p) return null;
+      const qty = props.quantities[p.id] ?? 0;
+      const ring = props.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
+
+      const leftPad = columnIndex > 0 ? gap : 0;
+      const topPad = rowIndex > 0 ? gap : 0;
+      const mergedStyle: CSSProperties = {
+        ...style,
+        left: Number(style.left) + leftPad,
+        top: Number(style.top) + topPad,
+        width: Number(style.width) - leftPad,
+        height: Number(style.height) - topPad,
+      };
+
+      return (
+        <div style={mergedStyle}>
+          <div
+            className={[
+              "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+              ring,
+            ].join(" ")}
+            onClick={(e) => {
+              if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
+              if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
+              props.onFocusQty(p.id);
+            }}
+                onTouchStart={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+                  const touch = e.touches[0];
+                  if (!touch) return;
+                  props.touchState.touchScrollRef.current = {
+                    id: p.id,
+                    x: touch.clientX,
+                    y: touch.clientY,
+                    moved: false,
+                  };
+                  props.touchState.longPressFiredRef.current = false;
+                  if (props.touchState.touchTimerRef.current)
+                    clearTimeout(props.touchState.touchTimerRef.current);
+                  props.touchState.touchTimerRef.current = setTimeout(() => {
+                    props.touchState.longPressFiredRef.current = true;
+                    props.onSetEditingId(p.id);
+                    props.onFocusQtyAndSelect(p.id);
+                  }, 500);
+                }}
+                onTouchMove={(e) => {
+                  const touch = e.touches[0];
+                  const s = props.touchState.touchScrollRef.current;
+                  if (!touch || !s || s.id !== p.id) return;
+                  const dx = touch.clientX - s.x;
+                  const dy = touch.clientY - s.y;
+                  if (Math.hypot(dx, dy) > 10) {
+                    s.moved = true;
+                    if (props.touchState.touchTimerRef.current)
+                      clearTimeout(props.touchState.touchTimerRef.current);
+                    props.touchState.touchTimerRef.current = null;
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  const t = e.target as HTMLElement;
+                  const tag = t.tagName.toLowerCase();
+                  if (tag === "button" || tag === "input") return;
+                  if (props.touchState.touchTimerRef.current)
+                    clearTimeout(props.touchState.touchTimerRef.current);
+                  props.touchState.touchTimerRef.current = null;
+                  if (props.touchState.longPressFiredRef.current) return;
+                  const touch = e.changedTouches[0];
+                  const s = props.touchState.touchScrollRef.current;
+                  props.touchState.touchScrollRef.current = null;
+                  if (touch && s?.id === p.id) {
+                    const dx = touch.clientX - s.x;
+                    const dy = touch.clientY - s.y;
+                    if (dx > 50 && Math.abs(dy) < 25) {
+                      props.onOpenQuickEdit(p.id, formatProductName(p));
+                      return;
+                    }
+                    if (s.moved) return;
+                  }
+                  if (props.canWrite) props.onOpenQtyEditor(p.id);
+                }}
+                ref={(el) => props.rowRefSetter(p.id, el)}
+              >
+                <div className="text-center">
+                  <div className="text-lg font-black text-black">{formatProductName(p)}</div>
+                  {props.isAdmin
+                    ? (() => {
+                        const ts = props.lastUpdateByProduct[p.id];
+                        if (!ts) return null;
+                        const ageMs = Date.now() - Date.parse(ts);
+                        const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+                        const hours = Math.floor(ageMs / (60 * 60 * 1000));
+                        const label =
+                          days >= 1 ? `Update: vor ${days} Tagen` : `Update: vor ${hours} Std.`;
+                        const stale = ageMs > 3 * 24 * 60 * 60 * 1000;
+                        return (
+                          <div
+                            className={[
+                              "mt-1 text-[13px] font-black",
+                              stale ? "text-orange-700" : "text-black/60",
+                            ].join(" ")}
+                          >
+                            {label}
+                          </div>
+                        );
+                      })()
+                    : null}
+                </div>
+
+                <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
+                  {props.editingId === p.id ? (
+                    props.scanMode === "add" ? (
+                      <div className="flex flex-1 min-w-0 items-center gap-2">
+                        <input
+                          inputMode="numeric"
+                          type="tel"
+                          pattern="[0-9]*"
+                          enterKeyHint="done"
+                          value={props.inlineAddDraft}
+                          onChange={(e) =>
+                            props.onSetInlineAddDraft(e.target.value.replace(/[^\d]/g, ""))
+                          }
+                          onFocus={(e) => e.currentTarget.select()}
+                          ref={(el) => props.qtyInputRefSetter(p.id, el)}
+                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                          aria-label="Auffüllen (+X)"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-sm font-black active:scale-[0.99]"
+                          disabled={!props.canWrite}
+                          onClick={() => {
+                            void (async () => {
+                              const n = Number(props.inlineAddDraft || "0");
+                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                              if (!d) {
+                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                return;
+                              }
+                              const ok = await props.onAddPositiveDelta(p.id, d);
+                              if (ok) {
+                                props.onSetInlineAddDraft("0");
+                                props.onSetEditingId(null);
+                                props.onFocusQty(p.id);
+                              }
+                            })();
+                          }}
+                        >
+                          + buchen
+                        </button>
+                        <button
+                          type="button"
+                          className="h-14 px-3 rounded-2xl bg-orange-700 text-white text-sm font-black active:scale-[0.99]"
+                          disabled={!props.canWrite}
+                          onClick={() => {
+                            void (async () => {
+                              const n = Number(props.inlineAddDraft || "0");
+                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                              if (!d) {
+                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                return;
+                              }
+                              const ok = await props.onRecordAdjustment(p.id, d, "waste");
+                              if (ok) {
+                                props.onSetInlineAddDraft("0");
+                                props.onSetEditingId(null);
+                                props.onFocusQty(p.id);
+                              }
+                            })();
+                          }}
+                        >
+                          Verderb
+                        </button>
+                        <button
+                          type="button"
+                          className="h-14 px-3 rounded-2xl bg-red-700 text-white text-sm font-black active:scale-[0.99]"
+                          disabled={!props.canWrite}
+                          onClick={() => {
+                            void (async () => {
+                              const n = Number(props.inlineAddDraft || "0");
+                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+                              if (!d) {
+                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                return;
+                              }
+                              const ok = await props.onRecordAdjustment(p.id, d, "loss");
+                              if (ok) {
+                                props.onSetInlineAddDraft("0");
+                                props.onSetEditingId(null);
+                                props.onFocusQty(p.id);
+                              }
+                            })();
+                          }}
+                        >
+                          Verlust
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-1 min-w-0 items-center gap-2">
+                        <input
+                          inputMode="numeric"
+                          type="tel"
+                          pattern="[0-9]*"
+                          enterKeyHint="done"
+                          value={String(qty)}
+                          onChange={(e) => {
+                            const v = Number(e.target.value.replace(/[^\d]/g, ""));
+                            const next = Number.isFinite(v) ? v : 0;
+                            props.onSetQuantityDraft(p.id, next);
+                          }}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onBlur={() => props.onSetEditingId(null)}
+                          ref={(el) => props.qtyInputRefSetter(p.id, el)}
+                          className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
+                          aria-label="Inventur (absolut)"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="h-14 px-4 rounded-2xl bg-blue-700 text-white text-sm font-black active:scale-[0.99]"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onTouchStart={(e) => e.preventDefault()}
+                          onClick={() => void props.onSubmitCount(p.id)}
+                        >
+                          Inventur
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!props.canWrite}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (props.scanMode === "add") props.onSetInlineAddDraft("0");
+                        props.onOpenQtyEditor(p.id);
+                      }}
+                      className={[
+                        "h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none",
+                        props.canWrite ? "cursor-pointer active:bg-black/5" : "cursor-default opacity-80",
+                      ].join(" ")}
+                      aria-label="Menge tippen zum Ändern"
+                    >
+                      {qty}
+                    </button>
+                  )}
+                </div>
+          </div>
+        </div>
+      );
+    },
+    [
+      columns,
+      gap,
+      props,
+    ]
+  );
+
+  if (props.products.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2">
+      <GridAny
+        columnCount={columns}
+        columnWidth={Math.max(160, columnWidth)}
+        rowCount={rowCount}
+        rowHeight={rowHeight}
+        defaultHeight={gridHeight}
+        defaultWidth={gridWidth}
+        cellComponent={Cell}
+        cellProps={{}}
+      />
+    </div>
+  );
+});
 
 export default function LocationPage() {
   return (
@@ -404,6 +740,64 @@ function LocationInner() {
     return true;
   }
 
+  async function recordAdjustment(
+    productId: string,
+    delta: number,
+    reason: "waste" | "loss"
+  ): Promise<boolean> {
+    if (!locationId || !canWrite) {
+      setError("Keine Schreibrechte für dieses Platzerl.");
+      return false;
+    }
+    const d = Math.floor(Number(delta));
+    if (!Number.isFinite(d) || d <= 0) {
+      setError("Bitte eine Zahl größer als 0 eingeben.");
+      return false;
+    }
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!online) {
+      setError("Offline: Verderb/Verlust kann nicht gebucht werden.");
+      return false;
+    }
+
+    const cur = quantitiesRef.current[productId] ?? 0;
+    if (cur < d) {
+      setError("Nicht genug Bestand.");
+      return false;
+    }
+
+    // Optimistic UI: subtract immediately; rollback on failure.
+    const optimistic = cur - d;
+    quantitiesRef.current = { ...quantitiesRef.current, [productId]: optimistic };
+    setQuantities((m) => ({ ...m, [productId]: optimistic }));
+
+    try {
+      const { newQuantity } = await recordInventoryAdjustment({
+        locationId,
+        productId,
+        delta: d,
+        reason,
+      });
+      quantitiesRef.current = { ...quantitiesRef.current, [productId]: newQuantity };
+      setQuantities((m) => ({ ...m, [productId]: newQuantity }));
+    } catch (e: unknown) {
+      // rollback
+      quantitiesRef.current = { ...quantitiesRef.current, [productId]: cur };
+      setQuantities((m) => ({ ...m, [productId]: cur }));
+      setError(
+        errorMessage(
+          e,
+          reason === "waste" ? "Verderb buchen fehlgeschlagen." : "Verlust buchen fehlgeschlagen."
+        )
+      );
+      return false;
+    }
+
+    setRefillToast(`${reason === "waste" ? "Verderb" : "Verlust"}: -${d} gebucht`);
+    window.setTimeout(() => setRefillToast(null), 2500);
+    return true;
+  }
+
   async function deleteHistoryRow(row: InventoryHistoryRow) {
     if (!locationId || !canWrite) return;
     setHistoryDeleteId(row.id);
@@ -647,6 +1041,65 @@ function LocationInner() {
     return arr;
   }, [products]);
 
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const update = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const handleSetQuantityDraft = useCallback((productId: string, next: number) => {
+    quantitiesRef.current = { ...quantitiesRef.current, [productId]: next };
+    setQuantities((m) => ({ ...m, [productId]: next }));
+  }, []);
+
+  const handleSubmitCount = useCallback(
+    async (productId: string) => {
+      if (!locationId || !canWrite) return;
+      const next = quantitiesRef.current[productId] ?? 0;
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+      if (!online) {
+        addToQueue({
+          type: "count",
+          locationId,
+          productId,
+          quantity: next,
+          timestamp: Date.now(),
+        });
+        setQueueLen(getQueue().length);
+        setSyncStatus("offline");
+        setRefillToast(`Inventur offline gespeichert: ${next}`);
+        window.setTimeout(() => setRefillToast(null), 2000);
+        setEditingId(null);
+        return;
+      }
+      try {
+        await setInventoryQuantity({ locationId, productId, quantity: next });
+        try {
+          setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+        } catch {
+          // ignore
+        }
+        setRefillToast(`Inventur: ${next}`);
+        window.setTimeout(() => setRefillToast(null), 2000);
+        setEditingId(null);
+      } catch (e: unknown) {
+        setError(errorMessage(e, "Inventur fehlgeschlagen."));
+      }
+    },
+    [canWrite, locationId]
+  );
+
+  const handleOpenQuickEdit = useCallback((productId: string, productName: string) => {
+    setHistoryErr(null);
+    setQuickEdit({ productId, productName });
+  }, []);
+
+  const handleFocusQty = useCallback((productId: string) => {
+    qtyInputs.current[productId]?.focus();
+  }, []);
+
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
@@ -660,268 +1113,41 @@ function LocationInner() {
   return (
     <div className="flex-1 flex flex-col">
       <main className="w-full px-4 pt-2 pb-28">
-        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {visibleProducts.map((p) => {
-                const qty = quantities[p.id] ?? 0;
-
-                return (
-                  <div
-                    key={p.id}
-                    className={[
-                      "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
-                      highlightId === p.id ? "ring-2 ring-emerald-500" : "",
-                    ].join(" ")}
-                    onClick={(e) => {
-                      // Click-to-focus quantity input (fast)
-                      if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
-                      if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
-                      qtyInputs.current[p.id]?.focus();
-                    }}
-                    onTouchStart={(e) => {
-                      const t = e.target as HTMLElement;
-                      const tag = t.tagName.toLowerCase();
-                      if (tag === "button" || tag === "input") return;
-                      const touch = e.touches[0];
-                      if (!touch) return;
-                      touchScrollRef.current = {
-                        id: p.id,
-                        x: touch.clientX,
-                        y: touch.clientY,
-                        moved: false,
-                      };
-                      longPressFiredRef.current = false;
-                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-                      touchTimerRef.current = setTimeout(() => {
-                        longPressFiredRef.current = true;
-                        setEditingId(p.id);
-                        focusQtyInput(p.id);
-                      }, 500);
-                    }}
-                    onTouchMove={(e) => {
-                      const touch = e.touches[0];
-                      const s = touchScrollRef.current;
-                      if (!touch || !s || s.id !== p.id) return;
-                      const dx = touch.clientX - s.x;
-                      const dy = touch.clientY - s.y;
-                      if (Math.hypot(dx, dy) > 10) {
-                        s.moved = true;
-                        if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-                        touchTimerRef.current = null;
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      const t = e.target as HTMLElement;
-                      const tag = t.tagName.toLowerCase();
-                      if (tag === "button" || tag === "input") return;
-                      if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
-                      touchTimerRef.current = null;
-                      if (longPressFiredRef.current) return;
-                      const touch = e.changedTouches[0];
-                      const s = touchScrollRef.current;
-                      touchScrollRef.current = null;
-                      if (touch && s?.id === p.id) {
-                        const dx = touch.clientX - s.x;
-                        const dy = touch.clientY - s.y;
-                        // Nach rechts wischen: Schnellbearbeitung (absolute Menge).
-                        if (dx > 50 && Math.abs(dy) < 25) {
-                          setHistoryErr(null);
-                          setQuickEdit({
-                            productId: p.id,
-                            productName: formatProductName(p),
-                          });
-                          return;
-                        }
-                        // Scrolling/movement cancels tap actions.
-                        if (s.moved) return;
-                      }
-
-                      // Simple tap: just focus the quantity editor (no implicit booking).
-                      if (canWrite) openQtyEditor(p.id);
-                    }}
-                    ref={(el) => {
-                      rowRefs.current[p.id] = el;
-                    }}
-                  >
-                    <div className="text-center">
-                      <div className="text-lg font-black text-black">
-                        {formatProductName(p)}
-                      </div>
-                  {isAdmin
-                    ? (() => {
-                        const ts = lastUpdateByProduct[p.id];
-                        if (!ts) return null;
-                        const ageMs = Date.now() - Date.parse(ts);
-                        const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-                        const hours = Math.floor(ageMs / (60 * 60 * 1000));
-                        const label =
-                          days >= 1
-                            ? `Update: vor ${days} Tagen`
-                            : `Update: vor ${hours} Std.`;
-                        const stale = ageMs > 3 * 24 * 60 * 60 * 1000;
-                        return (
-                          <div
-                            className={[
-                              "mt-1 text-[13px] font-black",
-                              stale ? "text-orange-700" : "text-black/60",
-                            ].join(" ")}
-                          >
-                            {label}
-                          </div>
-                        );
-                      })()
-                    : null}
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
-                      {editingId === p.id ? (
-                        scanMode === "add" ? (
-                          <div className="flex flex-1 min-w-0 items-center gap-2">
-                            <input
-                              inputMode="numeric"
-                              type="tel"
-                              pattern="[0-9]*"
-                              enterKeyHint="done"
-                              value={inlineAddDraft}
-                              onChange={(e) => {
-                                setInlineAddDraft(e.target.value.replace(/[^\d]/g, ""));
-                              }}
-                              onFocus={(e) => e.currentTarget.select()}
-                              ref={(el) => {
-                                qtyInputs.current[p.id] = el;
-                              }}
-                              className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                              aria-label="Auffüllen (+X)"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-sm font-black active:scale-[0.99]"
-                              disabled={!canWrite}
-                              onClick={() => {
-                                void (async () => {
-                                  const n = Number(inlineAddDraft || "0");
-                                  const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-                                  if (!d) {
-                                    setError("Bitte eine Zahl größer als 0 eingeben.");
-                                    return;
-                                  }
-                                  const ok = await addPositiveDelta(p.id, d);
-                                  if (ok) {
-                                    setInlineAddDraft("0");
-                                    setEditingId(null);
-                                    qtyInputs.current[p.id]?.focus();
-                                  }
-                                })();
-                              }}
-                            >
-                              + buchen
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-1 min-w-0 items-center gap-2">
-                            <input
-                              inputMode="numeric"
-                              type="tel"
-                              pattern="[0-9]*"
-                              enterKeyHint="done"
-                              value={String(qty)}
-                              onChange={(e) => {
-                                const v = Number(e.target.value.replace(/[^\d]/g, ""));
-                                const next = Number.isFinite(v) ? v : 0;
-                                quantitiesRef.current = { ...quantitiesRef.current, [p.id]: next };
-                                setQuantities((m) => ({ ...m, [p.id]: next }));
-                              }}
-                              onFocus={(e) => e.currentTarget.select()}
-                              onBlur={() => {
-                                setEditingId((cur) => (cur === p.id ? null : cur));
-                              }}
-                              ref={(el) => {
-                                qtyInputs.current[p.id] = el;
-                              }}
-                              className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                              aria-label="Inventur (absolut)"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="h-14 px-4 rounded-2xl bg-blue-700 text-white text-sm font-black active:scale-[0.99]"
-                              onMouseDown={(e) => {
-                                // Prevent input blur from unmounting the button before click fires.
-                                e.preventDefault();
-                              }}
-                              onTouchStart={(e) => {
-                                e.preventDefault();
-                              }}
-                              onClick={() => {
-                                void (async () => {
-                                  if (!locationId || !canWrite) return;
-                                  const next = quantitiesRef.current[p.id] ?? 0;
-                                  const online =
-                                    typeof navigator !== "undefined" ? navigator.onLine : true;
-                                  if (!online) {
-                                    addToQueue({
-                                      type: "count",
-                                      locationId,
-                                      productId: p.id,
-                                      quantity: next,
-                                      timestamp: Date.now(),
-                                    });
-                                    setQueueLen(getQueue().length);
-                                    setSyncStatus("offline");
-                                    setRefillToast(`Inventur offline gespeichert: ${next}`);
-                                    window.setTimeout(() => setRefillToast(null), 2000);
-                                    setEditingId(null);
-                                    return;
-                                  }
-                                  try {
-                                    await setInventoryQuantity({
-                                      locationId,
-                                      productId: p.id,
-                                      quantity: next,
-                                    });
-                                    try {
-                                      setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
-                                    } catch {
-                                      // ignore
-                                    }
-                                    setRefillToast(`Inventur: ${next}`);
-                                    window.setTimeout(() => setRefillToast(null), 2000);
-                                    setEditingId(null);
-                                  } catch (e: unknown) {
-                                    setError(errorMessage(e, "Inventur fehlgeschlagen."));
-                                  }
-                                })();
-                              }}
-                            >
-                              Inventur
-                            </button>
-                          </div>
-                        )
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={!canWrite}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (scanMode === "add") setInlineAddDraft("0");
-                            openQtyEditor(p.id);
-                          }}
-                          className={[
-                            "h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none",
-                            canWrite
-                              ? "cursor-pointer active:bg-black/5"
-                              : "cursor-default opacity-80",
-                          ].join(" ")}
-                          aria-label="Menge tippen zum Ändern"
-                        >
-                          {qty}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-          })}
-        </div>
+        <VirtualProductGrid
+          products={visibleProducts}
+          quantities={quantities}
+          highlightId={highlightId}
+          isAdmin={isAdmin}
+          lastUpdateByProduct={lastUpdateByProduct}
+          canWrite={canWrite}
+          editingId={editingId}
+          scanMode={scanMode}
+          inlineAddDraft={inlineAddDraft}
+          viewport={viewport}
+          onSetEditingId={setEditingId}
+          onSetInlineAddDraft={setInlineAddDraft}
+          onSetQuantityDraft={handleSetQuantityDraft}
+          onSubmitCount={handleSubmitCount}
+          onFocusQty={handleFocusQty}
+          onOpenQtyEditor={openQtyEditor}
+          onFocusQtyAndSelect={focusQtyInput}
+          onAddPositiveDelta={addPositiveDelta}
+          onRecordAdjustment={recordAdjustment}
+          onOpenQuickEdit={handleOpenQuickEdit}
+          rowRefSetter={(productId, el) => {
+            rowRefs.current[productId] = el;
+          }}
+          qtyInputRefSetter={(productId, el) => {
+            qtyInputs.current[productId] = el;
+          }}
+          touchState={{
+            touchScrollRef,
+            touchTimerRef,
+            longPressFiredRef,
+          }}
+          onSetError={setError}
+          onSetHighlightId={setHighlightId}
+        />
 
         <div className="mt-6">
           <ButtonSecondary className="" onClick={() => router.replace("/")}>

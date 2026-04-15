@@ -458,6 +458,34 @@ export async function applyInventoryDelta(args: {
   return { newQuantity };
 }
 
+export async function recordInventoryAdjustment(args: {
+  locationId: string;
+  productId: string;
+  delta: number;
+  reason: "waste" | "loss";
+}): Promise<{ newQuantity: number }> {
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+  const d = Math.floor(Number(args.delta) || 0);
+  if (d <= 0) throw new Error("Menge muss größer als 0 sein.");
+
+  const { data, error } = await supabase.rpc("record_inventory_adjustment", {
+    p_user_id: null,
+    p_location_id: args.locationId,
+    p_product_id: args.productId,
+    p_delta: d,
+    p_reason: args.reason,
+  });
+  if (error) throw error;
+
+  const newQuantity = Math.max(0, Math.floor(Number(data ?? 0) || 0));
+  return { newQuantity };
+}
+
 async function getInventoryQuantityForProductAtLocation(
   locationId: string,
   productId: string
