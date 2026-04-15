@@ -233,6 +233,9 @@ export async function listInventoryHistoryAdmin(args: {
   mode?: "count" | "add" | "transfer" | "any";
   limit?: number;
 }): Promise<AdminInventoryHistoryRow[]> {
+  const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit ?? 300) || 300)));
+  // IMPORTANT: Avoid embedded selects (locations(...), products(...)) because PostgREST schema cache
+  // can be out of date and break relationship resolution. We do a 3-query merge instead.
   const supabase = getSupabase() as unknown as {
     from: (t: string) => {
       select: (cols: string) => {
@@ -245,12 +248,9 @@ export async function listInventoryHistoryAdmin(args: {
     };
   };
 
-  const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit ?? 300) || 300)));
-  let q = supabase
-    .from("inventory_history")
-    .select(
-      "id,user_id,location_id,product_id,quantity,timestamp,is_transfer,mode,locations(name),products(brand,product_name,zusatz)"
-    ) as unknown as {
+  let q = supabase.from("inventory_history").select(
+    "id,user_id,location_id,product_id,quantity,timestamp,is_transfer,mode"
+  ) as unknown as {
     eq: (c: string, v: unknown) => typeof q;
     gte: (c: string, v: string) => typeof q;
     lte: (c: string, v: string) => typeof q;
@@ -263,26 +263,26 @@ export async function listInventoryHistoryAdmin(args: {
   if (args.fromIso?.trim()) q = q.gte("timestamp", args.fromIso.trim());
   if (args.toIso?.trim()) q = q.lte("timestamp", args.toIso.trim());
 
-  const { data, error } = await q.order("timestamp", { ascending: false }).limit(limit);
+  const [{ data, error }, locs, prods] = await Promise.all([
+    q.order("timestamp", { ascending: false }).limit(limit),
+    listLocations(),
+    listProducts(),
+  ]);
   if (error) throw error;
 
-  const rows = (data ?? []) as Array<
-    InventoryHistoryRow & {
-      locations?: { name?: string | null } | null;
-      products?:
-        | { brand?: string | null; product_name?: string | null; zusatz?: string | null }
-        | null;
-    }
-  >;
+  const locationNameById = new Map(locs.map((l) => [l.id, l.name]));
+  const productLabelById = new Map(
+    prods.map((p) => [
+      p.id,
+      `${p.brand ?? ""} ${p.product_name ?? ""} ${p.zusatz ?? ""}`.trim().replace(/\s+/g, " "),
+    ])
+  );
 
+  const rows = (data ?? []) as InventoryHistoryRow[];
   return rows.map((r) => ({
     ...r,
-    location_name: r.locations?.name ?? undefined,
-    product_label: r.products
-      ? `${r.products.brand ?? ""} ${r.products.product_name ?? ""} ${r.products.zusatz ?? ""}`
-          .trim()
-          .replace(/\s+/g, " ")
-      : undefined,
+    location_name: locationNameById.get(r.location_id),
+    product_label: productLabelById.get(r.product_id),
   }));
 }
 
@@ -347,6 +347,7 @@ export async function previewMoveInventoryHistoryCount(args: {
   const base = supabase.from("inventory_history") as unknown as {
     select: (cols: string, opts: { count: "exact"; head: boolean }) => unknown;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST builder typing not available in our supabase wrapper
   let q: any = base.select("id", { count: "exact", head: true });
   q = q.eq("location_id", fromId).gte("timestamp", fromIso).lte("timestamp", toIso);
   if (args.mode && args.mode !== "any") q = q.eq("mode", args.mode);
