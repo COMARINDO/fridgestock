@@ -15,7 +15,7 @@ import {
 import type { Location } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 
-type ModeFilter = "any" | "count" | "add" | "transfer";
+type ModeFilter = "any" | "count" | "add" | "transfer" | "waste" | "loss";
 
 function toLocalDatetimeInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -76,6 +76,16 @@ export default function AdminBookingsPage() {
   const [moveOk, setMoveOk] = useState<string | null>(null);
   const [movePreviewBusy, setMovePreviewBusy] = useState(false);
   const [movePreview, setMovePreview] = useState<number | null>(null);
+
+  const summary = useMemo(() => {
+    let waste = 0;
+    let loss = 0;
+    for (const r of rows) {
+      if (r.mode === "waste") waste += 1;
+      if (r.mode === "loss") loss += 1;
+    }
+    return { total: rows.length, waste, loss };
+  }, [rows]);
 
   useEffect(() => {
     if (!adminHydrated) return;
@@ -217,6 +227,8 @@ export default function AdminBookingsPage() {
             <option value="count">Inventur</option>
             <option value="add">Buchen</option>
             <option value="transfer">Transfer</option>
+            <option value="waste">Verderb</option>
+            <option value="loss">Verlust</option>
           </select>
         </div>
       </div>
@@ -235,6 +247,15 @@ export default function AdminBookingsPage() {
           <Button className="h-12 w-auto px-4 py-0 text-[15px]" onClick={() => void load()}>
             {busy ? "Lade…" : "Neu laden"}
           </Button>
+          <div className="h-12 px-3 flex items-center rounded-2xl border-2 border-black bg-white text-[14px] font-black text-black/70">
+            Zeilen: {summary.total}
+            {summary.waste || summary.loss ? (
+              <>
+                {" "}
+                (Verderb: {summary.waste}, Verlust: {summary.loss})
+              </>
+            ) : null}
+          </div>
           <button
             type="button"
             className="h-12 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
@@ -303,7 +324,13 @@ export default function AdminBookingsPage() {
                           });
                           await load();
                         } catch (e: unknown) {
-                          setErr(errorMessage(e, "Löschen fehlgeschlagen."));
+                          const msg = errorMessage(e, "");
+                          if (msg.toLowerCase().includes("history row not found")) {
+                            // Already deleted; just refresh.
+                            await load();
+                          } else {
+                            setErr(errorMessage(e, "Löschen fehlgeschlagen."));
+                          }
                         } finally {
                           setDeleteBusyId(null);
                         }
@@ -391,6 +418,8 @@ export default function AdminBookingsPage() {
                   <option value="count">Inventur</option>
                   <option value="add">Buchen</option>
                   <option value="transfer">Transfer</option>
+                  <option value="waste">Verderb</option>
+                  <option value="loss">Verlust</option>
                 </select>
               </div>
               <div className="flex items-end">

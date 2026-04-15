@@ -222,7 +222,7 @@ export async function listInventoryHistoryAdmin(args: {
   fromIso?: string; // inclusive
   toIso?: string; // inclusive
   locationId?: string;
-  mode?: "count" | "add" | "transfer" | "any";
+  mode?: "count" | "add" | "transfer" | "waste" | "loss" | "any";
   limit?: number;
 }): Promise<AdminInventoryHistoryRow[]> {
   const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit ?? 300) || 300)));
@@ -283,7 +283,7 @@ export async function moveInventoryHistoryToLocation(args: {
   toLocationId: string;
   fromIso: string; // inclusive
   toIso: string; // inclusive
-  mode?: "count" | "add" | "transfer" | "any";
+  mode?: "count" | "add" | "transfer" | "waste" | "loss" | "any";
 }): Promise<{ movedRows: number }> {
   const supabase = getSupabase() as unknown as {
     from: (t: string) => {
@@ -323,7 +323,7 @@ export async function previewMoveInventoryHistoryCount(args: {
   fromLocationId: string;
   fromIso: string; // inclusive
   toIso: string; // inclusive
-  mode?: "count" | "add" | "transfer" | "any";
+  mode?: "count" | "add" | "transfer" | "waste" | "loss" | "any";
 }): Promise<{ rows: number }> {
   const supabase = getSupabase() as unknown as {
     from: (t: string) => Record<string, unknown>;

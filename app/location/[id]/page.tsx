@@ -793,7 +793,25 @@ function LocationInner() {
       setQuickHistoryRows(rows);
       setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
     } catch (e: unknown) {
-      setHistoryErr(errorMessage(e, "Eintrag konnte nicht gelöscht werden."));
+      const msg = errorMessage(e, "");
+      if (msg.toLowerCase().includes("history row not found")) {
+        // Treat as already deleted; refresh UI state instead of showing an error.
+        try {
+          const rows = await getInventoryHistoryForProduct(locationId, row.product_id, 5);
+          setQuickHistoryRows(rows);
+          const newest = rows[0]?.quantity ?? 0;
+          quantitiesRef.current = {
+            ...quantitiesRef.current,
+            [row.product_id]: newest,
+          };
+          setQuantities((m) => ({ ...m, [row.product_id]: newest }));
+        } catch {
+          // ignore refresh failures
+        }
+        setHistoryErr(null);
+      } else {
+        setHistoryErr(errorMessage(e, "Eintrag konnte nicht gelöscht werden."));
+      }
     } finally {
       setHistoryDeleteId(null);
     }
