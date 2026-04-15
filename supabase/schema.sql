@@ -63,10 +63,27 @@ create table if not exists public.inventory_history (
   product_id uuid not null references public.products(id) on delete cascade,
   quantity integer not null,
   timestamp timestamptz not null default now(),
-  is_transfer boolean not null default false
+  is_transfer boolean not null default false,
+  mode text
 );
 
 alter table public.inventory_history add column if not exists is_transfer boolean not null default false;
+alter table public.inventory_history add column if not exists mode text;
+
+-- Optional: basic validation for mode values (null allowed for legacy rows)
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'inventory_history_mode_check'
+  ) then
+    alter table public.inventory_history
+      add constraint inventory_history_mode_check
+      check (mode is null or mode in ('count','add','transfer'));
+  end if;
+end;
+$$;
 
 create index if not exists inventory_history_loc_prod_time_idx
   on public.inventory_history(location_id, product_id, timestamp desc);
@@ -87,13 +104,55 @@ begin
   on conflict (location_id, product_id)
   do update set quantity = excluded.quantity;
 
-  insert into public.inventory_history (user_id, location_id, product_id, quantity)
-  values (p_user_id, p_location_id, p_product_id, p_quantity);
+  insert into public.inventory_history (user_id, location_id, product_id, quantity, mode)
+  values (p_user_id, p_location_id, p_product_id, p_quantity, 'count');
+end;
+$$;
+
+-- RPC for "add delta + append history" (atomic)
+create or replace function public.add_inventory_delta(
+  p_user_id uuid,
+  p_location_id uuid,
+  p_product_id uuid,
+  p_delta integer
+) returns integer
+language plpgsql
+security definer
+as $$
+declare
+  v_cur int;
+  v_next int;
+begin
+  if p_delta is null or p_delta <= 0 then
+    raise exception 'delta must be positive';
+  end if;
+
+  insert into public.inventory (location_id, product_id, quantity)
+  values (p_location_id, p_product_id, 0)
+  on conflict (location_id, product_id) do nothing;
+
+  select i.quantity into v_cur
+  from public.inventory i
+  where i.location_id = p_location_id and i.product_id = p_product_id
+  for update;
+
+  v_cur := coalesce(v_cur, 0);
+  v_next := v_cur + p_delta;
+
+  update public.inventory
+  set quantity = v_next
+  where location_id = p_location_id and product_id = p_product_id;
+
+  insert into public.inventory_history (user_id, location_id, product_id, quantity, mode, is_transfer)
+  values (p_user_id, p_location_id, p_product_id, v_next, 'add', false);
+
+  return v_next;
 end;
 $$;
 
 -- Usage helpers (consumption only, ignore refills)
 -- Calculates usage as sum of negative diffs between consecutive snapshots.
+drop function if exists public.usage_by_location_product_since(timestamptz);
 create or replace function public.usage_by_location_product_since(
   p_since timestamptz
 ) returns table (
@@ -133,8 +192,4 @@ as $$
   from diffs
   group by location_id, product_id;
 $$;
-
--- Bakery module (optional)
--- See `supabase/bakery.sql` for additive bakery ordering tables.
-
 

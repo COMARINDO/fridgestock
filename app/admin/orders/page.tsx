@@ -19,7 +19,7 @@ import {
 import {
   HOFSTETTEN_NAME,
   KIRCHBERG_NAME,
-  RABENSTEIN_NAME,
+  RABENSTEIN_LAGER_NAME,
   TEICH_NAME,
 } from "@/lib/locationConstants";
 import type { Location, OrderOverrideRow, Product } from "@/lib/types";
@@ -85,7 +85,7 @@ export default function AdminOrdersPage() {
   const [saveBusy, setSaveBusy] = useState(false);
 
   const rabensteinId = useMemo(
-    () => resolveLocationIdByName(locations, RABENSTEIN_NAME),
+    () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
     [locations]
   );
   const teichId = useMemo(
@@ -422,7 +422,7 @@ export default function AdminOrdersPage() {
           </div>
           <h1 className="text-2xl font-black text-black mt-1">Bestellübersicht</h1>
           <p className="mt-1 text-sm text-black/65">
-            <strong>{RABENSTEIN_NAME}</strong> mit {TEICH_NAME}: zentrales Lager;{" "}
+            <strong>{RABENSTEIN_LAGER_NAME}</strong> mit {TEICH_NAME}: zentrales Lager;{" "}
             <strong>{HOFSTETTEN_NAME}</strong> und <strong>{KIRCHBERG_NAME}</strong>: je
             Platzerl Verbrauch 7d minus lokaler Bestand. Reiter{" "}
             <strong>Gesamt</strong>: Summen pro Produkt.
@@ -447,7 +447,7 @@ export default function AdminOrdersPage() {
             className={`${tabBtn} ${activeTab === "central" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("central")}
           >
-            {RABENSTEIN_NAME} + {TEICH_NAME}
+            {RABENSTEIN_LAGER_NAME} + {TEICH_NAME}
           </button>
           <button
             type="button"
@@ -475,7 +475,7 @@ export default function AdminOrdersPage() {
 
       {!rabensteinId && !busy && !err ? (
         <div className="mt-6 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
-          Platzerl „{RABENSTEIN_NAME}“ nicht gefunden. Bitte Namen in den Orten prüfen.
+          Platzerl „{RABENSTEIN_LAGER_NAME}“ nicht gefunden. Bitte Namen in den Orten prüfen.
         </div>
       ) : null}
 
@@ -511,7 +511,7 @@ export default function AdminOrdersPage() {
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_NAME}
+                    {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
@@ -521,7 +521,7 @@ export default function AdminOrdersPage() {
                     <span className="text-[11px] font-black text-black/55">7d</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_NAME}
+                    {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">7d</span>
                   </th>
@@ -617,7 +617,7 @@ export default function AdminOrdersPage() {
             ) : null}
           </section>
           <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe ({RABENSTEIN_NAME}): {sumCentral}
+            Summe ({RABENSTEIN_LAGER_NAME}): {sumCentral}
           </div>
         </>
       ) : null}
@@ -815,7 +815,7 @@ export default function AdminOrdersPage() {
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_NAME}
+                    {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">+ {TEICH_NAME}</span>
                   </th>
@@ -844,7 +844,7 @@ export default function AdminOrdersPage() {
           </section>
           <div className="mt-4 flex flex-wrap justify-end gap-4 text-sm font-black text-black">
             <span>
-              Σ {RABENSTEIN_NAME}: {sumCentral}
+              Σ {RABENSTEIN_LAGER_NAME}: {sumCentral}
             </span>
             <span>
               Σ {HOFSTETTEN_NAME}: {sumHof}

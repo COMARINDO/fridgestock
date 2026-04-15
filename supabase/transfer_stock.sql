@@ -2,6 +2,7 @@
 -- Voraussetzung: Spalte inventory_history.is_transfer (siehe inventory_history_is_transfer.sql).
 -- Nach Anlegen: ggf. grant execute für anon/authenticated (siehe unten)
 
+drop function if exists public.transfer_stock(uuid, uuid, uuid, integer);
 create or replace function public.transfer_stock(
   p_product_id uuid,
   p_from_location_id uuid,
@@ -62,11 +63,11 @@ begin
   set quantity = v_to
   where location_id = p_to_location_id and product_id = p_product_id;
 
-  insert into public.inventory_history (user_id, location_id, product_id, quantity, is_transfer)
-  values (null, p_from_location_id, p_product_id, v_from, true);
+  insert into public.inventory_history (user_id, location_id, product_id, quantity, is_transfer, mode)
+  values (null, p_from_location_id, p_product_id, v_from, true, 'transfer');
 
-  insert into public.inventory_history (user_id, location_id, product_id, quantity, is_transfer)
-  values (null, p_to_location_id, p_product_id, v_to, true);
+  insert into public.inventory_history (user_id, location_id, product_id, quantity, is_transfer, mode)
+  values (null, p_to_location_id, p_product_id, v_to, true, 'transfer');
 
   delete from public.order_overrides
   where location_id in (p_from_location_id, p_to_location_id);

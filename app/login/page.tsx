@@ -21,6 +21,7 @@ const accessMap: Record<string, string> = {
   "3200": "Teich",
   "3202": "Hofstetten",
   "3203": "Rabenstein",
+  "32031": "Rabenstein Lager",
   "3204": "Kirchberg",
 };
 
