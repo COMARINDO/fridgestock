@@ -215,7 +215,7 @@ export default function AdminBookingsPage() {
           >
             <option value="any">Alle</option>
             <option value="count">Inventur</option>
-            <option value="add">Auffüllen</option>
+            <option value="add">Buchen</option>
             <option value="transfer">Transfer</option>
           </select>
         </div>
@@ -389,7 +389,7 @@ export default function AdminBookingsPage() {
                 >
                   <option value="any">Alle</option>
                   <option value="count">Inventur</option>
-                  <option value="add">Auffüllen</option>
+                  <option value="add">Buchen</option>
                   <option value="transfer">Transfer</option>
                 </select>
               </div>

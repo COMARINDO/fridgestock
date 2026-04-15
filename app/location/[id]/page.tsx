@@ -228,12 +228,12 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           onFocus={(e) => e.currentTarget.select()}
                           ref={(el) => props.qtyInputRefSetter(p.id, el)}
                           className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
-                          aria-label="Auffüllen (+X)"
+                          aria-label="Buchen (+X)"
                           autoFocus
                         />
                         <button
                           type="button"
-                          className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-sm font-black active:scale-[0.99]"
+                          className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-xl font-black active:scale-[0.99]"
                           disabled={!props.canWrite}
                           onClick={() => {
                             void (async () => {
@@ -252,11 +252,11 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                             })();
                           }}
                         >
-                          + buchen
+                          +
                         </button>
                         <button
                           type="button"
-                          className="h-14 px-3 rounded-2xl bg-orange-700 text-white text-sm font-black active:scale-[0.99]"
+                          className="h-14 px-4 rounded-2xl bg-orange-700 text-white text-xl font-black active:scale-[0.99]"
                           disabled={!props.canWrite}
                           onClick={() => {
                             void (async () => {
@@ -275,30 +275,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                             })();
                           }}
                         >
-                          Verderb
-                        </button>
-                        <button
-                          type="button"
-                          className="h-14 px-3 rounded-2xl bg-red-700 text-white text-sm font-black active:scale-[0.99]"
-                          disabled={!props.canWrite}
-                          onClick={() => {
-                            void (async () => {
-                              const n = Number(props.inlineAddDraft || "0");
-                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-                              if (!d) {
-                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
-                                return;
-                              }
-                              const ok = await props.onRecordAdjustment(p.id, d, "loss");
-                              if (ok) {
-                                props.onSetInlineAddDraft("0");
-                                props.onSetEditingId(null);
-                                props.onFocusQty(p.id);
-                              }
-                            })();
-                          }}
-                        >
-                          Verlust
+                          -
                         </button>
                       </div>
                     ) : (
@@ -732,7 +709,7 @@ function LocationInner() {
       quantitiesRef.current = { ...quantitiesRef.current, [productId]: newQuantity };
       setQuantities((m) => ({ ...m, [productId]: newQuantity }));
     } catch (e: unknown) {
-      setError(errorMessage(e, "Auffüllen fehlgeschlagen."));
+      setError(errorMessage(e, "Buchen fehlgeschlagen."));
       return false;
     }
     setRefillToast(`+${d} gebucht`);
@@ -756,7 +733,7 @@ function LocationInner() {
     }
     const online = typeof navigator !== "undefined" ? navigator.onLine : true;
     if (!online) {
-      setError("Offline: Verderb/Verlust kann nicht gebucht werden.");
+      setError("Offline: Minus kann nicht gebucht werden.");
       return false;
     }
 
@@ -784,16 +761,11 @@ function LocationInner() {
       // rollback
       quantitiesRef.current = { ...quantitiesRef.current, [productId]: cur };
       setQuantities((m) => ({ ...m, [productId]: cur }));
-      setError(
-        errorMessage(
-          e,
-          reason === "waste" ? "Verderb buchen fehlgeschlagen." : "Verlust buchen fehlgeschlagen."
-        )
-      );
+      setError(errorMessage(e, "Minus buchen fehlgeschlagen."));
       return false;
     }
 
-    setRefillToast(`${reason === "waste" ? "Verderb" : "Verlust"}: -${d} gebucht`);
+    setRefillToast(`-${d} gebucht`);
     window.setTimeout(() => setRefillToast(null), 2500);
     return true;
   }

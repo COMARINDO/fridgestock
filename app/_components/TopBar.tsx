@@ -88,7 +88,7 @@ export function TopBar() {
                   ].join(" ")}
                   onClick={() => updateScanMode("add")}
                 >
-                  Auffüllen
+                  Buchen
                 </button>
               </div>
             ) : (
