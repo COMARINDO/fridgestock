@@ -244,6 +244,12 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
           >
             Bestellübersicht
           </Link>
+          <Link
+            href="/admin/bookings"
+            className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+          >
+            Buchungen
+          </Link>
           <button
             type="button"
             disabled={backupBusy}

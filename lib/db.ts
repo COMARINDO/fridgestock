@@ -197,7 +197,7 @@ export async function getInventoryHistoryForLocation(
   limit = 200
 ): Promise<InventoryHistoryRow[]> {
   const { data, error } = await from("inventory_history")
-    .select("id,user_id,location_id,product_id,quantity,timestamp")
+    .select("id,user_id,location_id,product_id,quantity,timestamp,is_transfer,mode")
     .eq("location_id", locationId)
     .order("timestamp", { ascending: false })
     .limit(limit);
@@ -212,13 +212,148 @@ export async function getInventoryHistoryForProduct(
   limit = 5
 ): Promise<InventoryHistoryRow[]> {
   const { data, error } = await from("inventory_history")
-    .select("id,user_id,location_id,product_id,quantity,timestamp")
+    .select("id,user_id,location_id,product_id,quantity,timestamp,is_transfer,mode")
     .eq("location_id", locationId)
     .eq("product_id", productId)
     .order("timestamp", { ascending: false })
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as InventoryHistoryRow[];
+}
+
+export type AdminInventoryHistoryRow = InventoryHistoryRow & {
+  location_name?: string;
+  product_label?: string;
+};
+
+export async function listInventoryHistoryAdmin(args: {
+  fromIso?: string; // inclusive
+  toIso?: string; // inclusive
+  locationId?: string;
+  mode?: "count" | "add" | "transfer" | "any";
+  limit?: number;
+}): Promise<AdminInventoryHistoryRow[]> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (c: string, v: unknown) => unknown;
+        gte: (c: string, v: string) => unknown;
+        lte: (c: string, v: string) => unknown;
+        order: (c: string, o: { ascending: boolean }) => unknown;
+        limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+      };
+    };
+  };
+
+  const limit = Math.min(2000, Math.max(1, Math.floor(Number(args.limit ?? 300) || 300)));
+  let q = supabase
+    .from("inventory_history")
+    .select(
+      "id,user_id,location_id,product_id,quantity,timestamp,is_transfer,mode,locations(name),products(brand,product_name,zusatz)"
+    ) as unknown as {
+    eq: (c: string, v: unknown) => typeof q;
+    gte: (c: string, v: string) => typeof q;
+    lte: (c: string, v: string) => typeof q;
+    order: (c: string, o: { ascending: boolean }) => typeof q;
+    limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  if (args.locationId?.trim()) q = q.eq("location_id", args.locationId.trim());
+  if (args.mode && args.mode !== "any") q = q.eq("mode", args.mode);
+  if (args.fromIso?.trim()) q = q.gte("timestamp", args.fromIso.trim());
+  if (args.toIso?.trim()) q = q.lte("timestamp", args.toIso.trim());
+
+  const { data, error } = await q.order("timestamp", { ascending: false }).limit(limit);
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<
+    InventoryHistoryRow & {
+      locations?: { name?: string | null } | null;
+      products?:
+        | { brand?: string | null; product_name?: string | null; zusatz?: string | null }
+        | null;
+    }
+  >;
+
+  return rows.map((r) => ({
+    ...r,
+    location_name: r.locations?.name ?? undefined,
+    product_label: r.products
+      ? `${r.products.brand ?? ""} ${r.products.product_name ?? ""} ${r.products.zusatz ?? ""}`
+          .trim()
+          .replace(/\s+/g, " ")
+      : undefined,
+  }));
+}
+
+export async function moveInventoryHistoryToLocation(args: {
+  fromLocationId: string;
+  toLocationId: string;
+  fromIso: string; // inclusive
+  toIso: string; // inclusive
+  mode?: "count" | "add" | "transfer" | "any";
+}): Promise<{ movedRows: number }> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => unknown;
+        gte: (c: string, v: string) => unknown;
+        lte: (c: string, v: string) => unknown;
+        select: (cols: string) => Promise<{ data: unknown; error: unknown }>;
+      };
+    };
+  };
+
+  const fromId = args.fromLocationId.trim();
+  const toId = args.toLocationId.trim();
+  if (!fromId || !toId) throw new Error("Von/Nach Ort fehlt.");
+  if (fromId === toId) throw new Error("Von/Nach Ort sind gleich.");
+  const fromIso = args.fromIso.trim();
+  const toIso = args.toIso.trim();
+  if (!fromIso || !toIso) throw new Error("Zeitfenster fehlt.");
+
+  let q = supabase.from("inventory_history").update({ location_id: toId }) as unknown as {
+    eq: (c: string, v: unknown) => typeof q;
+    gte: (c: string, v: string) => typeof q;
+    lte: (c: string, v: string) => typeof q;
+    select: (cols: string) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  q = q.eq("location_id", fromId).gte("timestamp", fromIso).lte("timestamp", toIso);
+  if (args.mode && args.mode !== "any") q = q.eq("mode", args.mode);
+
+  const { data, error } = await q.select("id");
+  if (error) throw error;
+  return { movedRows: Array.isArray(data) ? data.length : 0 };
+}
+
+export async function previewMoveInventoryHistoryCount(args: {
+  fromLocationId: string;
+  fromIso: string; // inclusive
+  toIso: string; // inclusive
+  mode?: "count" | "add" | "transfer" | "any";
+}): Promise<{ rows: number }> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => Record<string, unknown>;
+  };
+
+  const fromId = args.fromLocationId.trim();
+  if (!fromId) throw new Error("Von Ort fehlt.");
+  const fromIso = args.fromIso.trim();
+  const toIso = args.toIso.trim();
+  if (!fromIso || !toIso) throw new Error("Zeitfenster fehlt.");
+
+  // Use PostgREST count via head request.
+  const base = supabase.from("inventory_history") as unknown as {
+    select: (cols: string, opts: { count: "exact"; head: boolean }) => unknown;
+  };
+  let q: any = base.select("id", { count: "exact", head: true });
+  q = q.eq("location_id", fromId).gte("timestamp", fromIso).lte("timestamp", toIso);
+  if (args.mode && args.mode !== "any") q = q.eq("mode", args.mode);
+
+  const res = (await q) as { error?: unknown; count?: number | null };
+  if (res.error) throw res.error;
+  return { rows: Math.max(0, Math.floor(Number(res.count ?? 0) || 0)) };
 }
 
 /**

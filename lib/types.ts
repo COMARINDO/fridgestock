@@ -39,6 +39,7 @@ export type InventoryHistoryRow = {
   timestamp: string;
   /** Internal Rabenstein↔Teich transfer; excluded from usage lag. */
   is_transfer?: boolean;
+  mode?: "count" | "add" | "transfer" | null;
 };
 
 export type OrderOverrideRow = {
