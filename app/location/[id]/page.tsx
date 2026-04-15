@@ -23,6 +23,12 @@ import { suggestShortName } from "@/lib/shortName";
 import { splitNameToBrandProduct } from "@/lib/brandProduct";
 import { formatProductName } from "@/lib/formatProductName";
 import { useAdmin } from "@/app/admin-provider";
+import {
+  addToQueue,
+  getQueue,
+  removeFirstFromQueue,
+  type OfflineQueueItem,
+} from "@/lib/offlineQueue";
 
 function formatHistoryTimestamp(iso: string): string {
   try {
@@ -110,10 +116,102 @@ function LocationInner() {
   const [historyErr, setHistoryErr] = useState<string | null>(null);
 
   const [refillToast, setRefillToast] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"offline" | "idle" | "syncing">("idle");
+  const [queueLen, setQueueLen] = useState(0);
+  const syncLockRef = useRef(false);
 
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
+
+  useEffect(() => {
+    // Init online/offline status and queue length.
+    try {
+      setQueueLen(getQueue().length);
+    } catch {
+      setQueueLen(0);
+    }
+    const update = () => {
+      const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+      if (!online) {
+        setSyncStatus("offline");
+      } else {
+        setSyncStatus((cur) => (cur === "offline" ? "idle" : cur));
+      }
+      try {
+        setQueueLen(getQueue().length);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    update();
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  async function sendToServer(item: OfflineQueueItem): Promise<void> {
+    if (item.type === "count") {
+      await setInventoryQuantity({
+        locationId: item.locationId,
+        productId: item.productId,
+        quantity: item.quantity,
+      });
+      if (item.locationId === locationId) {
+        quantitiesRef.current = { ...quantitiesRef.current, [item.productId]: item.quantity };
+        setQuantities((m) => ({ ...m, [item.productId]: item.quantity }));
+      }
+      return;
+    }
+    await applyInventoryDelta({
+      locationId: item.locationId,
+      productId: item.productId,
+      delta: item.delta,
+    });
+  }
+
+  async function syncQueue(): Promise<void> {
+    if (syncLockRef.current) return;
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!online) return;
+    if (getQueue().length === 0) return;
+
+    syncLockRef.current = true;
+    setSyncStatus("syncing");
+    try {
+      for (;;) {
+        const q = getQueue();
+        if (q.length === 0) break;
+        const first = q[0]!;
+        try {
+          await sendToServer(first);
+          removeFirstFromQueue();
+          setQueueLen(getQueue().length);
+        } catch (e: unknown) {
+          setError(errorMessage(e, "Synchronisation fehlgeschlagen."));
+          break; // FIFO preserved
+        }
+      }
+    } finally {
+      syncLockRef.current = false;
+      const remaining = getQueue().length;
+      setQueueLen(remaining);
+      setSyncStatus(
+        typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "idle"
+      );
+    }
+  }
+
+  useEffect(() => {
+    const onOnline = () => void syncQueue();
+    window.addEventListener("online", onOnline);
+    void syncQueue();
+    return () => window.removeEventListener("online", onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional (stable enough)
+  }, []);
 
   useEffect(() => {
     if (!locationId) {
@@ -268,6 +366,25 @@ function LocationInner() {
     if (!Number.isFinite(d) || d <= 0) {
       setError("Bitte eine Zahl größer als 0 eingeben.");
       return false;
+    }
+
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!online) {
+      addToQueue({
+        type: "add",
+        locationId,
+        productId,
+        delta: d,
+        timestamp: Date.now(),
+      });
+      setQueueLen(getQueue().length);
+      setSyncStatus("offline");
+      const next = (quantitiesRef.current[productId] ?? 0) + d;
+      quantitiesRef.current = { ...quantitiesRef.current, [productId]: next };
+      setQuantities((m) => ({ ...m, [productId]: next }));
+      setRefillToast(`+${d} offline gespeichert`);
+      window.setTimeout(() => setRefillToast(null), 2500);
+      return true;
     }
 
     try {
@@ -739,6 +856,23 @@ function LocationInner() {
                                 void (async () => {
                                   if (!locationId || !canWrite) return;
                                   const next = quantitiesRef.current[p.id] ?? 0;
+                                  const online =
+                                    typeof navigator !== "undefined" ? navigator.onLine : true;
+                                  if (!online) {
+                                    addToQueue({
+                                      type: "count",
+                                      locationId,
+                                      productId: p.id,
+                                      quantity: next,
+                                      timestamp: Date.now(),
+                                    });
+                                    setQueueLen(getQueue().length);
+                                    setSyncStatus("offline");
+                                    setRefillToast(`Inventur offline gespeichert: ${next}`);
+                                    window.setTimeout(() => setRefillToast(null), 2000);
+                                    setEditingId(null);
+                                    return;
+                                  }
                                   try {
                                     await setInventoryQuantity({
                                       locationId,
@@ -1196,6 +1330,18 @@ function LocationInner() {
       {refillToast ? (
         <div className="fixed bottom-28 left-4 right-4 z-[60] rounded-2xl border-2 border-black bg-emerald-700 px-4 py-3 text-center text-sm font-black text-white shadow-lg">
           {refillToast}
+        </div>
+      ) : null}
+
+      {syncStatus === "offline" || queueLen > 0 ? (
+        <div className="fixed bottom-[86px] left-4 right-4 z-[55] pointer-events-none">
+          <div className="mx-auto w-fit rounded-2xl border-2 border-black bg-white px-3 py-2 text-xs font-black text-black shadow-sm">
+            {syncStatus === "offline"
+              ? `Offline · Queue: ${queueLen}`
+              : syncStatus === "syncing"
+                ? `Synchronisiere… · ${queueLen}`
+                : `Queue bereit · ${queueLen}`}
+          </div>
         </div>
       ) : null}
 

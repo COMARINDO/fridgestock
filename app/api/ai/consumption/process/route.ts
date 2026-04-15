@@ -149,6 +149,24 @@ export async function POST(req: Request) {
     const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? "25")));
 
     const supabase = getSupabaseAdmin();
+
+    // Retry/lease reset: if a worker crashed after claiming a job, it can get stuck in "processing".
+    // We reset stale "processing" jobs back to "pending" after 15 minutes.
+    try {
+      const staleIso = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      await supabase
+        .from("ai_consumption_jobs")
+        .update({
+          status: "pending",
+          error: "stale processing lease reset",
+        })
+        .eq("status", "processing")
+        .is("processed_at", null)
+        .lt("created_at", staleIso);
+    } catch {
+      // ignore retry reset errors
+    }
+
     const { data: jobs, error } = await supabase
       .from("ai_consumption_jobs")
       .select(

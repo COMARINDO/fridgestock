@@ -358,62 +358,25 @@ export async function deleteInventoryHistoryEntry(args: {
   productId: string;
 }): Promise<{ newQuantity: number }> {
   const supabase = getSupabase() as unknown as {
-    from: (t: string) => {
-      delete: () => {
-        eq: (c: string, v: unknown) => {
-          eq: (c2: string, v2: unknown) => {
-            eq: (c3: string, v3: unknown) => Promise<{ error: unknown }>;
-          };
-        };
-      };
-      select: (cols: string) => {
-        eq: (c: string, v: unknown) => {
-          eq: (c2: string, v2: unknown) => {
-            order: (col: string, opts: { ascending: boolean }) => {
-              limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
-            };
-          };
-        };
-      };
-      upsert: (
-        values: Record<string, unknown>,
-        options: Record<string, unknown>
-      ) => Promise<{ error: unknown }>;
-    };
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
   };
+  const id = args.id.trim();
+  if (!id) throw new Error("ID fehlt.");
 
-  const { error: delErr } = await supabase
-    .from("inventory_history")
-    .delete()
-    .eq("id", args.id)
-    .eq("location_id", args.locationId)
-    .eq("product_id", args.productId);
-  if (delErr) throw delErr;
+  const { data, error } = await supabase.rpc("delete_inventory_history_entry", { p_id: id });
+  if (error) throw error;
 
-  const { data: latestRows, error: qErr } = await supabase
-    .from("inventory_history")
-    .select("quantity")
-    .eq("location_id", args.locationId)
-    .eq("product_id", args.productId)
-    .order("timestamp", { ascending: false })
-    .limit(1);
-  if (qErr) throw qErr;
-
-  const row = (latestRows ?? []) as Array<{ quantity: number }>;
-  const newQuantity =
-    row.length > 0 ? Math.max(0, Math.floor(Number(row[0].quantity) || 0)) : 0;
-
-  const { error: upErr } = await supabase.from("inventory").upsert(
-    {
-      location_id: args.locationId,
-      product_id: args.productId,
-      quantity: newQuantity,
-    },
-    { onConflict: "location_id,product_id" }
-  );
-  if (upErr) throw upErr;
-
-  return { newQuantity };
+  // Returns a row: { location_id, product_id, new_quantity }
+  const rows = data as unknown;
+  let q = 0;
+  if (Array.isArray(rows) && rows.length > 0) {
+    const row = rows[0] as Record<string, unknown>;
+    q = Math.max(0, Math.floor(Number(row.new_quantity ?? 0) || 0));
+  }
+  return { newQuantity: q };
 }
 
 export async function setInventoryQuantity(args: {

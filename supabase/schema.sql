@@ -248,6 +248,64 @@ $$;
 create index if not exists inventory_history_loc_prod_time_idx
   on public.inventory_history(location_id, product_id, timestamp desc);
 
+-- Atomic delete of a single history row + sync inventory to latest remaining snapshot.
+drop function if exists public.delete_inventory_history_entry(uuid);
+create or replace function public.delete_inventory_history_entry(
+  p_id uuid
+) returns table (
+  location_id uuid,
+  product_id uuid,
+  new_quantity integer
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_loc uuid;
+  v_prod uuid;
+  v_new int;
+begin
+  select ih.location_id, ih.product_id
+    into v_loc, v_prod
+  from public.inventory_history ih
+  where ih.id = p_id;
+
+  if v_loc is null or v_prod is null then
+    raise exception 'history row not found'
+      using errcode = 'P0001';
+  end if;
+
+  -- Prevent races with concurrent updates on same (location, product).
+  perform 1
+  from public.inventory i
+  where i.location_id = v_loc and i.product_id = v_prod
+  for update;
+
+  delete from public.inventory_history
+  where id = p_id;
+
+  select ih.quantity
+    into v_new
+  from public.inventory_history ih
+  where ih.location_id = v_loc and ih.product_id = v_prod
+  order by ih.timestamp desc, ih.id desc
+  limit 1;
+
+  v_new := coalesce(v_new, 0);
+
+  insert into public.inventory (location_id, product_id, quantity)
+  values (v_loc, v_prod, v_new)
+  on conflict (location_id, product_id)
+  do update set quantity = excluded.quantity;
+
+  return query select v_loc, v_prod, v_new::integer;
+end;
+$$;
+
+grant execute on function public.delete_inventory_history_entry(uuid) to anon;
+grant execute on function public.delete_inventory_history_entry(uuid) to authenticated;
+
 -- Single RPC for "overwrite inventory + append history" (atomic)
 drop function if exists public.set_inventory_quantity(uuid, uuid, uuid, integer);
 create or replace function public.set_inventory_quantity(
@@ -441,7 +499,9 @@ as $$
     coalesce(
       sum(
         case
-          when diff < 0 and not coalesce(is_transfer, false)
+          when diff < 0
+            and not coalesce(is_transfer, false)
+            and coalesce(mode, '') <> 'transfer'
             then -diff
           else 0
         end
