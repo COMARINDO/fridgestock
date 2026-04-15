@@ -270,8 +270,9 @@ begin
   where ih.id = p_id;
 
   if v_loc is null or v_prod is null then
-    raise exception 'history row not found'
-      using errcode = 'P0001';
+    -- Idempotent delete: if already deleted, don't error (prevents noisy 400s in clients).
+    return query select null::uuid, null::uuid, 0::integer;
+    return;
   end if;
 
   -- Prevent races with concurrent updates on same (location, product).
