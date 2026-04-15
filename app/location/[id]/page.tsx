@@ -618,13 +618,8 @@ function LocationInner() {
                         if (s.moved) return;
                       }
 
-                      void (async () => {
-                        const ok = await addPositiveDelta(p.id, 1);
-                        if (ok) {
-                          setHighlightId(p.id);
-                          setTimeout(() => setHighlightId(null), 350);
-                        }
-                      })();
+                      // Simple tap: just focus the quantity editor (no implicit booking).
+                      if (canWrite) openQtyEditor(p.id);
                     }}
                     ref={(el) => {
                       rowRefs.current[p.id] = el;
@@ -733,6 +728,13 @@ function LocationInner() {
                             <button
                               type="button"
                               className="h-14 px-4 rounded-2xl bg-blue-700 text-white text-sm font-black active:scale-[0.99]"
+                              onMouseDown={(e) => {
+                                // Prevent input blur from unmounting the button before click fires.
+                                e.preventDefault();
+                              }}
+                              onTouchStart={(e) => {
+                                e.preventDefault();
+                              }}
                               onClick={() => {
                                 void (async () => {
                                   if (!locationId || !canWrite) return;
@@ -751,8 +753,8 @@ function LocationInner() {
                                     setRefillToast(`Inventur: ${next}`);
                                     window.setTimeout(() => setRefillToast(null), 2000);
                                     setEditingId(null);
-                                  } catch {
-                                    // ignore
+                                  } catch (e: unknown) {
+                                    setError(errorMessage(e, "Inventur fehlgeschlagen."));
                                   }
                                 })();
                               }}
