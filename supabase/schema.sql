@@ -24,6 +24,8 @@ create table if not exists public.products (
 alter table public.products add column if not exists supplier text;
 alter table public.products add column if not exists purchase_price numeric;
 alter table public.products add column if not exists selling_price numeric;
+alter table public.products add column if not exists metro_order_number text;
+alter table public.products add column if not exists metro_unit text;
 
 -- No duplicate products: brand + product_name + zusatz
 create unique index if not exists products_brand_product_zusatz_unique

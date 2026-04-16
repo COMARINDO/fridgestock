@@ -58,7 +58,7 @@ export async function getLocation(id: string): Promise<Location | null> {
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
     .select(
-      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price"
+      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit"
     )
     .order("brand");
   if (error) throw error;
@@ -70,7 +70,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   if (!code) return null;
   const { data, error } = await from("products")
     .select(
-      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price"
+      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit"
     )
     .eq("barcode", code)
     .maybeSingle();
@@ -119,7 +119,7 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,inventory:inventory!left(quantity,location_id)"
+        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
@@ -145,6 +145,9 @@ export async function listProductsWithInventoryForLocation(
             (p as unknown as { purchase_price?: number | null }).purchase_price ?? null,
           selling_price:
             (p as unknown as { selling_price?: number | null }).selling_price ?? null,
+          metro_order_number:
+            (p as unknown as { metro_order_number?: string | null }).metro_order_number ?? null,
+          metro_unit: (p as unknown as { metro_unit?: string | null }).metro_unit ?? null,
           quantity:
             Array.isArray(p.inventory) && p.inventory.length > 0
               ? Number(p.inventory[0]?.quantity ?? 0)
@@ -944,6 +947,33 @@ export async function updateProductPricing(args: {
           : args.sellingPrice,
     })
     .eq("id", args.productId);
+  if (error) throw error;
+}
+
+export async function updateProductMetroData(
+  productId: string,
+  args: { metro_order_number: string | null; metro_unit: string | null }
+): Promise<void> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+
+  const id = productId.trim();
+  if (!id) throw new Error("Produkt-ID fehlt.");
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      metro_order_number: args.metro_order_number?.trim()
+        ? args.metro_order_number.trim()
+        : null,
+      metro_unit: args.metro_unit?.trim() ? args.metro_unit.trim() : null,
+    })
+    .eq("id", id);
   if (error) throw error;
 }
 
