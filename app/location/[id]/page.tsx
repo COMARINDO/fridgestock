@@ -87,6 +87,13 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
 }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-window v2 types are too strict for our dynamic cell props usage
   const GridAny = Grid as unknown as (p: any) => any;
+  // Keep latest props without putting `props` in Cell deps — otherwise every keystroke
+  // (inlineAddDraft / quantities) recreates Cell and breaks multi-digit input in the grid.
+  const gridPropsRef = useRef(props);
+  // Mirror props into a ref synchronously so stable Cell always reads latest (layout effect is too late).
+  // eslint-disable-next-line react-hooks/refs -- intentional ref mirror; not used for render output
+  gridPropsRef.current = props;
+
   const columns = props.viewport.w >= 640 ? 2 : 1;
   const gap = 12;
   const gridWidth = Math.max(320, props.viewport.w - 32);
@@ -99,12 +106,13 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
   const Cell = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-window cell args are not reliably typed across bundlers
     ({ columnIndex, rowIndex, style }: any) => {
+      const pr = gridPropsRef.current;
       const idx = rowIndex * columns + columnIndex;
-      if (idx >= props.products.length) return null;
-      const p = props.products[idx] as Product | undefined;
+      if (idx >= pr.products.length) return null;
+      const p = pr.products[idx] as Product | undefined;
       if (!p) return null;
-      const qty = props.quantities[p.id] ?? 0;
-      const ring = props.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
+      const qty = pr.quantities[p.id] ?? 0;
+      const ring = pr.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
 
       const leftPad = columnIndex > 0 ? gap : 0;
       const topPad = rowIndex > 0 ? gap : 0;
@@ -126,7 +134,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
             onClick={(e) => {
               if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
               if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
-              props.onFocusQty(p.id);
+              pr.onFocusQty(p.id);
             }}
                 onTouchStart={(e) => {
                   const t = e.target as HTMLElement;
@@ -134,63 +142,63 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                   if (tag === "button" || tag === "input") return;
                   const touch = e.touches[0];
                   if (!touch) return;
-                  props.touchState.touchScrollRef.current = {
+                  pr.touchState.touchScrollRef.current = {
                     id: p.id,
                     x: touch.clientX,
                     y: touch.clientY,
                     moved: false,
                   };
-                  props.touchState.longPressFiredRef.current = false;
-                  if (props.touchState.touchTimerRef.current)
-                    clearTimeout(props.touchState.touchTimerRef.current);
-                  props.touchState.touchTimerRef.current = setTimeout(() => {
-                    props.touchState.longPressFiredRef.current = true;
-                    props.onSetEditingId(p.id);
-                    props.onFocusQtyAndSelect(p.id);
+                  pr.touchState.longPressFiredRef.current = false;
+                  if (pr.touchState.touchTimerRef.current)
+                    clearTimeout(pr.touchState.touchTimerRef.current);
+                  pr.touchState.touchTimerRef.current = setTimeout(() => {
+                    pr.touchState.longPressFiredRef.current = true;
+                    pr.onSetEditingId(p.id);
+                    pr.onFocusQtyAndSelect(p.id);
                   }, 500);
                 }}
                 onTouchMove={(e) => {
                   const touch = e.touches[0];
-                  const s = props.touchState.touchScrollRef.current;
+                  const s = pr.touchState.touchScrollRef.current;
                   if (!touch || !s || s.id !== p.id) return;
                   const dx = touch.clientX - s.x;
                   const dy = touch.clientY - s.y;
                   if (Math.hypot(dx, dy) > 10) {
                     s.moved = true;
-                    if (props.touchState.touchTimerRef.current)
-                      clearTimeout(props.touchState.touchTimerRef.current);
-                    props.touchState.touchTimerRef.current = null;
+                    if (pr.touchState.touchTimerRef.current)
+                      clearTimeout(pr.touchState.touchTimerRef.current);
+                    pr.touchState.touchTimerRef.current = null;
                   }
                 }}
                 onTouchEnd={(e) => {
                   const t = e.target as HTMLElement;
                   const tag = t.tagName.toLowerCase();
                   if (tag === "button" || tag === "input") return;
-                  if (props.touchState.touchTimerRef.current)
-                    clearTimeout(props.touchState.touchTimerRef.current);
-                  props.touchState.touchTimerRef.current = null;
-                  if (props.touchState.longPressFiredRef.current) return;
+                  if (pr.touchState.touchTimerRef.current)
+                    clearTimeout(pr.touchState.touchTimerRef.current);
+                  pr.touchState.touchTimerRef.current = null;
+                  if (pr.touchState.longPressFiredRef.current) return;
                   const touch = e.changedTouches[0];
-                  const s = props.touchState.touchScrollRef.current;
-                  props.touchState.touchScrollRef.current = null;
+                  const s = pr.touchState.touchScrollRef.current;
+                  pr.touchState.touchScrollRef.current = null;
                   if (touch && s?.id === p.id) {
                     const dx = touch.clientX - s.x;
                     const dy = touch.clientY - s.y;
                     if (dx > 50 && Math.abs(dy) < 25) {
-                      props.onOpenQuickEdit(p.id, formatProductName(p));
+                      pr.onOpenQuickEdit(p.id, formatProductName(p));
                       return;
                     }
                     if (s.moved) return;
                   }
-                  if (props.canWrite) props.onOpenQtyEditor(p.id);
+                  if (pr.canWrite) pr.onOpenQtyEditor(p.id);
                 }}
-                ref={(el) => props.rowRefSetter(p.id, el)}
+                ref={(el) => pr.rowRefSetter(p.id, el)}
               >
                 <div className="text-center">
                   <div className="text-lg font-black text-black">{formatProductName(p)}</div>
-                  {props.isAdmin
+                  {pr.isAdmin
                     ? (() => {
-                        const ts = props.lastUpdateByProduct[p.id];
+                        const ts = pr.lastUpdateByProduct[p.id];
                         if (!ts) return null;
                         const ageMs = Date.now() - Date.parse(ts);
                         const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
@@ -213,26 +221,26 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                 </div>
 
                 <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
-                  {props.editingId === p.id ? (
-                    props.scanMode === "add" ? (
+                  {pr.editingId === p.id ? (
+                    pr.scanMode === "add" ? (
                       <div className="flex flex-1 min-w-0 items-center gap-2">
                         <button
                           type="button"
                           className="h-14 px-4 rounded-2xl bg-red-700 text-white text-xl font-black active:scale-[0.99]"
-                          disabled={!props.canWrite}
+                          disabled={!pr.canWrite}
                           onClick={() => {
                             void (async () => {
-                              const n = Number(props.inlineAddDraft || "0");
+                              const n = Number(pr.inlineAddDraft || "0");
                               const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
                               if (!d) {
-                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                pr.onSetError("Bitte eine Zahl größer als 0 eingeben.");
                                 return;
                               }
-                              const ok = await props.onRecordAdjustment(p.id, d, "waste");
+                              const ok = await pr.onRecordAdjustment(p.id, d, "waste");
                               if (ok) {
-                                props.onSetInlineAddDraft("0");
-                                props.onSetEditingId(null);
-                                props.onFocusQty(p.id);
+                                pr.onSetInlineAddDraft("0");
+                                pr.onSetEditingId(null);
+                                pr.onFocusQty(p.id);
                               }
                             })();
                           }}
@@ -244,12 +252,11 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           type="tel"
                           pattern="[0-9]*"
                           enterKeyHint="done"
-                          value={props.inlineAddDraft}
+                          value={pr.inlineAddDraft}
                           onChange={(e) =>
-                            props.onSetInlineAddDraft(e.target.value.replace(/[^\d]/g, ""))
+                            pr.onSetInlineAddDraft(e.target.value.replace(/[^\d]/g, ""))
                           }
-                          onFocus={(e) => e.currentTarget.select()}
-                          ref={(el) => props.qtyInputRefSetter(p.id, el)}
+                          ref={(el) => pr.qtyInputRefSetter(p.id, el)}
                           className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                           aria-label="Buchen (+X)"
                           autoFocus
@@ -257,20 +264,20 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                         <button
                           type="button"
                           className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-xl font-black active:scale-[0.99]"
-                          disabled={!props.canWrite}
+                          disabled={!pr.canWrite}
                           onClick={() => {
                             void (async () => {
-                              const n = Number(props.inlineAddDraft || "0");
+                              const n = Number(pr.inlineAddDraft || "0");
                               const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
                               if (!d) {
-                                props.onSetError("Bitte eine Zahl größer als 0 eingeben.");
+                                pr.onSetError("Bitte eine Zahl größer als 0 eingeben.");
                                 return;
                               }
-                              const ok = await props.onAddPositiveDelta(p.id, d);
+                              const ok = await pr.onAddPositiveDelta(p.id, d);
                               if (ok) {
-                                props.onSetInlineAddDraft("0");
-                                props.onSetEditingId(null);
-                                props.onFocusQty(p.id);
+                                pr.onSetInlineAddDraft("0");
+                                pr.onSetEditingId(null);
+                                pr.onFocusQty(p.id);
                               }
                             })();
                           }}
@@ -289,11 +296,11 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           onChange={(e) => {
                             const v = Number(e.target.value.replace(/[^\d]/g, ""));
                             const next = Number.isFinite(v) ? v : 0;
-                            props.onSetQuantityDraft(p.id, next);
+                            pr.onSetQuantityDraft(p.id, next);
                           }}
                           onFocus={(e) => e.currentTarget.select()}
-                          onBlur={() => props.onSetEditingId(null)}
-                          ref={(el) => props.qtyInputRefSetter(p.id, el)}
+                          onBlur={() => pr.onSetEditingId(null)}
+                          ref={(el) => pr.qtyInputRefSetter(p.id, el)}
                           className="h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20"
                           aria-label="Inventur (absolut)"
                           autoFocus
@@ -303,7 +310,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           className="h-14 px-4 rounded-2xl bg-blue-700 text-white text-sm font-black active:scale-[0.99]"
                           onMouseDown={(e) => e.preventDefault()}
                           onTouchStart={(e) => e.preventDefault()}
-                          onClick={() => void props.onSubmitCount(p.id)}
+                          onClick={() => void pr.onSubmitCount(p.id)}
                         >
                           Inventur
                         </button>
@@ -312,15 +319,15 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                   ) : (
                     <button
                       type="button"
-                      disabled={!props.canWrite}
+                      disabled={!pr.canWrite}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (props.scanMode === "add") props.onSetInlineAddDraft("0");
-                        props.onOpenQtyEditor(p.id);
+                        if (pr.scanMode === "add") pr.onSetInlineAddDraft("0");
+                        pr.onOpenQtyEditor(p.id);
                       }}
                       className={[
                         "h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none",
-                        props.canWrite ? "cursor-pointer active:bg-black/5" : "cursor-default opacity-80",
+                        pr.canWrite ? "cursor-pointer active:bg-black/5" : "cursor-default opacity-80",
                       ].join(" ")}
                       aria-label="Menge tippen zum Ändern"
                     >
@@ -332,11 +339,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
         </div>
       );
     },
-    [
-      columns,
-      gap,
-      props,
-    ]
+    [columns, gap]
   );
 
   if (props.products.length === 0) {
