@@ -306,6 +306,98 @@ $$;
 grant execute on function public.delete_inventory_history_entry(uuid) to anon;
 grant execute on function public.delete_inventory_history_entry(uuid) to authenticated;
 
+-- Resync inventory from latest history snapshot for one (location, product).
+-- Keeps invariant: inventory.quantity == latest inventory_history.quantity (or 0 if none).
+drop function if exists public.resync_inventory_from_history(uuid, uuid);
+create or replace function public.resync_inventory_from_history(
+  p_location_id uuid,
+  p_product_id uuid
+) returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new int;
+begin
+  -- lock inventory row (or at least serialize updates for this pair)
+  perform 1
+  from public.inventory i
+  where i.location_id = p_location_id and i.product_id = p_product_id
+  for update;
+
+  select ih.quantity
+    into v_new
+  from public.inventory_history ih
+  where ih.location_id = p_location_id
+    and ih.product_id = p_product_id
+  order by ih.timestamp desc, ih.id desc
+  limit 1;
+
+  v_new := coalesce(v_new, 0);
+
+  insert into public.inventory (location_id, product_id, quantity)
+  values (p_location_id, p_product_id, v_new)
+  on conflict (location_id, product_id)
+  do update set quantity = excluded.quantity;
+
+  return v_new;
+end;
+$$;
+
+grant execute on function public.resync_inventory_from_history(uuid, uuid) to anon;
+grant execute on function public.resync_inventory_from_history(uuid, uuid) to authenticated;
+
+-- Lightweight consistency check (optionally auto-fix).
+drop function if exists public.check_inventory_matches_latest_history(uuid, uuid, boolean);
+create or replace function public.check_inventory_matches_latest_history(
+  p_location_id uuid,
+  p_product_id uuid,
+  p_autofix boolean default true
+) returns table (
+  matched boolean,
+  inventory_quantity integer,
+  history_quantity integer,
+  fixed boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_inv int;
+  v_hist int;
+  v_fixed boolean := false;
+begin
+  select i.quantity
+    into v_inv
+  from public.inventory i
+  where i.location_id = p_location_id
+    and i.product_id = p_product_id;
+  v_inv := coalesce(v_inv, 0);
+
+  select ih.quantity
+    into v_hist
+  from public.inventory_history ih
+  where ih.location_id = p_location_id
+    and ih.product_id = p_product_id
+  order by ih.timestamp desc, ih.id desc
+  limit 1;
+  v_hist := coalesce(v_hist, 0);
+
+  if v_inv <> v_hist and coalesce(p_autofix, true) then
+    perform public.resync_inventory_from_history(p_location_id, p_product_id);
+    v_inv := v_hist;
+    v_fixed := true;
+  end if;
+
+  return query select (v_inv = v_hist), v_inv::integer, v_hist::integer, v_fixed;
+end;
+$$;
+
+grant execute on function public.check_inventory_matches_latest_history(uuid, uuid, boolean) to anon;
+grant execute on function public.check_inventory_matches_latest_history(uuid, uuid, boolean) to authenticated;
+
 -- Single RPC for "overwrite inventory + append history" (atomic)
 drop function if exists public.set_inventory_quantity(uuid, uuid, uuid, integer);
 create or replace function public.set_inventory_quantity(

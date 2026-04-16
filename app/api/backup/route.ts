@@ -74,6 +74,20 @@ function buildBackupCsv(): Promise<string> {
       "*",
       "id"
     );
+    const orderOverrides = await fetchAllRows(
+      supabase,
+      "order_overrides",
+      "*",
+      "updated_at"
+    );
+    const aiConsumption = await fetchAllRows(supabase, "ai_consumption", "*", "created_at");
+    const aiConsumptionJobs = await fetchAllRows(
+      supabase,
+      "ai_consumption_jobs",
+      "*",
+      "created_at"
+    );
+    const users = await fetchAllRows(supabase, "users", "*", "name");
 
     const locHeaders =
       locations[0] != null ? Object.keys(locations[0]) : ["id", "name", "parent_id"];
@@ -97,6 +111,44 @@ function buildBackupCsv(): Promise<string> {
       inventoryHistory[0] != null
         ? Object.keys(inventoryHistory[0])
         : ["id", "user_id", "location_id", "product_id", "quantity", "timestamp"];
+    const overrideHeaders =
+      orderOverrides[0] != null
+        ? Object.keys(orderOverrides[0])
+        : ["location_id", "product_id", "quantity", "updated_at"];
+    const aiHeaders =
+      aiConsumption[0] != null
+        ? Object.keys(aiConsumption[0])
+        : [
+            "id",
+            "location_id",
+            "product_id",
+            "daily_consumption",
+            "suggested_order_7_days",
+            "is_anomaly",
+            "raw_input",
+            "raw_output",
+            "created_at",
+          ];
+    const aiJobHeaders =
+      aiConsumptionJobs[0] != null
+        ? Object.keys(aiConsumptionJobs[0])
+        : [
+            "id",
+            "inventory_history_id",
+            "location_id",
+            "product_id",
+            "previous_quantity",
+            "current_quantity",
+            "days_between",
+            "status",
+            "error",
+            "raw_input",
+            "raw_output",
+            "created_at",
+            "processed_at",
+          ];
+    const userHeaders =
+      users[0] != null ? Object.keys(users[0]) : ["id", "name", "password"];
 
     return [
       "LOCATIONS",
@@ -110,6 +162,18 @@ function buildBackupCsv(): Promise<string> {
       "",
       "INVENTORY_HISTORY",
       rowsToCsv(histHeaders, inventoryHistory),
+      "",
+      "ORDER_OVERRIDES",
+      rowsToCsv(overrideHeaders, orderOverrides),
+      "",
+      "AI_CONSUMPTION",
+      rowsToCsv(aiHeaders, aiConsumption),
+      "",
+      "AI_CONSUMPTION_JOBS",
+      rowsToCsv(aiJobHeaders, aiConsumptionJobs),
+      "",
+      "USERS",
+      rowsToCsv(userHeaders, users),
       "",
     ].join("\r\n");
   })();
