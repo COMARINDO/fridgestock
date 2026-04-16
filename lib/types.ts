@@ -16,6 +16,8 @@ export type Product = {
   supplier?: string | null;
   purchase_price?: number | null;
   selling_price?: number | null;
+  metro_order_number?: string | null;
+  metro_unit?: string | null;
 };
 
 export type Location = {
