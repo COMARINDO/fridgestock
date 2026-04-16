@@ -47,11 +47,6 @@ begin
   v_from := coalesce(v_from, 0);
   v_to := coalesce(v_to, 0);
 
-  if v_from < p_quantity then
-    raise exception 'Not enough stock in Rabenstein'
-      using errcode = 'P0001';
-  end if;
-
   v_from := v_from - p_quantity;
   v_to := v_to + p_quantity;
 

@@ -26,7 +26,7 @@ function computeEarlyStageOrder(input: {
   targetDays?: number;
 }): { demand7d: number; orderQuantity: number } {
   const usage7d = Math.max(0, Math.round(Number(input.usage7d) || 0));
-  const stock = Math.max(0, Math.floor(Number(input.stock) || 0));
+  const stock = Math.floor(Number(input.stock) || 0);
   const targetDays = Math.max(1, Math.round(Number(input.targetDays ?? EARLY_STAGE_TARGET_DAYS) || 7));
   // Baseline: avoid under-ordering at startup. Default is at least 3/day,
   // but never below the implied average of observed usage_7d / 7 (if any).
@@ -81,8 +81,8 @@ export function computeCentralWarehouseOrder(input: {
   const uT = Math.max(0, Math.round(Number(input.usageTeich7d) || 0));
   const uF = Math.max(0, Math.round(Number(input.usageFiliale7d) || 0));
   const totalUsage7d = uT + uF;
-  const sR = Math.max(0, Math.floor(Number(input.stockRabenstein) || 0));
-  const sT = Math.max(0, Math.floor(Number(input.stockTeich) || 0));
+  const sR = Math.floor(Number(input.stockRabenstein) || 0);
+  const sT = Math.floor(Number(input.stockTeich) || 0);
   const totalStock = sR + sT;
 
   if (CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER) {

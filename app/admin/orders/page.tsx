@@ -164,10 +164,7 @@ export default function AdminOrdersPage() {
     const invMap: Record<string, Record<string, number>> = {};
     for (const row of invAll) {
       if (!invMap[row.location_id]) invMap[row.location_id] = {};
-      invMap[row.location_id][row.product_id] = Math.max(
-        0,
-        Math.floor(Number(row.quantity) || 0)
-      );
+      invMap[row.location_id][row.product_id] = Math.floor(Number(row.quantity) || 0);
     }
 
     setLocations(locs);
@@ -873,8 +870,18 @@ export default function AdminOrdersPage() {
                           </button>
                         )}
                       </td>
-                      <td className="p-3 font-black tabular-nums text-black">
+                      <td
+                        className={[
+                          "p-3 font-black tabular-nums",
+                          r.stockRabenstein < 0 ? "text-red-800" : "text-black",
+                        ].join(" ")}
+                      >
                         {r.stockRabenstein}
+                        {r.stockRabenstein < 0 ? (
+                          <span className="ml-2 text-[11px] font-black text-red-800/80">
+                            Backorder
+                          </span>
+                        ) : null}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
                         {r.usageTeich7d}
@@ -882,11 +889,31 @@ export default function AdminOrdersPage() {
                       <td className="p-3 font-black tabular-nums text-black">
                         {r.usageFiliale7d}
                       </td>
-                      <td className="p-3 font-black tabular-nums text-black/80">
+                      <td
+                        className={[
+                          "p-3 font-black tabular-nums",
+                          r.stockTeich < 0 ? "text-red-800" : "text-black/80",
+                        ].join(" ")}
+                      >
                         {r.stockTeich}
+                        {r.stockTeich < 0 ? (
+                          <span className="ml-2 text-[11px] font-black text-red-800/80">
+                            Backorder
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="p-3 font-black tabular-nums text-black/80">
+                      <td
+                        className={[
+                          "p-3 font-black tabular-nums",
+                          r.stockFiliale < 0 ? "text-red-800" : "text-black/80",
+                        ].join(" ")}
+                      >
                         {r.stockFiliale}
+                        {r.stockFiliale < 0 ? (
+                          <span className="ml-2 text-[11px] font-black text-red-800/80">
+                            Backorder
+                          </span>
+                        ) : null}
                       </td>
                       <td className="p-3">
                         {isEd ? (
@@ -1046,7 +1073,19 @@ export default function AdminOrdersPage() {
                           </button>
                         )}
                       </td>
-                      <td className="p-3 font-black tabular-nums">{r.stock}</td>
+                      <td
+                        className={[
+                          "p-3 font-black tabular-nums",
+                          r.stock < 0 ? "text-red-800" : "text-black",
+                        ].join(" ")}
+                      >
+                        {r.stock}
+                        {r.stock < 0 ? (
+                          <span className="ml-2 text-[11px] font-black text-red-800/80">
+                            Backorder
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="p-3 font-black tabular-nums">{r.usage7d}</td>
                       <td className="p-3">
                         {isEd ? (
@@ -1206,7 +1245,19 @@ export default function AdminOrdersPage() {
                           </button>
                         )}
                       </td>
-                      <td className="p-3 font-black tabular-nums">{r.stock}</td>
+                      <td
+                        className={[
+                          "p-3 font-black tabular-nums",
+                          r.stock < 0 ? "text-red-800" : "text-black",
+                        ].join(" ")}
+                      >
+                        {r.stock}
+                        {r.stock < 0 ? (
+                          <span className="ml-2 text-[11px] font-black text-red-800/80">
+                            Backorder
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="p-3 font-black tabular-nums">{r.usage7d}</td>
                       <td className="p-3">
                         {isEd ? (

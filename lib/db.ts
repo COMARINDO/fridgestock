@@ -485,38 +485,38 @@ function parseRpcInt(data: unknown, fnName: string): number {
   };
 
   const direct = parseNumberish(data);
-  if (direct !== null) return Math.max(0, Math.floor(direct));
+  if (direct !== null) return Math.floor(direct);
 
   if (Array.isArray(data) && data.length > 0) {
     const first = data[0] as unknown;
     const nFirst = parseNumberish(first);
-    if (nFirst !== null) return Math.max(0, Math.floor(nFirst));
+    if (nFirst !== null) return Math.floor(nFirst);
 
     if (first && typeof first === "object") {
       const row = first as Record<string, unknown>;
       // PostgREST sometimes returns [{ apply_inventory_delta: 9 }]
       const byFn = parseNumberish(row[fnName]);
-      if (byFn !== null) return Math.max(0, Math.floor(byFn));
+      if (byFn !== null) return Math.floor(byFn);
       // Or other common field names
       const byQty =
         parseNumberish(row.new_quantity) ??
         parseNumberish(row.newQuantity) ??
         parseNumberish(row.quantity) ??
         null;
-      if (byQty !== null) return Math.max(0, Math.floor(byQty));
+      if (byQty !== null) return Math.floor(byQty);
     }
   }
 
   if (data && typeof data === "object") {
     const obj = data as Record<string, unknown>;
     const byFn = parseNumberish(obj[fnName]);
-    if (byFn !== null) return Math.max(0, Math.floor(byFn));
+    if (byFn !== null) return Math.floor(byFn);
     const byQty =
       parseNumberish(obj.new_quantity) ??
       parseNumberish(obj.newQuantity) ??
       parseNumberish(obj.quantity) ??
       null;
-    if (byQty !== null) return Math.max(0, Math.floor(byQty));
+    if (byQty !== null) return Math.floor(byQty);
   }
 
   return 0;
@@ -612,10 +612,7 @@ async function getInventoryQuantityForProductAtLocation(
     .eq("product_id", productId)
     .maybeSingle();
   if (error) throw error;
-  return Math.max(
-    0,
-    Math.floor(Number((data as { quantity?: number } | null)?.quantity ?? 0))
-  );
+  return Math.floor(Number((data as { quantity?: number } | null)?.quantity ?? 0));
 }
 
 /**
@@ -742,8 +739,8 @@ export async function transferStock(args: {
       refetchErr
     );
     return {
-      newFromQuantity: Math.max(0, beforeFrom - q),
-      newToQuantity: Math.max(0, beforeTo + q),
+      newFromQuantity: beforeFrom - q,
+      newToQuantity: beforeTo + q,
     };
   }
 }
@@ -839,7 +836,7 @@ export async function getLatestInventorySnapshotsForLocation(
   for (const row of rows) {
     if (!out[row.product_id]) {
       out[row.product_id] = {
-        quantity: Math.max(0, Math.floor(Number(row.quantity) || 0)),
+        quantity: Math.floor(Number(row.quantity) || 0),
         timestamp: row.timestamp,
       };
     }
