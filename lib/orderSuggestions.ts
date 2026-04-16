@@ -1,30 +1,31 @@
 /**
- * Zentrales Lager (Rabenstein): Nachfrage = Verbrauch Teich + Verbrauch Rabenstein,
- * Bestand nur Rabenstein. Teich-Bestand fließt nicht ein.
+ * Zentrales (geteiltes) Lager: Teich + Rabenstein bilden gemeinsam den Lagerbestand.
+ * Verbrauch kommt aus Teich + Filiale (beide konsumieren aus dem gemeinsamen Lager).
  *
- * Standard: order = max(0, round(total_usage_7d - stock_rabenstein))
- * Optional: order = max(0, ceil(total_usage_7d * 1.1 - stock_rabenstein))
+ * Standard: order = max(0, round((usage_teich_7d + usage_filiale_7d) - (stock_rabenstein + stock_teich)))
+ * Optional: order = max(0, ceil((total_usage_7d * 1.1) - total_stock))
  */
 export const CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER = false;
 
 export function computeCentralWarehouseOrder(input: {
   usageTeich7d: number;
-  usageRabenstein7d: number;
-  usageFiliale7d?: number;
+  usageFiliale7d: number;
   stockRabenstein: number;
+  stockTeich: number;
 }): { totalUsage7d: number; orderQuantity: number } {
   const uT = Math.max(0, Math.round(Number(input.usageTeich7d) || 0));
-  const uR = Math.max(0, Math.round(Number(input.usageRabenstein7d) || 0));
   const uF = Math.max(0, Math.round(Number(input.usageFiliale7d) || 0));
-  const total = uT + uR + uF;
-  const stock = Math.max(0, Math.floor(Number(input.stockRabenstein) || 0));
+  const totalUsage7d = uT + uF;
+  const sR = Math.max(0, Math.floor(Number(input.stockRabenstein) || 0));
+  const sT = Math.max(0, Math.floor(Number(input.stockTeich) || 0));
+  const totalStock = sR + sT;
 
   if (CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER) {
-    const orderQuantity = Math.max(0, Math.ceil(total * 1.1 - stock));
-    return { totalUsage7d: total, orderQuantity };
+    const orderQuantity = Math.max(0, Math.ceil(totalUsage7d * 1.1 - totalStock));
+    return { totalUsage7d, orderQuantity };
   }
-  const orderQuantity = Math.max(0, Math.round(total - stock));
-  return { totalUsage7d: total, orderQuantity };
+  const orderQuantity = Math.max(0, Math.round(totalUsage7d - totalStock));
+  return { totalUsage7d, orderQuantity };
 }
 
 /** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch 7d − Bestand)). */

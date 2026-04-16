@@ -49,7 +49,6 @@ type CentralRowModel = {
   stockTeich: number;
   stockFiliale: number;
   usageTeich7d: number;
-  usageRabenstein7d: number;
   usageFiliale7d: number;
   totalUsage7d: number;
   calculatedOrder: number;
@@ -201,10 +200,6 @@ export default function AdminOrdersPage() {
         0,
         Math.round(tId ? (usageByLoc[tId]?.[p.id] ?? 0) : 0)
       );
-      const usageRab = Math.max(
-        0,
-        Math.round(usageByLoc[rabensteinId]?.[p.id] ?? 0)
-      );
       const usageFiliale = Math.max(
         0,
         Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
@@ -216,9 +211,9 @@ export default function AdminOrdersPage() {
       const { totalUsage7d, orderQuantity: calculatedOrder } =
         computeCentralWarehouseOrder({
           usageTeich7d: usageTeich,
-          usageRabenstein7d: usageRab,
           usageFiliale7d: usageFiliale,
           stockRabenstein: stockRab,
+          stockTeich,
         });
 
       const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
@@ -227,7 +222,6 @@ export default function AdminOrdersPage() {
 
       const include =
         usageTeich > 0 ||
-        usageRab > 0 ||
         usageFiliale > 0 ||
         stockRab > 0 ||
         stockTeich > 0 ||
@@ -246,7 +240,6 @@ export default function AdminOrdersPage() {
         stockTeich,
         stockFiliale,
         usageTeich7d: usageTeich,
-        usageRabenstein7d: usageRab,
         usageFiliale7d: usageFiliale,
         totalUsage7d,
         calculatedOrder,
@@ -375,13 +368,13 @@ export default function AdminOrdersPage() {
           0,
           Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
         );
-        const usageRab = Math.max(0, Math.round(usageByLoc[rabensteinId]?.[p.id] ?? 0));
         const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
+        const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
         const { orderQuantity } = computeCentralWarehouseOrder({
           usageTeich7d: usageTeich,
-          usageRabenstein7d: usageRab,
           usageFiliale7d: usageFiliale,
           stockRabenstein: stockRab,
+          stockTeich,
         });
         const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
         central = ov ? ov.quantity : orderQuantity;
@@ -647,7 +640,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
           <section className="mt-8 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
@@ -665,11 +658,6 @@ export default function AdminOrdersPage() {
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
                     {RABENSTEIN_FILIALE_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">7d</span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">7d</span>
                   </th>
@@ -778,9 +766,6 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
                         {r.usageFiliale7d}
-                      </td>
-                      <td className="p-3 font-black tabular-nums text-black">
-                        {r.usageRabenstein7d}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black/80">
                         {r.stockTeich}
