@@ -294,6 +294,10 @@ export async function moveInventoryHistoryToLocation(args: {
         select: (cols: string) => Promise<{ data: unknown; error: unknown }>;
       };
     };
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
   };
 
   const fromId = args.fromLocationId.trim();
@@ -314,9 +318,45 @@ export async function moveInventoryHistoryToLocation(args: {
   q = q.eq("location_id", fromId).gte("timestamp", fromIso).lte("timestamp", toIso);
   if (args.mode && args.mode !== "any") q = q.eq("mode", args.mode);
 
-  const { data, error } = await q.select("id");
+  const { data, error } = await q.select("id,product_id");
   if (error) throw error;
-  return { movedRows: Array.isArray(data) ? data.length : 0 };
+
+  const rows = Array.isArray(data)
+    ? (data as Array<{ product_id?: unknown }>).filter(Boolean)
+    : [];
+  const movedRows = rows.length;
+
+  // SAFETY: After moving history rows, resync inventory snapshots for affected (location, product)
+  // on both source and destination locations to keep invariant:
+  // inventory.quantity == latest inventory_history.quantity.
+  const productIds = Array.from(
+    new Set(
+      rows
+        .map((r) => (typeof r.product_id === "string" ? r.product_id : ""))
+        .filter(Boolean)
+    )
+  );
+  for (const productId of productIds) {
+    // best-effort: never fail the move if resync RPC is unavailable
+    try {
+      await supabase.rpc("resync_inventory_from_history", {
+        p_location_id: fromId,
+        p_product_id: productId,
+      });
+    } catch {
+      // ignore
+    }
+    try {
+      await supabase.rpc("resync_inventory_from_history", {
+        p_location_id: toId,
+        p_product_id: productId,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  return { movedRows };
 }
 
 export async function previewMoveInventoryHistoryCount(args: {
@@ -376,6 +416,31 @@ export async function deleteInventoryHistoryEntry(args: {
     const row = rows[0] as Record<string, unknown>;
     q = Math.max(0, Math.floor(Number(row.new_quantity ?? 0) || 0));
   }
+
+  // Lightweight guard: ensure inventory matches latest history (auto-fix if not).
+  try {
+    const { data: checkData, error: checkErr } = await supabase.rpc(
+      "check_inventory_matches_latest_history",
+      {
+        p_location_id: args.locationId,
+        p_product_id: args.productId,
+        p_autofix: true,
+      }
+    );
+    if (checkErr) throw checkErr;
+    const first = Array.isArray(checkData) ? (checkData[0] as Record<string, unknown>) : null;
+    if (first && first.matched === false) {
+      console.error("[consistency] delete booking mismatch auto-fixed", {
+        locationId: args.locationId,
+        productId: args.productId,
+        inventory: first.inventory_quantity,
+        history: first.history_quantity,
+      });
+    }
+  } catch {
+    // ignore guard failures
+  }
+
   return { newQuantity: q };
 }
 
@@ -605,10 +670,35 @@ export async function transferStock(args: {
         Number.isFinite(Number(nf)) &&
         Number.isFinite(Number(nt))
       ) {
-        return {
+        const result = {
           newFromQuantity: Number(nf),
           newToQuantity: Number(nt),
         };
+        // Lightweight guard: verify inventory matches latest history (auto-fix if not).
+        try {
+          const checks = await Promise.all([
+            supabase.rpc("check_inventory_matches_latest_history", {
+              p_location_id: args.fromLocationId,
+              p_product_id: args.productId,
+              p_autofix: true,
+            }),
+            supabase.rpc("check_inventory_matches_latest_history", {
+              p_location_id: args.toLocationId,
+              p_product_id: args.productId,
+              p_autofix: true,
+            }),
+          ]);
+          for (const c of checks) {
+            if (c.error) continue;
+            const first = Array.isArray(c.data) ? (c.data[0] as Record<string, unknown>) : null;
+            if (first && first.matched === false) {
+              console.error("[consistency] transfer mismatch auto-fixed", first);
+            }
+          }
+        } catch {
+          // ignore guard failures
+        }
+        return result;
       }
     }
   }
@@ -618,6 +708,30 @@ export async function transferStock(args: {
       getInventoryQuantityForProductAtLocation(args.fromLocationId, args.productId),
       getInventoryQuantityForProductAtLocation(args.toLocationId, args.productId),
     ]);
+    // Lightweight guard: verify inventory matches latest history (auto-fix if not).
+    try {
+      const checks = await Promise.all([
+        supabase.rpc("check_inventory_matches_latest_history", {
+          p_location_id: args.fromLocationId,
+          p_product_id: args.productId,
+          p_autofix: true,
+        }),
+        supabase.rpc("check_inventory_matches_latest_history", {
+          p_location_id: args.toLocationId,
+          p_product_id: args.productId,
+          p_autofix: true,
+        }),
+      ]);
+      for (const c of checks) {
+        if (c.error) continue;
+        const first = Array.isArray(c.data) ? (c.data[0] as Record<string, unknown>) : null;
+        if (first && first.matched === false) {
+          console.error("[consistency] transfer mismatch auto-fixed", first);
+        }
+      }
+    } catch {
+      // ignore guard failures
+    }
     return { newFromQuantity, newToQuantity };
   } catch (refetchErr) {
     console.error(
@@ -916,60 +1030,12 @@ export async function getWeeklyUsageByProduct(args?: {
       return out;
     }
   } catch {
-    // fall back below
+    // Single source of truth: SQL RPC. If it fails, return empty usage.
+    return {};
   }
 
-  // Fallback: compute from raw history (sum of negative diffs).
-  const rows = await (async () => {
-    const supabase = getSupabase() as unknown as {
-      from: (t: string) => {
-        select: (columns: string) => {
-          gte: (column: string, value: string) => Promise<{ data: unknown; error: unknown }>;
-        };
-      };
-    };
-
-    const { data, error } = await supabase
-      .from("inventory_history")
-      .select("location_id,product_id,quantity,timestamp,is_transfer")
-      .gte("timestamp", sinceIso);
-    if (error) throw error;
-    return (data ?? []) as Array<{
-      location_id: string;
-      product_id: string;
-      quantity: number;
-      timestamp: string;
-      is_transfer?: boolean;
-    }>;
-  })();
-
-  const byKey = new Map<string, Array<{ t: number; q: number }>>();
-  for (const r of rows) {
-    if (r.is_transfer) continue;
-    const key = `${r.location_id}:${r.product_id}`;
-    const arr = byKey.get(key) ?? [];
-    arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
-    byKey.set(key, arr);
-  }
-
-  const usageByProduct = new Map<string, number>();
-  for (const [key, arr] of byKey.entries()) {
-    arr.sort((a, b) => a.t - b.t);
-    let usage = 0;
-    for (let i = 1; i < arr.length; i++) {
-      const diff = arr[i]!.q - arr[i - 1]!.q;
-      if (diff < 0) usage += -diff;
-    }
-    const productId = key.split(":")[1] ?? "";
-    if (!productId) continue;
-    usageByProduct.set(productId, (usageByProduct.get(productId) ?? 0) + usage);
-  }
-
-  const out: Record<string, number> = {};
-  for (const [pid, usage] of usageByProduct.entries()) {
-    out[pid] = Math.round(usage * multiplier);
-  }
-  return out;
+  // If RPC returns an unexpected shape, treat as empty (no fallback to history).
+  return {};
 }
 
 export async function getWeeklyUsageByLocationProduct(args?: {
@@ -1045,56 +1111,12 @@ export async function getWeeklyUsageByLocationProduct(args?: {
       return out;
     }
   } catch {
-    // fall back below
+    // Single source of truth: SQL RPC. If it fails, return empty usage.
+    return {};
   }
 
-  // Fallback: compute from raw history (sum of negative diffs).
-  const rows = await (async () => {
-    const supabase = getSupabase() as unknown as {
-      from: (t: string) => {
-        select: (columns: string) => {
-          gte: (column: string, value: string) => Promise<{ data: unknown; error: unknown }>;
-        };
-      };
-    };
-
-    const { data, error } = await supabase
-      .from("inventory_history")
-      .select("location_id,product_id,quantity,timestamp,is_transfer")
-      .gte("timestamp", sinceIso);
-    if (error) throw error;
-    return (data ?? []) as Array<{
-      location_id: string;
-      product_id: string;
-      quantity: number;
-      timestamp: string;
-      is_transfer?: boolean;
-    }>;
-  })();
-
-  const byKey = new Map<string, Array<{ t: number; q: number }>>();
-  for (const r of rows) {
-    if (r.is_transfer) continue;
-    const key = `${r.location_id}:${r.product_id}`;
-    const arr = byKey.get(key) ?? [];
-    arr.push({ t: Date.parse(r.timestamp), q: Number(r.quantity ?? 0) });
-    byKey.set(key, arr);
-  }
-
-  const out: Record<string, Record<string, number>> = {};
-  for (const [key, arr] of byKey.entries()) {
-    arr.sort((a, b) => a.t - b.t);
-    let usage = 0;
-    for (let i = 1; i < arr.length; i++) {
-      const diff = arr[i]!.q - arr[i - 1]!.q;
-      if (diff < 0) usage += -diff;
-    }
-    const [locationId, productId] = key.split(":");
-    if (!locationId || !productId) continue;
-    if (!out[locationId]) out[locationId] = {};
-    out[locationId][productId] = Math.round(usage * multiplier);
-  }
-  return out;
+  // If RPC returns an unexpected shape, treat as empty (no fallback to history).
+  return {};
 }
 
 
