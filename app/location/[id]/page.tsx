@@ -905,10 +905,9 @@ function LocationInner() {
 
         // No automatic quantity changes on scan.
         // Tap/hold on the product card handles +1 / menu.
+        // Important: don't override the user's current mode ("add" vs "set") here.
+        // Otherwise after scanning while in "Buchen" the inline editor would show the Inventur UI.
         setScanSheet(null);
-        setScanMode("choose");
-        setSetQty(String(quantitiesRef.current[p.id] ?? 0));
-        setAddQty("0");
       } catch (e: unknown) {
         setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
       }
