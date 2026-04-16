@@ -1149,4 +1149,91 @@ export async function getWeeklyUsageByLocationProduct(args?: {
   return {};
 }
 
+export async function getWeeklyUsageWithCoverageByLocationProduct(args?: {
+  days?: number;
+  multiplier?: number;
+  useAi?: boolean;
+}): Promise<{
+  usageByLoc: Record<string, Record<string, number>>;
+  daysCoveredByLoc: Record<string, Record<string, number>>;
+}> {
+  const days = args?.days ?? 7;
+  const multiplier = args?.multiplier ?? 1;
+  const useAi = args?.useAi ?? true;
+  const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  try {
+    const { data, error } = await supabase.rpc("usage_by_location_product_since_with_coverage", {
+      p_since: sinceIso,
+    });
+    if (error) throw error;
+    if (!Array.isArray(data)) return { usageByLoc: {}, daysCoveredByLoc: {} };
+
+    const usageByLoc: Record<string, Record<string, number>> = {};
+    const daysCoveredByLoc: Record<string, Record<string, number>> = {};
+
+    for (const row of data as Array<{
+      location_id?: string;
+      product_id?: string;
+      usage?: number;
+      days_covered?: number;
+    }>) {
+      const lid = typeof row.location_id === "string" ? row.location_id : "";
+      const pid = typeof row.product_id === "string" ? row.product_id : "";
+      if (!lid || !pid) continue;
+      if (!usageByLoc[lid]) usageByLoc[lid] = {};
+      if (!daysCoveredByLoc[lid]) daysCoveredByLoc[lid] = {};
+      usageByLoc[lid][pid] = Math.round(Math.max(0, Number(row.usage ?? 0)) * multiplier);
+      daysCoveredByLoc[lid][pid] = Math.max(0, Math.min(7, Number(row.days_covered ?? 0) || 0));
+    }
+
+    if (useAi) {
+      // AI overlay: treat suggested_order_7_days as a full 7-day usage signal (daysCovered=7).
+      try {
+        const sinceAiIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: aiRows, error: aiErr } = await from("ai_consumption")
+          .select("location_id,product_id,suggested_order_7_days,is_anomaly,created_at")
+          .gte("created_at", sinceAiIso)
+          .order("created_at", { ascending: false })
+          .limit(5000);
+        if (aiErr) throw aiErr;
+        const seen = new Set<string>();
+        for (const r of (aiRows ?? []) as Array<{
+          location_id?: string;
+          product_id?: string;
+          suggested_order_7_days?: number | null;
+          is_anomaly?: boolean | null;
+        }>) {
+          const lid = typeof r.location_id === "string" ? r.location_id : "";
+          const pid = typeof r.product_id === "string" ? r.product_id : "";
+          if (!lid || !pid) continue;
+          const key = `${lid}:${pid}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (r.is_anomaly) continue;
+          const s7 = Math.max(0, Math.round(Number(r.suggested_order_7_days ?? 0) || 0));
+          if (s7 <= 0) continue;
+          if (!usageByLoc[lid]) usageByLoc[lid] = {};
+          if (!daysCoveredByLoc[lid]) daysCoveredByLoc[lid] = {};
+          usageByLoc[lid][pid] = Math.round(s7 * multiplier);
+          daysCoveredByLoc[lid][pid] = 7;
+        }
+      } catch {
+        // ignore AI overlay errors
+      }
+    }
+
+    return { usageByLoc, daysCoveredByLoc };
+  } catch {
+    return { usageByLoc: {}, daysCoveredByLoc: {} };
+  }
+}
+
 
