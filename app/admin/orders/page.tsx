@@ -344,11 +344,13 @@ export default function AdminOrdersPage() {
   }, [products, usageByLoc, inventoryQty, overrideByKey, kirchbergId]);
 
   const gesamtRows = useMemo(() => {
-    // Build totals directly from raw inputs so "Gesamt" isn't empty just because
-    // individual tabs filter out zeros.
+    // Show ALL products, with ordering totals.
     const out: Array<{
       productId: string;
       name: string;
+      zusatz: string | null;
+      metro_order_number: string | null;
+      metro_unit: string | null;
       rabenstein: number;
       hofstetten: number;
       kirchberg: number;
@@ -400,12 +402,25 @@ export default function AdminOrdersPage() {
       }
 
       const sum = central + hof + kir;
-      // Keep the view useful: show only products that need ordering somewhere.
-      if (sum <= 0) continue;
-      out.push({ productId: p.id, name, rabenstein: central, hofstetten: hof, kirchberg: kir, sum });
+      out.push({
+        productId: p.id,
+        name,
+        zusatz: p.zusatz ?? null,
+        metro_order_number: p.metro_order_number ?? null,
+        metro_unit: p.metro_unit ?? null,
+        rabenstein: central,
+        hofstetten: hof,
+        kirchberg: kir,
+        sum,
+      });
     }
 
-    out.sort((a, b) => a.name.localeCompare(b.name, "de"));
+    out.sort((a, b) => {
+      const ao = a.sum > 0 ? 0 : 1;
+      const bo = b.sum > 0 ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return a.name.localeCompare(b.name, "de");
+    });
     return out;
   }, [
     products,
@@ -1158,37 +1173,104 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "gesamt" ? (
         <>
           <p className="mt-6 text-xs font-black text-black/55">
-            Übersicht aller Bestellvorschläge; Bearbeitung in den jeweiligen Reitern.
+            Alle Produkte; Bestellung ist die Summe aus zentral + Hofstetten + Kirchberg.
           </p>
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_LAGER_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">
-                      + {TEICH_NAME} + {RABENSTEIN_FILIALE_NAME}
-                    </span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">{HOFSTETTEN_NAME}</th>
-                  <th className="p-3 font-black text-black tabular-nums">{KIRCHBERG_NAME}</th>
-                  <th className="p-3 font-black text-black tabular-nums">Summe</th>
+                  <th className="p-3 font-black text-black">Zusatz</th>
+                  <th className="p-3 font-black text-black">Metro Nr</th>
+                  <th className="p-3 font-black text-black">Einheit</th>
+                  <th className="p-3 font-black text-black tabular-nums">Bestellung</th>
                 </tr>
               </thead>
               <tbody>
-                {gesamtRows.map((r) => (
-                  <tr key={r.productId} className="border-b border-black/10 align-middle">
-                    <td className="p-3 font-black text-black max-w-[200px] truncate">
-                      {r.name}
-                    </td>
-                    <td className="p-3 font-black tabular-nums">{r.rabenstein}</td>
-                    <td className="p-3 font-black tabular-nums">{r.hofstetten}</td>
-                    <td className="p-3 font-black tabular-nums">{r.kirchberg}</td>
-                    <td className="p-3 font-black tabular-nums">{r.sum}</td>
-                  </tr>
-                ))}
+                {gesamtRows.map((r) => {
+                  const editMetroNr =
+                    metroEditing?.productId === r.productId &&
+                    metroEditing?.field === "metro_order_number";
+                  const editMetroUnit =
+                    metroEditing?.productId === r.productId &&
+                    metroEditing?.field === "metro_unit";
+                  return (
+                    <tr key={r.productId} className="border-b border-black/10 align-middle">
+                      <td className="p-3 font-black text-black max-w-[220px]">
+                        <div className="truncate">{r.name}</div>
+                      </td>
+                      <td className="p-3 font-black text-black/70 max-w-[120px] truncate">
+                        {r.zusatz?.trim() ? r.zusatz : "–"}
+                      </td>
+                      <td className="p-3">
+                        {editMetroNr ? (
+                          <input
+                            className="h-10 w-28 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
+                            value={metroDraft}
+                            autoFocus
+                            onChange={(e) => setMetroDraft(e.target.value)}
+                            onBlur={() => void saveMetroEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveMetroEdit();
+                              if (e.key === "Escape") setMetroEditing(null);
+                            }}
+                            disabled={metroSaveBusy}
+                            aria-label="Metro Nummer"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className={[
+                              "h-10 min-w-[7rem] rounded-xl border-2 px-2 text-sm font-black text-left",
+                              r.metro_order_number?.trim()
+                                ? "border-black bg-white text-black"
+                                : "border-red-800 bg-red-50 text-red-900",
+                            ].join(" ")}
+                            onClick={() => {
+                              setMetroEditing({ productId: r.productId, field: "metro_order_number" });
+                              setMetroDraft(r.metro_order_number ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            {r.metro_order_number?.trim() ? r.metro_order_number : "-"}
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {editMetroUnit ? (
+                          <input
+                            className="h-10 w-24 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
+                            value={metroDraft}
+                            autoFocus
+                            onChange={(e) => setMetroDraft(e.target.value)}
+                            onBlur={() => void saveMetroEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveMetroEdit();
+                              if (e.key === "Escape") setMetroEditing(null);
+                            }}
+                            disabled={metroSaveBusy}
+                            aria-label="Metro Einheit"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="h-10 min-w-[5.5rem] rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black"
+                            onClick={() => {
+                              setMetroEditing({ productId: r.productId, field: "metro_unit" });
+                              setMetroDraft(r.metro_unit ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            {r.metro_unit?.trim() ? r.metro_unit : "-"}
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3 font-black tabular-nums text-black">
+                        {r.sum}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {gesamtRows.length === 0 ? (
