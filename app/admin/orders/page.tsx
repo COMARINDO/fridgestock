@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { getAiToggle } from "@/lib/getAiToggle";
 import {
-  getWeeklyUsageByLocationProduct,
+  getWeeklyUsageWithCoverageByLocationProduct,
   listInventoryAll,
   listLocations,
   listOrderOverrides,
@@ -77,6 +77,9 @@ export default function AdminOrdersPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [usageByLoc, setUsageByLoc] = useState<
+    Record<string, Record<string, number>>
+  >({});
+  const [daysCoveredByLoc, setDaysCoveredByLoc] = useState<
     Record<string, Record<string, number>>
   >({});
   const [inventoryQty, setInventoryQty] = useState<
@@ -150,10 +153,10 @@ export default function AdminOrdersPage() {
 
   const reload = useCallback(async () => {
     setErr(null);
-    const [locs, prods, usage, invAll, ovs] = await Promise.all([
+    const [locs, prods, usageMeta, invAll, ovs] = await Promise.all([
       listLocations(),
       listProducts(),
-      getWeeklyUsageByLocationProduct({ days: 7, useAi }),
+      getWeeklyUsageWithCoverageByLocationProduct({ days: 7, useAi }),
       listInventoryAll(),
       listOrderOverrides(),
     ]);
@@ -169,7 +172,8 @@ export default function AdminOrdersPage() {
 
     setLocations(locs);
     setProducts(prods);
-    setUsageByLoc(usage);
+    setUsageByLoc(usageMeta.usageByLoc);
+    setDaysCoveredByLoc(usageMeta.daysCoveredByLoc);
     setInventoryQty(invMap);
     setOverrides(ovs);
   }, [useAi]);
@@ -219,6 +223,8 @@ export default function AdminOrdersPage() {
         computeCentralWarehouseOrder({
           usageTeich7d: usageTeich,
           usageFiliale7d: usageFiliale,
+          daysCoveredTeich: tId ? (daysCoveredByLoc[tId]?.[p.id] ?? 0) : 0,
+          daysCoveredFiliale: fId ? (daysCoveredByLoc[fId]?.[p.id] ?? 0) : 0,
           stockRabenstein: stockRab,
           stockTeich,
         });
@@ -259,6 +265,7 @@ export default function AdminOrdersPage() {
   }, [
     products,
     usageByLoc,
+    daysCoveredByLoc,
     inventoryQty,
     overrideByKey,
     rabensteinId,
@@ -278,6 +285,7 @@ export default function AdminOrdersPage() {
       const { orderQuantity: calculatedOrder } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
+        daysCovered: daysCoveredByLoc[hofstettenId]?.[p.id] ?? 0,
       });
       const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
       const overridden = ov !== undefined;
@@ -306,6 +314,7 @@ export default function AdminOrdersPage() {
   }, [
     products,
     usageByLoc,
+    daysCoveredByLoc,
     inventoryQty,
     overrideByKey,
     hofstettenId,
@@ -323,6 +332,7 @@ export default function AdminOrdersPage() {
       const { orderQuantity: calculatedOrder } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
+        daysCovered: daysCoveredByLoc[kirchbergId]?.[p.id] ?? 0,
       });
       const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
       const overridden = ov !== undefined;
@@ -348,7 +358,7 @@ export default function AdminOrdersPage() {
     }
     list.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return list;
-  }, [products, usageByLoc, inventoryQty, overrideByKey, kirchbergId]);
+  }, [products, usageByLoc, daysCoveredByLoc, inventoryQty, overrideByKey, kirchbergId]);
 
   const gesamtRows = useMemo(() => {
     // Show ALL products, with ordering totals.
@@ -384,6 +394,8 @@ export default function AdminOrdersPage() {
         const { orderQuantity } = computeCentralWarehouseOrder({
           usageTeich7d: usageTeich,
           usageFiliale7d: usageFiliale,
+          daysCoveredTeich: tId ? (daysCoveredByLoc[tId]?.[p.id] ?? 0) : 0,
+          daysCoveredFiliale: fId ? (daysCoveredByLoc[fId]?.[p.id] ?? 0) : 0,
           stockRabenstein: stockRab,
           stockTeich,
         });
@@ -396,7 +408,11 @@ export default function AdminOrdersPage() {
       if (hofstettenId) {
         const usage = Math.max(0, Math.round(usageByLoc[hofstettenId]?.[p.id] ?? 0));
         const stock = inventoryQty[hofstettenId]?.[p.id] ?? 0;
-        const { orderQuantity } = computeLocalOutletOrder({ usage7d: usage, stock });
+        const { orderQuantity } = computeLocalOutletOrder({
+          usage7d: usage,
+          stock,
+          daysCovered: daysCoveredByLoc[hofstettenId]?.[p.id] ?? 0,
+        });
         const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
         hof = ov ? ov.quantity : orderQuantity;
       }
@@ -405,7 +421,11 @@ export default function AdminOrdersPage() {
       if (kirchbergId) {
         const usage = Math.max(0, Math.round(usageByLoc[kirchbergId]?.[p.id] ?? 0));
         const stock = inventoryQty[kirchbergId]?.[p.id] ?? 0;
-        const { orderQuantity } = computeLocalOutletOrder({ usage7d: usage, stock });
+        const { orderQuantity } = computeLocalOutletOrder({
+          usage7d: usage,
+          stock,
+          daysCovered: daysCoveredByLoc[kirchbergId]?.[p.id] ?? 0,
+        });
         const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
         kir = ov ? ov.quantity : orderQuantity;
       }
@@ -439,6 +459,7 @@ export default function AdminOrdersPage() {
     hofstettenId,
     kirchbergId,
     usageByLoc,
+    daysCoveredByLoc,
     inventoryQty,
     overrideByKey,
   ]);

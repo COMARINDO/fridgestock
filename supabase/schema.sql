@@ -682,3 +682,52 @@ as $$
   group by d.location_id, d.product_id;
 $$;
 
+-- Usage + coverage (early-stage support)
+-- Adds `days_covered` based on the earliest history row per (location, product), capped to 7.
+drop function if exists public.usage_by_location_product_since_with_coverage(timestamptz);
+create or replace function public.usage_by_location_product_since_with_coverage(
+  p_since timestamptz
+) returns table (
+  location_id uuid,
+  product_id uuid,
+  usage integer,
+  days_covered numeric
+)
+language sql
+stable
+as $$
+  with usage as (
+    select
+      u.location_id,
+      u.product_id,
+      u.usage
+    from public.usage_by_location_product_since(p_since) u
+  ),
+  first_seen as (
+    select
+      ih.location_id,
+      ih.product_id,
+      min(ih.timestamp) as first_ts
+    from public.inventory_history ih
+    group by ih.location_id, ih.product_id
+  )
+  select
+    u.location_id,
+    u.product_id,
+    u.usage,
+    least(
+      7::numeric,
+      greatest(
+        0::numeric,
+        extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0
+      )
+    ) as days_covered
+  from usage u
+  left join first_seen fs
+    on fs.location_id = u.location_id
+   and fs.product_id = u.product_id;
+$$;
+
+grant execute on function public.usage_by_location_product_since_with_coverage(timestamptz) to anon;
+grant execute on function public.usage_by_location_product_since_with_coverage(timestamptz) to authenticated;
+
