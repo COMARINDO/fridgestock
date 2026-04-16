@@ -9,7 +9,7 @@ export const CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER = false;
 
 // Early-stage smoothing: when we have < 7 days of history, blend observed daily usage
 // with a conservative baseline to avoid overreacting to short spikes.
-export const EARLY_STAGE_FALLBACK_DAILY_USAGE = 0; // units/day
+export const EARLY_STAGE_FALLBACK_DAILY_USAGE = 3; // units/day (startup baseline)
 export const EARLY_STAGE_MAX_MULTIPLIER = 2; // safety limit vs observed usage_7d
 export const EARLY_STAGE_TARGET_DAYS = 7;
 
@@ -28,14 +28,20 @@ function computeEarlyStageOrder(input: {
   const usage7d = Math.max(0, Math.round(Number(input.usage7d) || 0));
   const stock = Math.max(0, Math.floor(Number(input.stock) || 0));
   const targetDays = Math.max(1, Math.round(Number(input.targetDays ?? EARLY_STAGE_TARGET_DAYS) || 7));
+  // Baseline: avoid under-ordering at startup. Default is at least 3/day,
+  // but never below the implied average of observed usage_7d / 7 (if any).
   const fallbackDaily = Math.max(
     0,
-    Number(input.fallbackDailyUsage ?? EARLY_STAGE_FALLBACK_DAILY_USAGE) || 0
+    Math.max(
+      Number(input.fallbackDailyUsage ?? EARLY_STAGE_FALLBACK_DAILY_USAGE) || 0,
+      usage7d / targetDays
+    )
   );
   const maxMult = Math.max(0, Number(input.maxMultiplier ?? EARLY_STAGE_MAX_MULTIPLIER) || 0);
 
   const daysCoveredRaw = Number(input.daysCovered ?? 0) || 0;
   const daysCovered = clamp(daysCoveredRaw, 0, targetDays);
+  const daysCoveredSafe = Math.max(1, daysCovered);
 
   // Normal mode: full coverage -> standard logic (demand=usage7d).
   if (daysCovered >= targetDays) {
@@ -44,8 +50,12 @@ function computeEarlyStageOrder(input: {
   }
 
   // Observed daily usage from partial window.
-  const observedDaily = daysCovered > 0 ? usage7d / daysCovered : 0;
-  const confidence = clamp(daysCovered / targetDays, 0, 1);
+  let observedDaily = usage7d / daysCoveredSafe;
+  // Clamp spikes: daily usage must not exceed the total observed usage_7d.
+  observedDaily = Math.min(observedDaily, usage7d);
+
+  // Confidence curve: learn faster early, stabilize later.
+  const confidence = clamp(Math.sqrt(daysCovered / targetDays), 0, 1);
   const finalDaily = observedDaily * confidence + fallbackDaily * (1 - confidence);
   const demand7d = finalDaily * targetDays;
 
