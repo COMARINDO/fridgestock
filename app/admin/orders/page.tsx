@@ -11,6 +11,7 @@ import {
   listLocations,
   listOrderOverrides,
   listProducts,
+  updateProduct,
   updateProductMetroData,
   upsertOrderOverride,
 } from "@/lib/db";
@@ -98,6 +99,12 @@ export default function AdminOrdersPage() {
   } | null>(null);
   const [metroDraft, setMetroDraft] = useState("");
   const [metroSaveBusy, setMetroSaveBusy] = useState(false);
+  const [productEditing, setProductEditing] = useState<{
+    productId: string;
+    field: "name" | "zusatz";
+  } | null>(null);
+  const [productDraft, setProductDraft] = useState("");
+  const [productSaveBusy, setProductSaveBusy] = useState(false);
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -358,7 +365,9 @@ export default function AdminOrdersPage() {
     }> = [];
 
     for (const p of products) {
-      const name = formatProductName(p);
+      const brand = (p.brand ?? "").trim();
+      const pname = (p.product_name ?? "").trim();
+      const name = [brand, pname].filter(Boolean).join(" - ");
 
       // Central (lager): demand = Teich + Filiale + Lager usage; stock = Lager stock
       let central = 0;
@@ -520,6 +529,76 @@ export default function AdminOrdersPage() {
       setErr(errorMessage(e, "Speichern fehlgeschlagen."));
     } finally {
       setMetroSaveBusy(false);
+    }
+  }
+
+  async function saveProductEdit() {
+    if (!productEditing) return;
+    setProductSaveBusy(true);
+    setErr(null);
+
+    const productId = productEditing.productId;
+    const prev = products.find((p) => p.id === productId) ?? null;
+    if (!prev) {
+      setProductEditing(null);
+      setProductSaveBusy(false);
+      return;
+    }
+
+    const raw = productDraft.trim();
+
+    let nextBrand = (prev.brand ?? "").trim();
+    let nextName = (prev.product_name ?? "").trim();
+    let nextZusatz = prev.zusatz ?? null;
+
+    if (productEditing.field === "zusatz") {
+      nextZusatz = raw ? raw : null;
+    } else {
+      // Edit "Product Name" as: "Brand - Name" (fallback: keep brand, change name)
+      const parts = raw.split("-").map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        nextBrand = parts[0] ?? nextBrand;
+        nextName = parts.slice(1).join(" - ") || nextName;
+      } else if (parts.length === 1) {
+        nextName = parts[0] ?? nextName;
+      }
+      if (!nextBrand) nextBrand = prev.brand ?? "";
+      if (!nextName) nextName = prev.product_name ?? "";
+    }
+
+    // Optimistic UI update
+    setProducts((cur) =>
+      cur.map((p) =>
+        p.id === productId
+          ? {
+              ...p,
+              brand: nextBrand,
+              product_name: nextName,
+              zusatz: nextZusatz,
+            }
+          : p
+      )
+    );
+
+    try {
+      await updateProduct({
+        productId,
+        brand: nextBrand,
+        product_name: nextName,
+        zusatz: nextZusatz,
+        barcode: prev.barcode ?? null,
+        short_name: prev.short_name ?? null,
+        min_quantity: prev.min_quantity ?? null,
+      });
+      setProductEditing(null);
+    } catch (e: unknown) {
+      // rollback
+      setProducts((cur) =>
+        cur.map((p) => (p.id === productId ? prev : p))
+      );
+      setErr(errorMessage(e, "Speichern fehlgeschlagen."));
+    } finally {
+      setProductSaveBusy(false);
     }
   }
 
@@ -1194,13 +1273,71 @@ export default function AdminOrdersPage() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
+                  const editName =
+                    productEditing?.productId === r.productId &&
+                    productEditing?.field === "name";
+                  const editZusatz =
+                    productEditing?.productId === r.productId &&
+                    productEditing?.field === "zusatz";
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[220px]">
-                        <div className="truncate">{r.name}</div>
+                        {editName ? (
+                          <input
+                            className="h-10 w-full min-w-[12rem] rounded-xl border-2 border-black px-2 text-sm font-black text-black"
+                            value={productDraft}
+                            autoFocus
+                            onChange={(e) => setProductDraft(e.target.value)}
+                            onBlur={() => void saveProductEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveProductEdit();
+                              if (e.key === "Escape") setProductEditing(null);
+                            }}
+                            disabled={productSaveBusy}
+                            aria-label="Produktname"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="h-10 w-full rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black"
+                            onClick={() => {
+                              setProductEditing({ productId: r.productId, field: "name" });
+                              setProductDraft(r.name ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            <div className="truncate">{r.name || "-"}</div>
+                          </button>
+                        )}
                       </td>
                       <td className="p-3 font-black text-black/70 max-w-[120px] truncate">
-                        {r.zusatz?.trim() ? r.zusatz : "–"}
+                        {editZusatz ? (
+                          <input
+                            className="h-10 w-full min-w-[7rem] rounded-xl border-2 border-black px-2 text-sm font-black text-black"
+                            value={productDraft}
+                            autoFocus
+                            onChange={(e) => setProductDraft(e.target.value)}
+                            onBlur={() => void saveProductEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveProductEdit();
+                              if (e.key === "Escape") setProductEditing(null);
+                            }}
+                            disabled={productSaveBusy}
+                            aria-label="Zusatz"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="h-10 w-full rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black/80"
+                            onClick={() => {
+                              setProductEditing({ productId: r.productId, field: "zusatz" });
+                              setProductDraft(r.zusatz ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            <div className="truncate">{r.zusatz?.trim() ? r.zusatz : "-"}</div>
+                          </button>
+                        )}
                       </td>
                       <td className="p-3">
                         {editMetroNr ? (
