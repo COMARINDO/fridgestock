@@ -103,16 +103,43 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
   const rowCount = Math.ceil(props.products.length / columns);
   const gridHeight = Math.max(320, props.viewport.h - 220);
 
+  // react-window: cells re-render when cellProps values change (see Grid docs).
+  // Stable Cell + empty cellProps meant editingId/quantities never refreshed — taps did nothing visible.
+  const cellPropsForGrid = useMemo(
+    () => ({
+      products: props.products,
+      quantities: props.quantities,
+      editingId: props.editingId,
+      inlineAddDraft: props.inlineAddDraft,
+      highlightId: props.highlightId,
+      lastUpdateByProduct: props.lastUpdateByProduct,
+      scanMode: props.scanMode,
+      isAdmin: props.isAdmin,
+      canWrite: props.canWrite,
+    }),
+    [
+      props.products,
+      props.quantities,
+      props.editingId,
+      props.inlineAddDraft,
+      props.highlightId,
+      props.lastUpdateByProduct,
+      props.scanMode,
+      props.isAdmin,
+      props.canWrite,
+    ]
+  );
+
   const Cell = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-window cell args are not reliably typed across bundlers
-    ({ columnIndex, rowIndex, style }: any) => {
+    ({ columnIndex, rowIndex, style, ...r }: any) => {
       const pr = gridPropsRef.current;
       const idx = rowIndex * columns + columnIndex;
-      if (idx >= pr.products.length) return null;
-      const p = pr.products[idx] as Product | undefined;
+      if (idx >= r.products.length) return null;
+      const p = r.products[idx] as Product | undefined;
       if (!p) return null;
-      const qty = pr.quantities[p.id] ?? 0;
-      const ring = pr.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
+      const qty = r.quantities[p.id] ?? 0;
+      const ring = r.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
 
       const leftPad = columnIndex > 0 ? gap : 0;
       const topPad = rowIndex > 0 ? gap : 0;
@@ -134,7 +161,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
             onClick={(e) => {
               if ((e.target as HTMLElement).tagName.toLowerCase() === "button") return;
               if ((e.target as HTMLElement).tagName.toLowerCase() === "input") return;
-              pr.onFocusQty(p.id);
+              if (r.canWrite) pr.onOpenQtyEditor(p.id);
             }}
                 onTouchStart={(e) => {
                   const t = e.target as HTMLElement;
@@ -190,15 +217,15 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                     }
                     if (s.moved) return;
                   }
-                  if (pr.canWrite) pr.onOpenQtyEditor(p.id);
+                  if (r.canWrite) pr.onOpenQtyEditor(p.id);
                 }}
                 ref={(el) => pr.rowRefSetter(p.id, el)}
               >
                 <div className="text-center">
                   <div className="text-lg font-black text-black">{formatProductName(p)}</div>
-                  {pr.isAdmin
+                  {r.isAdmin
                     ? (() => {
-                        const ts = pr.lastUpdateByProduct[p.id];
+                        const ts = r.lastUpdateByProduct[p.id];
                         if (!ts) return null;
                         const ageMs = Date.now() - Date.parse(ts);
                         const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
@@ -221,16 +248,16 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                 </div>
 
                 <div className="mt-4 flex items-center justify-center gap-3 min-w-0">
-                  {pr.editingId === p.id ? (
-                    pr.scanMode === "add" ? (
+                  {r.editingId === p.id ? (
+                    r.scanMode === "add" ? (
                       <div className="flex flex-1 min-w-0 items-center gap-2">
                         <button
                           type="button"
                           className="h-14 px-4 rounded-2xl bg-red-700 text-white text-xl font-black active:scale-[0.99]"
-                          disabled={!pr.canWrite}
+                          disabled={!r.canWrite}
                           onClick={() => {
                             void (async () => {
-                              const n = Number(pr.inlineAddDraft || "0");
+                              const n = Number(r.inlineAddDraft || "0");
                               const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
                               if (!d) {
                                 pr.onSetError("Bitte eine Zahl größer als 0 eingeben.");
@@ -252,7 +279,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           type="tel"
                           pattern="[0-9]*"
                           enterKeyHint="done"
-                          value={pr.inlineAddDraft}
+                          value={r.inlineAddDraft}
                           onChange={(e) =>
                             pr.onSetInlineAddDraft(e.target.value.replace(/[^\d]/g, ""))
                           }
@@ -264,10 +291,10 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                         <button
                           type="button"
                           className="h-14 px-4 rounded-2xl bg-emerald-700 text-white text-xl font-black active:scale-[0.99]"
-                          disabled={!pr.canWrite}
+                          disabled={!r.canWrite}
                           onClick={() => {
                             void (async () => {
-                              const n = Number(pr.inlineAddDraft || "0");
+                              const n = Number(r.inlineAddDraft || "0");
                               const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
                               if (!d) {
                                 pr.onSetError("Bitte eine Zahl größer als 0 eingeben.");
@@ -319,15 +346,15 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                   ) : (
                     <button
                       type="button"
-                      disabled={!pr.canWrite}
+                      disabled={!r.canWrite}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (pr.scanMode === "add") pr.onSetInlineAddDraft("0");
+                        if (r.scanMode === "add") pr.onSetInlineAddDraft("0");
                         pr.onOpenQtyEditor(p.id);
                       }}
                       className={[
                         "h-14 flex-1 min-w-0 rounded-2xl border-2 border-black bg-white px-4 text-center text-3xl font-black text-black flex items-center justify-center select-none",
-                        pr.canWrite ? "cursor-pointer active:bg-black/5" : "cursor-default opacity-80",
+                        r.canWrite ? "cursor-pointer active:bg-black/5" : "cursor-default opacity-80",
                       ].join(" ")}
                       aria-label="Menge tippen zum Ändern"
                     >
@@ -356,7 +383,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
         defaultHeight={gridHeight}
         defaultWidth={gridWidth}
         cellComponent={Cell}
-        cellProps={{}}
+        cellProps={cellPropsForGrid}
       />
     </div>
   );
