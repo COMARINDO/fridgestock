@@ -111,12 +111,12 @@ begin
     end if;
 
     -- Update existing open request if present.
-    update public.order_requests
+    update public.order_requests orq
     set quantity = v_qty,
         updated_at = v_now
-    where location_id = p_location_id
-      and product_id = v_pid
-      and processed_at is null;
+    where orq.location_id = p_location_id
+      and orq.product_id = v_pid
+      and orq.processed_at is null;
 
     if found then
       v_reported := v_reported + 1;
@@ -130,12 +130,12 @@ begin
       v_reported := v_reported + 1;
     exception when unique_violation then
       -- Race: another reporter inserted concurrently; retry update.
-      update public.order_requests
+      update public.order_requests orq
       set quantity = v_qty,
           updated_at = v_now
-      where location_id = p_location_id
-        and product_id = v_pid
-        and processed_at is null;
+      where orq.location_id = p_location_id
+        and orq.product_id = v_pid
+        and orq.processed_at is null;
       if found then
         v_reported := v_reported + 1;
       end if;
@@ -165,9 +165,9 @@ declare
   v_now timestamptz := coalesce(p_processed_at, now());
   v_rows int := 0;
 begin
-  update public.order_requests
+  update public.order_requests orq
   set processed_at = v_now
-  where processed_at is null;
+  where orq.processed_at is null;
   get diagnostics v_rows = row_count;
   return query select v_rows::integer, v_now;
 end;
