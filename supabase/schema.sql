@@ -28,6 +28,34 @@ create table if not exists public.inventory_history (
   mode text
 );
 
+-- Submitted orders (per location, per calendar week)
+create table if not exists public.submitted_orders (
+  id uuid primary key default gen_random_uuid(),
+  location_id uuid not null references public.locations(id) on delete cascade,
+  iso_year integer not null,
+  iso_week integer not null,
+  created_at timestamptz not null default now(),
+  items jsonb not null default '[]'::jsonb
+);
+
+create index if not exists submitted_orders_loc_created_idx
+  on public.submitted_orders (location_id, created_at desc);
+
+create index if not exists submitted_orders_year_week_idx
+  on public.submitted_orders (iso_year desc, iso_week desc, created_at desc);
+
+-- Minimal validation: items must be JSON array.
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'submitted_orders_items_is_array') then
+    alter table public.submitted_orders drop constraint submitted_orders_items_is_array;
+  end if;
+  alter table public.submitted_orders
+    add constraint submitted_orders_items_is_array
+    check (jsonb_typeof(items) = 'array');
+end;
+$$;
+
 alter table public.inventory_history add column if not exists is_transfer boolean not null default false;
 alter table public.inventory_history add column if not exists mode text;
 

@@ -8,6 +8,8 @@ import type {
   Location,
   OrderOverrideRow,
   Product,
+  SubmittedOrderItem,
+  SubmittedOrderRow,
 } from "@/lib/types";
 
 type QueryResult = { data: unknown; error: unknown };
@@ -971,6 +973,118 @@ export async function upsertOrderOverride(args: {
     { onConflict: "location_id,product_id" }
   );
   if (error) throw error;
+}
+
+export async function submitOrder(args: {
+  locationId: string;
+  isoYear: number;
+  isoWeek: number;
+  items: SubmittedOrderItem[];
+}): Promise<{ id: string }> {
+  const locationId = args.locationId.trim();
+  if (!locationId) throw new Error("Location-ID fehlt.");
+  const isoYear = Math.floor(Number(args.isoYear) || 0);
+  const isoWeek = Math.floor(Number(args.isoWeek) || 0);
+  if (isoYear <= 0) throw new Error("Jahr fehlt.");
+  if (isoWeek <= 0 || isoWeek > 53) throw new Error("KW ungültig.");
+
+  const items = (args.items ?? [])
+    .map((it) => ({
+      product_id: String(it.product_id || "").trim(),
+      quantity: Math.max(0, Math.floor(Number(it.quantity) || 0)),
+    }))
+    .filter((it) => it.product_id && it.quantity > 0);
+
+  const { data, error } = await from("submitted_orders")
+    .insert({
+      location_id: locationId,
+      iso_year: isoYear,
+      iso_week: isoWeek,
+      items,
+    }) as unknown as { data?: unknown; error?: unknown };
+  // Our QueryBuilder typing is incomplete for insert returning rows; refetch via select.
+  if ((error as unknown)) throw error;
+
+  // Fallback: fetch newest matching order row.
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (c: string, v: unknown) => {
+          order: (c: string, o: { ascending: boolean }) => {
+            limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+    };
+  };
+  const { data: rows, error: selErr } = await supabase
+    .from("submitted_orders")
+    .select("id")
+    .eq("location_id", locationId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (selErr) throw selErr;
+  const first = Array.isArray(rows) ? (rows[0] as { id?: string }) : null;
+  const id = typeof first?.id === "string" ? first.id : "";
+  if (!id) throw new Error("Bestellung konnte nicht gespeichert werden.");
+  void data;
+  return { id };
+}
+
+export async function listSubmittedOrders(args?: {
+  locationId?: string;
+  limit?: number;
+}): Promise<SubmittedOrderRow[]> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: unknown) => {
+          order: (column: string, opts: { ascending: boolean }) => {
+            limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+        order: (column: string, opts: { ascending: boolean }) => {
+          limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+  };
+
+  const limit = Math.max(1, Math.min(5000, Math.floor(Number(args?.limit ?? 200) || 200)));
+  const loc = (args?.locationId ?? "").trim();
+
+  const base = supabase
+    .from("submitted_orders")
+    .select("id,location_id,iso_year,iso_week,created_at,items");
+
+  const res = loc
+    ? await base.eq("location_id", loc).order("created_at", { ascending: false }).limit(limit)
+    : await base.order("created_at", { ascending: false }).limit(limit);
+
+  const { data, error } = res as { data: unknown; error: unknown };
+  if (error) throw error;
+  return (data ?? []) as SubmittedOrderRow[];
+}
+
+export async function getSubmittedOrder(id: string): Promise<SubmittedOrderRow | null> {
+  const oid = id.trim();
+  if (!oid) return null;
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: unknown) => {
+          maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+  };
+  const { data, error } = await supabase
+    .from("submitted_orders")
+    .select("id,location_id,iso_year,iso_week,created_at,items")
+    .eq("id", oid)
+    .maybeSingle();
+  if (error) throw error;
+  return (data ?? null) as SubmittedOrderRow | null;
 }
 
 /**

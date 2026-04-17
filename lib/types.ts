@@ -80,3 +80,17 @@ export type OrderOverrideRow = {
   quantity: number;
   updated_at: string;
 };
+
+export type SubmittedOrderItem = {
+  product_id: string;
+  quantity: number;
+};
+
+export type SubmittedOrderRow = {
+  id: string; // uuid
+  location_id: string; // uuid
+  iso_year: number;
+  iso_week: number;
+  created_at: string;
+  items: SubmittedOrderItem[];
+};

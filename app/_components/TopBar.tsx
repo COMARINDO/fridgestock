@@ -178,7 +178,7 @@ export function TopBar() {
       <div className="w-full px-4 py-3 min-h-[56px] flex items-center">
         {bareLoginScreen ? null : (
           <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex min-w-0 justify-start">
+            <div className="flex min-w-0 justify-start gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -188,6 +188,19 @@ export function TopBar() {
               >
                 Abmelden
               </button>
+              {isLocationScreen ? (
+                <button
+                  type="button"
+                  className={btnDarkSmall}
+                  onClick={() => {
+                    const locId = location?.location_id ?? "";
+                    if (!locId.trim()) return;
+                    router.push(`/location/${encodeURIComponent(locId)}/order`);
+                  }}
+                >
+                  Bestellen
+                </button>
+              ) : null}
             </div>
             {isLocationScreen ? (
               <div className="flex items-center justify-center gap-2">
