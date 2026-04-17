@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { ADMIN_CODE } from "@/lib/adminCode";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -87,7 +86,6 @@ function buildBackupCsv(): Promise<string> {
       "*",
       "created_at"
     );
-    const users = await fetchAllRows(supabase, "users", "*", "name");
 
     const locHeaders =
       locations[0] != null ? Object.keys(locations[0]) : ["id", "name", "parent_id"];
@@ -147,9 +145,6 @@ function buildBackupCsv(): Promise<string> {
             "created_at",
             "processed_at",
           ];
-    const userHeaders =
-      users[0] != null ? Object.keys(users[0]) : ["id", "name", "password"];
-
     return [
       "LOCATIONS",
       rowsToCsv(locHeaders, locations),
@@ -172,9 +167,6 @@ function buildBackupCsv(): Promise<string> {
       "AI_CONSUMPTION_JOBS",
       rowsToCsv(aiJobHeaders, aiConsumptionJobs),
       "",
-      "USERS",
-      rowsToCsv(userHeaders, users),
-      "",
     ].join("\r\n");
   })();
 }
@@ -195,15 +187,26 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-    let body: { adminCode?: string };
+    const expected = process.env.ADMIN_BACKUP_CODE?.trim();
+    if (!expected) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Server-Konfiguration: ADMIN_BACKUP_CODE muss gesetzt sein.",
+        },
+        { status: 500 }
+      );
+    }
+
+    let body: { adminCode?: string; backupCode?: string };
     try {
-      body = (await request.json()) as { adminCode?: string };
+      body = (await request.json()) as { adminCode?: string; backupCode?: string };
     } catch {
       return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const expected = process.env.ADMIN_BACKUP_CODE ?? ADMIN_CODE;
-    if (!body.adminCode || body.adminCode.trim() !== expected) {
+    const provided = (body.backupCode ?? body.adminCode ?? "").trim();
+    if (!provided || provided !== expected) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 403 });
     }
 
