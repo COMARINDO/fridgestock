@@ -231,7 +231,7 @@ function LocationOrderInner() {
                           }))
                         }
                         className={[
-                          "h-14 w-full max-w-[180px] rounded-2xl border-2 px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20",
+                          "h-14 w-[140px] rounded-2xl border-2 px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20",
                           draftIsZero
                             ? "border-black bg-white"
                             : "border-red-800 bg-white",
