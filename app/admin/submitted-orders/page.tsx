@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
-import { listLocations, listProducts, listSubmittedOrders } from "@/lib/db";
+import {
+  confirmSubmittedOrderDelivery,
+  deleteSubmittedOrder,
+  listLocations,
+  listProducts,
+  listSubmittedOrders,
+} from "@/lib/db";
 import type { Location, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
@@ -35,6 +41,7 @@ export default function AdminSubmittedOrdersPage() {
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<SubmittedOrderRow | null>(null);
+  const [modalBusy, setModalBusy] = useState(false);
 
   useEffect(() => {
     if (!adminHydrated) return;
@@ -129,6 +136,15 @@ export default function AdminSubmittedOrdersPage() {
                 <tr key={o.id} className="border-b border-black/10 align-middle">
                   <td className="p-3 font-black text-black">
                     Bestellung – KW {o.iso_week}
+                    {o.delivered_at ? (
+                      <span className="ml-2 text-[11px] font-black text-emerald-800">
+                        geliefert
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-[11px] font-black text-amber-800">
+                        offen
+                      </span>
+                    )}
                   </td>
                   <td className="p-3 font-black text-black/70">
                     {locNameById.get(o.location_id) ?? o.location_id}
@@ -165,6 +181,7 @@ export default function AdminSubmittedOrdersPage() {
                 </div>
                 <div className="mt-1 text-sm font-black text-black/60">
                   {locNameById.get(open.location_id) ?? open.location_id} · {fmtTs(open.created_at)}
+                  {open.delivered_at ? ` · geliefert: ${fmtTs(open.delivered_at)}` : ""}
                 </div>
               </div>
               <button
@@ -175,6 +192,61 @@ export default function AdminSubmittedOrdersPage() {
                 Schließen
               </button>
             </div>
+
+            {!open.delivered_at ? (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={modalBusy}
+                  className="h-12 px-4 rounded-2xl border-2 border-black bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                  onClick={() => {
+                    void (async () => {
+                      setModalBusy(true);
+                      setErr(null);
+                      try {
+                        await confirmSubmittedOrderDelivery(open.id);
+                        setOpen(null);
+                        await reload();
+                      } catch (e: unknown) {
+                        setErr(errorMessage(e, "Lieferung konnte nicht bestätigt werden."));
+                      } finally {
+                        setModalBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {modalBusy ? "…" : "Lieferung bestätigen"}
+                </button>
+                <button
+                  type="button"
+                  disabled={modalBusy}
+                  className="h-12 px-4 rounded-2xl border-2 border-red-800 bg-red-50 text-red-900 text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                  onClick={() => {
+                    void (async () => {
+                      const ok = window.confirm("Bestellung wirklich löschen?");
+                      if (!ok) return;
+                      setModalBusy(true);
+                      setErr(null);
+                      try {
+                        await deleteSubmittedOrder(open.id);
+                        setOpen(null);
+                        await reload();
+                      } catch (e: unknown) {
+                        setErr(errorMessage(e, "Bestellung konnte nicht gelöscht werden."));
+                      } finally {
+                        setModalBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {modalBusy ? "…" : "Löschen"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border-2 border-emerald-800/30 bg-emerald-50 px-3 py-3 text-emerald-950 text-sm font-black">
+                Lieferung bereits bestätigt.
+              </div>
+            )}
 
             <ul className="mt-4 space-y-2">
               {(open.items ?? []).map((it) => {

@@ -92,5 +92,6 @@ export type SubmittedOrderRow = {
   iso_year: number;
   iso_week: number;
   created_at: string;
+  delivered_at?: string | null;
   items: SubmittedOrderItem[];
 };

@@ -1055,7 +1055,7 @@ export async function listSubmittedOrders(args?: {
 
   const base = supabase
     .from("submitted_orders")
-    .select("id,location_id,iso_year,iso_week,created_at,items");
+    .select("id,location_id,iso_year,iso_week,created_at,delivered_at,items");
 
   const res = loc
     ? await base.eq("location_id", loc).order("created_at", { ascending: false }).limit(limit)
@@ -1080,11 +1080,46 @@ export async function getSubmittedOrder(id: string): Promise<SubmittedOrderRow |
   };
   const { data, error } = await supabase
     .from("submitted_orders")
-    .select("id,location_id,iso_year,iso_week,created_at,items")
+    .select("id,location_id,iso_year,iso_week,created_at,delivered_at,items")
     .eq("id", oid)
     .maybeSingle();
   if (error) throw error;
   return (data ?? null) as SubmittedOrderRow | null;
+}
+
+export async function deleteSubmittedOrder(id: string): Promise<void> {
+  const oid = id.trim();
+  if (!oid) throw new Error("Bestellung-ID fehlt.");
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      delete: () => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+  const { error } = await supabase.from("submitted_orders").delete().eq("id", oid);
+  if (error) throw error;
+}
+
+export async function confirmSubmittedOrderDelivery(id: string): Promise<{
+  appliedItems: number;
+  deliveredAt: string;
+}> {
+  const oid = id.trim();
+  if (!oid) throw new Error("Bestellung-ID fehlt.");
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+  const { data, error } = await supabase.rpc("confirm_submitted_order", { p_order_id: oid });
+  if (error) throw error;
+  const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+  const first = rows[0] ?? {};
+  const applied = Math.max(0, Math.floor(Number(first.applied_items ?? 0) || 0));
+  const deliveredAt = typeof first.delivered_at === "string" ? first.delivered_at : new Date().toISOString();
+  return { appliedItems: applied, deliveredAt };
 }
 
 /**

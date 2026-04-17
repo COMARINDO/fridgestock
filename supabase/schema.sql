@@ -35,7 +35,8 @@ create table if not exists public.submitted_orders (
   iso_year integer not null,
   iso_week integer not null,
   created_at timestamptz not null default now(),
-  items jsonb not null default '[]'::jsonb
+  items jsonb not null default '[]'::jsonb,
+  delivered_at timestamptz
 );
 
 create index if not exists submitted_orders_loc_created_idx
@@ -55,6 +56,72 @@ begin
     check (jsonb_typeof(items) = 'array');
 end;
 $$;
+
+-- Confirm delivery: apply items as positive deltas and mark order delivered.
+drop function if exists public.confirm_submitted_order(uuid);
+create or replace function public.confirm_submitted_order(
+  p_order_id uuid
+) returns table (
+  order_id uuid,
+  location_id uuid,
+  applied_items integer,
+  delivered_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_loc uuid;
+  v_items jsonb;
+  v_now timestamptz := now();
+  v_applied int := 0;
+  v_qty int;
+  v_pid uuid;
+  rec record;
+begin
+  -- Lock order row to prevent double confirmation
+  select so.location_id, so.items
+    into v_loc, v_items
+  from public.submitted_orders so
+  where so.id = p_order_id
+    and so.delivered_at is null
+  for update;
+
+  if v_loc is null then
+    raise exception 'order not found or already delivered' using errcode = 'P0001';
+  end if;
+
+  if jsonb_typeof(v_items) <> 'array' then
+    raise exception 'invalid items' using errcode = 'P0001';
+  end if;
+
+  for rec in
+    select
+      (x->>'product_id')::uuid as product_id,
+      coalesce((x->>'quantity')::int, 0) as quantity
+    from jsonb_array_elements(v_items) as x
+  loop
+    v_pid := rec.product_id;
+    v_qty := greatest(0, rec.quantity);
+    if v_pid is null or v_qty <= 0 then
+      continue;
+    end if;
+    -- Reuse existing booking logic (outlets transfer from warehouse via apply_inventory_delta).
+    perform public.apply_inventory_delta(null::uuid, v_loc, v_pid, v_qty);
+    v_applied := v_applied + 1;
+  end loop;
+
+  update public.submitted_orders
+  set delivered_at = v_now
+  where id = p_order_id;
+
+  return query select p_order_id, v_loc, v_applied::integer, v_now;
+end;
+$$;
+
+grant execute on function public.confirm_submitted_order(uuid) to anon;
+grant execute on function public.confirm_submitted_order(uuid) to authenticated;
 
 alter table public.inventory_history add column if not exists is_transfer boolean not null default false;
 alter table public.inventory_history add column if not exists mode text;
