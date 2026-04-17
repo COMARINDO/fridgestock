@@ -530,23 +530,44 @@ export async function listOpenOrderRequests(): Promise<OrderRequestRow[]> {
   return (Array.isArray(data) ? data : []) as OrderRequestRow[];
 }
 
-export async function processOpenOrderRequests(): Promise<{
+async function callAdminOrderAction<TResponse extends { ok?: boolean; error?: unknown }>(
+  path: string,
+  body: Record<string, unknown>
+): Promise<TResponse> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let data: TResponse;
+  try {
+    data = JSON.parse(raw) as TResponse;
+  } catch {
+    throw new Error(raw.trim().slice(0, 300) || `Antwort ohne JSON (HTTP ${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    const err = typeof data.error === "string" ? data.error : `HTTP ${res.status}`;
+    throw new Error(err);
+  }
+  return data;
+}
+
+export async function processOpenOrderRequests(args: { adminCode: string }): Promise<{
   processedRows: number;
   processedAt: string;
 }> {
-  const supabase = getSupabase() as unknown as {
-    rpc: (
-      fn: string,
-      rpcArgs: Record<string, unknown>
-    ) => Promise<{ data: unknown; error: unknown }>;
-  };
-  const { data, error } = await supabase.rpc("process_open_order_requests", {});
-  if (error) throw error;
-  const row =
-    Array.isArray(data) && data.length > 0 ? (data[0] as Record<string, unknown>) : null;
+  const adminCode = args.adminCode.trim();
+  if (!adminCode) throw new Error("Admin-Code fehlt.");
+  const data = await callAdminOrderAction<{
+    ok: boolean;
+    processedRows?: unknown;
+    processedAt?: unknown;
+    error?: unknown;
+  }>("/api/admin/orders/process-open", { adminCode });
   return {
-    processedRows: Math.max(0, Math.floor(Number(row?.processed_rows ?? 0) || 0)),
-    processedAt: String(row?.processed_at ?? ""),
+    processedRows: Math.max(0, Math.floor(Number(data.processedRows ?? 0) || 0)),
+    processedAt: String(data.processedAt ?? ""),
   };
 }
 
@@ -1161,24 +1182,26 @@ export async function deleteSubmittedOrder(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function confirmSubmittedOrderDelivery(id: string): Promise<{
+export async function confirmSubmittedOrderDelivery(args: {
+  id: string;
+  adminCode: string;
+}): Promise<{
   appliedItems: number;
   deliveredAt: string;
 }> {
-  const oid = id.trim();
+  const oid = args.id.trim();
   if (!oid) throw new Error("Bestellung-ID fehlt.");
-  const supabase = getSupabase() as unknown as {
-    rpc: (
-      fn: string,
-      rpcArgs: Record<string, unknown>
-    ) => Promise<{ data: unknown; error: unknown }>;
-  };
-  const { data, error } = await supabase.rpc("confirm_submitted_order", { p_order_id: oid });
-  if (error) throw error;
-  const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
-  const first = rows[0] ?? {};
-  const applied = Math.max(0, Math.floor(Number(first.applied_items ?? 0) || 0));
-  const deliveredAt = typeof first.delivered_at === "string" ? first.delivered_at : new Date().toISOString();
+  const code = args.adminCode.trim();
+  if (!code) throw new Error("Admin-Code fehlt.");
+  const data = await callAdminOrderAction<{
+    ok: boolean;
+    appliedItems?: unknown;
+    deliveredAt?: unknown;
+    error?: unknown;
+  }>("/api/admin/orders/confirm-submitted", { adminCode: code, orderId: oid });
+  const applied = Math.max(0, Math.floor(Number(data.appliedItems ?? 0) || 0));
+  const deliveredAt =
+    typeof data.deliveredAt === "string" ? data.deliveredAt : new Date().toISOString();
   return { appliedItems: applied, deliveredAt };
 }
 

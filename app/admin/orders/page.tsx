@@ -848,10 +848,14 @@ export default function AdminOrdersPage() {
               disabled={placeBusy || openRequests.length === 0}
               className="h-12 px-4 rounded-2xl bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
               onClick={async () => {
+                const code = window.prompt("Admin-Code eingeben") ?? "";
+                if (!code.trim()) return;
                 setPlaceBusy(true);
                 setPlaceMsg(null);
                 try {
-                  const res = await processOpenOrderRequests();
+                  const res = await processOpenOrderRequests({
+                    adminCode: code,
+                  });
                   setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
                   await reload();
                 } catch (e: unknown) {
