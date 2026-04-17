@@ -186,10 +186,6 @@ function LocationOrderInner() {
             </Link>
           </div>
           <h1 className="text-2xl font-black text-black mt-1">Bestellen</h1>
-          <p className="mt-1 text-sm text-black/65">
-            Vorschlag aus Verbrauch 7 Tage − Bestand. Kalenderwoche:{" "}
-            <strong>KW {isoWeek}</strong>
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -252,7 +248,7 @@ function LocationOrderInner() {
                           "h-14 w-full max-w-[180px] rounded-2xl border-2 px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20",
                           draftIsZero
                             ? "border-black bg-white"
-                            : "border-red-800 bg-red-50",
+                            : "border-red-800 bg-white",
                         ].join(" ")}
                         placeholder="0"
                         aria-label="Bestellen"
