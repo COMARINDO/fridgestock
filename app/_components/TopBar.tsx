@@ -187,7 +187,7 @@ export function TopBar() {
     <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
       <div className="w-full px-4 py-3 min-h-[56px] flex items-center">
         {bareLoginScreen ? null : (
-          <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 justify-start gap-2">
               <button
                 type="button"
@@ -213,7 +213,7 @@ export function TopBar() {
               ) : null}
             </div>
             {isLocationScreen ? (
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex w-full sm:w-auto items-center justify-center gap-2">
                 <button
                   type="button"
                   className={[
