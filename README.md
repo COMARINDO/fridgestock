@@ -15,6 +15,7 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
     - `SUPABASE_SERVICE_ROLE_KEY`
     - `OPENAI_API_KEY`
     - `AI_CONSUMPTION_CRON_SECRET`
+    - `ADMIN_BACKUP_CODE` (verpflichtend für `/api/backup`)
 
 - **3) Starten**
 

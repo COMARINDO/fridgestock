@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
-import { ADMIN_CODE } from "@/lib/adminCode";
 import { Button, Input } from "@/app/_components/ui";
 import {
   getGlobalOverviewByProduct,
@@ -57,7 +56,7 @@ export default function AdminPage() {
     return (
       <main className="w-full px-4 py-8 text-center text-black">
         <p className="font-black">Weiterleitung…</p>
-        <p className="mt-2 text-sm text-black/60">Admin: Code 1402 auf der Login-Seite.</p>
+        <p className="mt-2 text-sm text-black/60">Admin-Zugang erfolgt über die Login-Seite.</p>
       </main>
     );
   }
@@ -184,7 +183,7 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
       const res = await fetch("/api/backup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminCode: ADMIN_CODE }),
+        body: JSON.stringify({ adminCode: window.prompt("Backup-Code eingeben") ?? "" }),
       });
       const raw = await res.text();
       let data: { ok?: boolean; error?: string };

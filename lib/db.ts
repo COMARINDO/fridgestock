@@ -1066,39 +1066,28 @@ export async function submitOrder(args: {
     }))
     .filter((it) => it.product_id && it.quantity > 0);
 
-  const { data, error } = await from("submitted_orders")
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      insert: (values: Record<string, unknown>) => {
+        select: (columns: string) => {
+          single: () => Promise<{ data: unknown; error: unknown }>;
+        };
+      };
+    };
+  };
+  const { data, error } = await supabase
+    .from("submitted_orders")
     .insert({
       location_id: locationId,
       iso_year: isoYear,
       iso_week: isoWeek,
       items,
-    }) as unknown as { data?: unknown; error?: unknown };
-  // Our QueryBuilder typing is incomplete for insert returning rows; refetch via select.
-  if ((error as unknown)) throw error;
-
-  // Fallback: fetch newest matching order row.
-  const supabase = getSupabase() as unknown as {
-    from: (t: string) => {
-      select: (cols: string) => {
-        eq: (c: string, v: unknown) => {
-          order: (c: string, o: { ascending: boolean }) => {
-            limit: (n: number) => Promise<{ data: unknown; error: unknown }>;
-          };
-        };
-      };
-    };
-  };
-  const { data: rows, error: selErr } = await supabase
-    .from("submitted_orders")
+    })
     .select("id")
-    .eq("location_id", locationId)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (selErr) throw selErr;
-  const first = Array.isArray(rows) ? (rows[0] as { id?: string }) : null;
-  const id = typeof first?.id === "string" ? first.id : "";
+    .single();
+  if (error) throw error;
+  const id = typeof (data as { id?: unknown } | null)?.id === "string" ? (data as { id: string }).id : "";
   if (!id) throw new Error("Bestellung konnte nicht gespeichert werden.");
-  void data;
   return { id };
 }
 

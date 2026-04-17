@@ -1,2 +1,2 @@
-/** Shared admin PIN (client login + server backup API check). */
+/** Shared admin PIN for the client-side admin mode gate. */
 export const ADMIN_CODE = "1402";
