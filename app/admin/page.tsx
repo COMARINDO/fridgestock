@@ -250,6 +250,12 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
           >
             Buchungen
           </Link>
+          <Link
+            href="/admin/inventory-sessions"
+            className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+          >
+            Inventur-Sessions
+          </Link>
           <button
             type="button"
             disabled={backupBusy}

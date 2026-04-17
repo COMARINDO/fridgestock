@@ -2,6 +2,9 @@ import { getSupabase } from "@/lib/supabase";
 import type {
   InventoryHistoryRow,
   InventoryRow,
+  InventoryCountSession,
+  InventoryMissingCountRow,
+  InventorySessionSnapshotRow,
   Location,
   OrderOverrideRow,
   Product,
@@ -472,6 +475,145 @@ export async function setInventoryQuantity(args: {
 
   // Keep return shape stable for existing callers (none rely on return today).
   void data;
+}
+
+function hoursToInterval(hours: number): string {
+  const h = Number(hours);
+  const safe = Number.isFinite(h) ? Math.max(0.1, h) : 5;
+  // Postgres interval input accepts strings like '5 hours'
+  return `${safe} hours`;
+}
+
+export async function listInventoryCountSessions(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<InventoryCountSession[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const gap = hoursToInterval(args.gapHours ?? 5);
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const { data, error } = await supabase.rpc("inventory_count_sessions", {
+    p_location_id: locationId,
+    p_gap: gap,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as InventoryCountSession[];
+}
+
+export async function getInventorySessionSnapshot(args: {
+  locationId: string;
+  sessionNo: number;
+  gapHours?: number;
+}): Promise<InventorySessionSnapshotRow[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const sessionNo = Math.max(0, Math.floor(Number(args.sessionNo) || 0));
+  const gap = hoursToInterval(args.gapHours ?? 5);
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const { data, error } = await supabase.rpc("inventory_session_snapshot", {
+    p_location_id: locationId,
+    p_session_no: sessionNo,
+    p_gap: gap,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as InventorySessionSnapshotRow[];
+}
+
+export async function getMissingCountsForInventorySession(args: {
+  locationId: string;
+  sessionNo: number;
+  gapHours?: number;
+}): Promise<InventoryMissingCountRow[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const sessionNo = Math.max(0, Math.floor(Number(args.sessionNo) || 0));
+  const gap = hoursToInterval(args.gapHours ?? 5);
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const { data, error } = await supabase.rpc("missing_counts_for_inventory_session", {
+    p_location_id: locationId,
+    p_session_no: sessionNo,
+    p_gap: gap,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as InventoryMissingCountRow[];
+}
+
+export async function getMissingCountsForLatestInventorySession(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<InventoryMissingCountRow[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const gap = hoursToInterval(args.gapHours ?? 5);
+
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const { data, error } = await supabase.rpc("missing_counts_for_latest_inventory_session", {
+    p_location_id: locationId,
+    p_gap: gap,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as InventoryMissingCountRow[];
+}
+
+export async function getLatestInventorySessionNo(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<number | null> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return null;
+  const sessions = await listInventoryCountSessions({
+    locationId,
+    gapHours: args.gapHours ?? 5,
+  });
+  return sessions[0]?.session_no ?? null;
+}
+
+export async function getLatestInventorySessionCountedProductIds(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<string[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const sessionNo = await getLatestInventorySessionNo({
+    locationId,
+    gapHours: args.gapHours ?? 5,
+  });
+  if (sessionNo == null) return [];
+  const snap = await getInventorySessionSnapshot({
+    locationId,
+    sessionNo,
+    gapHours: args.gapHours ?? 5,
+  });
+  const ids = snap.map((r) => r.product_id).filter((x) => typeof x === "string" && x.trim());
+  // de-dupe
+  return Array.from(new Set(ids));
 }
 
 function parseRpcInt(data: unknown, fnName: string): number {

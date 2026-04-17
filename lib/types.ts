@@ -46,6 +46,34 @@ export type InventoryHistoryRow = {
   mode?: "count" | "add" | "transfer" | null;
 };
 
+export type InventoryCountSession = {
+  session_no: number;
+  started_at: string;
+  ended_at: string;
+  count_rows: number;
+  distinct_products: number;
+};
+
+export type InventorySessionSnapshotRow = {
+  product_id: string;
+  brand: string;
+  product_name: string;
+  zusatz: string;
+  short_name: string;
+  quantity: number;
+  counted_at: string;
+};
+
+export type InventoryMissingCountRow = {
+  product_id: string;
+  brand: string;
+  product_name: string;
+  zusatz: string;
+  short_name: string;
+  last_quantity: number;
+  last_count_at: string | null;
+};
+
 export type OrderOverrideRow = {
   location_id: string;
   product_id: string;

@@ -13,11 +13,13 @@ import {
   applyInventoryDelta,
   recordInventoryAdjustment,
   setInventoryQuantity,
+  getMissingCountsForLatestInventorySession,
+  getLatestInventorySessionCountedProductIds,
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
   deleteInventoryHistoryEntry,
 } from "@/lib/db";
-import type { InventoryHistoryRow, Product } from "@/lib/types";
+import type { InventoryHistoryRow, InventoryMissingCountRow, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
@@ -55,6 +57,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
   highlightId: string | null;
   isAdmin: boolean;
   lastUpdateByProduct: Record<string, string>;
+  countedInSessionByProduct: Record<string, boolean>;
   canWrite: boolean;
   editingId: string | null;
   scanMode: "set" | "add" | "choose";
@@ -113,6 +116,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
       inlineAddDraft: props.inlineAddDraft,
       highlightId: props.highlightId,
       lastUpdateByProduct: props.lastUpdateByProduct,
+      countedInSessionByProduct: props.countedInSessionByProduct,
       scanMode: props.scanMode,
       isAdmin: props.isAdmin,
       canWrite: props.canWrite,
@@ -124,6 +128,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
       props.inlineAddDraft,
       props.highlightId,
       props.lastUpdateByProduct,
+      props.countedInSessionByProduct,
       props.scanMode,
       props.isAdmin,
       props.canWrite,
@@ -140,6 +145,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
       if (!p) return null;
       const qty = r.quantities[p.id] ?? 0;
       const ring = r.highlightId === p.id ? "ring-2 ring-emerald-500" : "";
+      const counted = Boolean(r.countedInSessionByProduct?.[p.id]);
 
       const leftPad = columnIndex > 0 ? gap : 0;
       const topPad = rowIndex > 0 ? gap : 0;
@@ -223,6 +229,23 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
               >
                 <div className="text-center">
                   <div className="text-lg font-black text-black">{formatProductName(p)}</div>
+                  {r.scanMode === "set" ? (
+                    <div
+                      className={[
+                        "mt-1 inline-flex items-center rounded-full px-2 py-1 text-[11px] font-black",
+                        counted
+                          ? "bg-emerald-100 text-emerald-900"
+                          : "bg-amber-100 text-amber-900",
+                      ].join(" ")}
+                      title={
+                        counted
+                          ? "In dieser Inventur-Session gezählt"
+                          : "Noch nicht in dieser Inventur-Session gezählt"
+                      }
+                    >
+                      {counted ? "gezählt" : "nicht gezählt"}
+                    </div>
+                  ) : null}
                   {r.isAdmin
                     ? (() => {
                         const ts = r.lastUpdateByProduct[p.id];
@@ -463,6 +486,15 @@ function LocationInner() {
   const [queueLen, setQueueLen] = useState(0);
   const syncLockRef = useRef(false);
 
+  const [countedInSessionByProduct, setCountedInSessionByProduct] = useState<
+    Record<string, boolean>
+  >({});
+
+  const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
+  const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
+  const [leaveGuardErr, setLeaveGuardErr] = useState<string | null>(null);
+  const [leaveMissing, setLeaveMissing] = useState<InventoryMissingCountRow[]>([]);
+
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
@@ -506,6 +538,7 @@ function LocationInner() {
       if (item.locationId === locationId) {
         quantitiesRef.current = { ...quantitiesRef.current, [item.productId]: item.quantity };
         setQuantities((m) => ({ ...m, [item.productId]: item.quantity }));
+        setCountedInSessionByProduct((m) => ({ ...m, [item.productId]: true }));
       }
       return;
     }
@@ -577,6 +610,18 @@ function LocationInner() {
           setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
         } catch {
           // ignore
+        }
+
+        try {
+          const ids = await getLatestInventorySessionCountedProductIds({
+            locationId,
+            gapHours: 5,
+          });
+          const m: Record<string, boolean> = {};
+          for (const id of ids) m[id] = true;
+          setCountedInSessionByProduct(m);
+        } catch {
+          setCountedInSessionByProduct({});
         }
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Daten nicht laden."));
@@ -679,6 +724,7 @@ function LocationInner() {
           productId,
           quantity: nextQty,
         });
+        setCountedInSessionByProduct((m) => ({ ...m, [productId]: true }));
       }
     } catch {
       // ignore
@@ -1090,6 +1136,7 @@ function LocationInner() {
         setSyncStatus("offline");
         setRefillToast(`Inventur offline gespeichert: ${next}`);
         window.setTimeout(() => setRefillToast(null), 2000);
+        setCountedInSessionByProduct((m) => ({ ...m, [productId]: true }));
         setEditingId(null);
         return;
       }
@@ -1102,6 +1149,7 @@ function LocationInner() {
         }
         setRefillToast(`Inventur: ${next}`);
         window.setTimeout(() => setRefillToast(null), 2000);
+        setCountedInSessionByProduct((m) => ({ ...m, [productId]: true }));
         setEditingId(null);
       } catch (e: unknown) {
         setError(errorMessage(e, "Inventur fehlgeschlagen."));
@@ -1118,6 +1166,50 @@ function LocationInner() {
   const handleFocusQty = useCallback((productId: string) => {
     qtyInputs.current[productId]?.focus();
   }, []);
+
+  async function openLeaveGuard() {
+    if (!locationId) {
+      router.replace("/");
+      return;
+    }
+    setLeaveGuardOpen(true);
+    setLeaveGuardBusy(true);
+    setLeaveGuardErr(null);
+    setLeaveMissing([]);
+    try {
+      const miss = await getMissingCountsForLatestInventorySession({
+        locationId,
+        gapHours: 5,
+      });
+      setLeaveMissing(miss);
+    } catch (e: unknown) {
+      setLeaveGuardErr(errorMessage(e, "Konnte Inventur-Check nicht laden."));
+      setLeaveMissing([]);
+    } finally {
+      setLeaveGuardBusy(false);
+    }
+  }
+
+  async function setAllLeaveMissingToZeroAndLeave() {
+    if (!locationId) return;
+    if (leaveMissing.length === 0) {
+      router.replace("/");
+      return;
+    }
+    setLeaveGuardBusy(true);
+    setLeaveGuardErr(null);
+    try {
+      for (const m of leaveMissing) {
+        await setInventoryQuantity({ locationId, productId: m.product_id, quantity: 0 });
+      }
+      setLeaveGuardOpen(false);
+      router.replace("/");
+    } catch (e: unknown) {
+      setLeaveGuardErr(errorMessage(e, "Auf 0 setzen fehlgeschlagen."));
+    } finally {
+      setLeaveGuardBusy(false);
+    }
+  }
 
   if (error) {
     return (
@@ -1138,6 +1230,7 @@ function LocationInner() {
           highlightId={highlightId}
           isAdmin={isAdmin}
           lastUpdateByProduct={lastUpdateByProduct}
+          countedInSessionByProduct={countedInSessionByProduct}
           canWrite={canWrite}
           editingId={editingId}
           scanMode={scanMode}
@@ -1169,7 +1262,7 @@ function LocationInner() {
         />
 
         <div className="mt-6">
-          <ButtonSecondary className="" onClick={() => router.replace("/")}>
+          <ButtonSecondary className="" onClick={() => void openLeaveGuard()}>
             Zurück zu Platzerl
           </ButtonSecondary>
         </div>
@@ -1590,6 +1683,94 @@ function LocationInner() {
         </div>
       ) : null}
 
+      {leaveGuardOpen ? (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-black">Inventur-Check</div>
+                <div className="text-2xl font-black leading-tight text-black">
+                  Nicht gezählte Artikel
+                </div>
+                <div className="mt-1 text-sm font-black text-black/60">
+                  {leaveGuardBusy
+                    ? "Prüfe…"
+                    : leaveMissing.length > 0
+                      ? `${leaveMissing.length} Artikel wurden in dieser Inventur (5h-Session) nicht gezählt.`
+                      : "Keine fehlenden Artikel gefunden."}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99] shrink-0"
+                onClick={() => setLeaveGuardOpen(false)}
+                disabled={leaveGuardBusy}
+              >
+                Schließen
+              </button>
+            </div>
+
+            {leaveGuardErr ? (
+              <div className="mt-4 rounded-3xl bg-red-50 p-4 text-red-800">{leaveGuardErr}</div>
+            ) : null}
+
+            {!leaveGuardBusy && leaveMissing.length > 0 ? (
+              <ul className="mt-4 max-h-[40vh] overflow-y-auto space-y-2">
+                {leaveMissing.slice(0, 30).map((m) => (
+                  <li
+                    key={m.product_id}
+                    className="rounded-2xl border-2 border-amber-900/20 bg-amber-50 px-3 py-3"
+                  >
+                    <div className="text-sm font-black text-black">
+                      {[m.brand, m.product_name].filter(Boolean).join(" - ") || m.product_id}
+                      {m.zusatz?.trim() ? ` (${m.zusatz.trim()})` : ""}
+                    </div>
+                    <div className="text-xs font-black text-black/60 tabular-nums">
+                      letzter Bestand: {m.last_quantity}
+                    </div>
+                  </li>
+                ))}
+                {leaveMissing.length > 30 ? (
+                  <li className="text-xs font-black text-black/60">
+                    … und {leaveMissing.length - 30} weitere
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+
+            <div className="mt-5 grid gap-3">
+              {leaveMissing.length > 0 ? (
+                <Button
+                  className="w-full h-14 text-lg"
+                  disabled={leaveGuardBusy}
+                  onClick={() => void setAllLeaveMissingToZeroAndLeave()}
+                >
+                  Alle auf 0 setzen & zurück
+                </Button>
+              ) : null}
+              <ButtonSecondary
+                className="w-full h-14 text-lg"
+                disabled={leaveGuardBusy}
+                onClick={() => setLeaveGuardOpen(false)}
+              >
+                Weiter inventieren
+              </ButtonSecondary>
+              {!leaveGuardBusy && leaveMissing.length === 0 ? (
+                <Button
+                  className="w-full h-14 text-lg"
+                  onClick={() => {
+                    setLeaveGuardOpen(false);
+                    router.replace("/");
+                  }}
+                >
+                  Zurück
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {quickEdit ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
           <div className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 border-t-2 border-black">
@@ -1664,4 +1845,5 @@ function LocationInner() {
 }
 
 // (intentionally no low-stock/favorites/bulk logic)
+
 

@@ -1,204 +1,3 @@
--- Fridge Stock App schema
--- Designed for: simple anon-key access (no Supabase Auth), plain-text passwords.
--- If you enable RLS: für uneingeschränkten Anon-Zugriff siehe `rls-open-anon.sql`.
-
--- Users
-create table if not exists public.users (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  password text not null
-);
-
--- Products
-create table if not exists public.products (
-  id uuid primary key default gen_random_uuid(),
-  brand text not null,
-  product_name text not null,
-  zusatz text,
-  barcode text unique,
-  short_name text,
-  min_quantity integer not null default 0
-);
-
--- Admin pricing (optional columns; run if table already exists without them)
-alter table public.products add column if not exists supplier text;
-alter table public.products add column if not exists purchase_price numeric;
-alter table public.products add column if not exists selling_price numeric;
-alter table public.products add column if not exists metro_order_number text;
-alter table public.products add column if not exists metro_unit text;
-
--- No duplicate products: brand + product_name + zusatz
-create unique index if not exists products_brand_product_zusatz_unique
-  on public.products(brand, product_name, coalesce(zusatz, ''));
-
--- Locations (tree)
-create table if not exists public.locations (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  parent_id uuid references public.locations(id) on delete set null,
-  type text,
-  warehouse_location_id uuid references public.locations(id) on delete set null
-);
-
-create index if not exists locations_parent_id_idx on public.locations(parent_id);
-create index if not exists locations_warehouse_location_id_idx on public.locations(warehouse_location_id);
-
-alter table public.locations add column if not exists type text;
-alter table public.locations add column if not exists warehouse_location_id uuid references public.locations(id) on delete set null;
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'locations_type_check'
-  ) then
-    alter table public.locations
-      add constraint locations_type_check
-      check (type is null or type in ('warehouse','outlet','independent'));
-  end if;
-end;
-$$;
-
-
--- AI consumption analysis (trigger enqueues jobs; processing happens server-side)
-create table if not exists public.ai_consumption (
-  id uuid primary key default gen_random_uuid(),
-  location_id uuid not null references public.locations(id) on delete cascade,
-  product_id uuid not null references public.products(id) on delete cascade,
-  daily_consumption numeric,
-  suggested_order_7_days integer,
-  is_anomaly boolean,
-  raw_input jsonb,
-  raw_output jsonb,
-  created_at timestamptz default now()
-);
-
-create index if not exists ai_consumption_loc_prod_created_idx
-  on public.ai_consumption(location_id, product_id, created_at desc);
-
--- NOTE: inventory_history.id is uuid in this app. If you previously created ai_consumption_jobs
--- with bigint, drop it once (it's a queue table; safe to recreate).
-drop table if exists public.ai_consumption_jobs;
-create table public.ai_consumption_jobs (
-  id uuid primary key default gen_random_uuid(),
-  inventory_history_id uuid not null references public.inventory_history(id) on delete cascade,
-  location_id uuid not null references public.locations(id) on delete cascade,
-  product_id uuid not null references public.products(id) on delete cascade,
-  previous_quantity integer not null,
-  current_quantity integer not null,
-  days_between numeric not null,
-  status text not null default 'pending' check (status in ('pending','processing','done','failed','skipped')),
-  error text,
-  raw_input jsonb,
-  raw_output jsonb,
-  created_at timestamptz default now(),
-  processed_at timestamptz
-);
-
-create index if not exists ai_consumption_jobs_status_created_idx
-  on public.ai_consumption_jobs(status, created_at);
-
-create unique index if not exists ai_consumption_jobs_unique_history
-  on public.ai_consumption_jobs(inventory_history_id);
-
-create or replace function public.enqueue_ai_consumption_job_from_history()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_prev_qty integer;
-  v_prev_ts timestamptz;
-  v_diff integer;
-  v_days numeric;
-begin
-  -- Only on real inventory counts
-  if coalesce(new.mode, '') <> 'count' then
-    return new;
-  end if;
-
-  select ih.quantity, ih.timestamp
-    into v_prev_qty, v_prev_ts
-  from public.inventory_history ih
-  where ih.location_id = new.location_id
-    and ih.product_id = new.product_id
-    and (ih.timestamp < new.timestamp or (ih.timestamp = new.timestamp and ih.id < new.id))
-  order by ih.timestamp desc, ih.id desc
-  limit 1;
-
-  if v_prev_ts is null then
-    return new;
-  end if;
-
-  v_diff := coalesce(v_prev_qty, 0) - coalesce(new.quantity, 0);
-  if v_diff <= 0 then
-    -- increases / equal: no consumption signal
-    return new;
-  end if;
-
-  v_days := extract(epoch from (new.timestamp - v_prev_ts)) / 86400.0;
-  if v_days is null or v_days <= 0 then
-    return new;
-  end if;
-
-  insert into public.ai_consumption_jobs (
-    inventory_history_id,
-    location_id,
-    product_id,
-    previous_quantity,
-    current_quantity,
-    days_between,
-    status,
-    raw_input
-  ) values (
-    new.id,
-    new.location_id,
-    new.product_id,
-    v_prev_qty,
-    new.quantity,
-    v_days,
-    'pending',
-    jsonb_build_object(
-      'previous_quantity', v_prev_qty,
-      'current_quantity', new.quantity,
-      'days_between', v_days
-    )
-  )
-  on conflict (inventory_history_id) do nothing;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_ai_consumption_enqueue on public.inventory_history;
-create trigger trg_ai_consumption_enqueue
-after insert on public.inventory_history
-for each row
-execute function public.enqueue_ai_consumption_job_from_history();
-
--- Backfill for existing known locations (name-based once, logic becomes data-driven afterwards)
-do $$
-declare
-  v_lager uuid;
-begin
-  select id into v_lager from public.locations where lower(name) = lower('Rabenstein Lager') limit 1;
-
-  update public.locations
-  set type = 'warehouse',
-      warehouse_location_id = null
-  where lower(name) = lower('Rabenstein Lager');
-
-  update public.locations
-  set type = 'outlet',
-      warehouse_location_id = v_lager
-  where lower(name) in (lower('Teich'), lower('Rabenstein'));
-
-  update public.locations
-  set type = 'independent',
-      warehouse_location_id = null
-  where lower(name) in (lower('Hofstetten'), lower('Kirchberg'));
-end;
-$$;
 
 -- Optional: mapping users to locations
 create table if not exists public.location_users (
@@ -584,6 +383,241 @@ $$;
 
 grant execute on function public.record_inventory_adjustment(uuid, uuid, uuid, integer, text) to anon;
 grant execute on function public.record_inventory_adjustment(uuid, uuid, uuid, integer, text) to authenticated;
+
+-- Inventory sessions (count-mode) using time gaps.
+-- A new session starts when the gap between consecutive count events exceeds p_gap.
+drop function if exists public.inventory_count_sessions(uuid, interval);
+create or replace function public.inventory_count_sessions(
+  p_location_id uuid,
+  p_gap interval default interval '5 hours'
+) returns table (
+  session_no integer,
+  started_at timestamptz,
+  ended_at timestamptz,
+  count_rows integer,
+  distinct_products integer
+)
+language sql
+stable
+as $$
+  with counts as (
+    select
+      ih.location_id,
+      ih.product_id,
+      ih.timestamp,
+      case
+        when lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) is null then 1
+        when ih.timestamp - lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) > p_gap then 1
+        else 0
+      end as is_new_session
+    from public.inventory_history ih
+    where ih.location_id = p_location_id
+      and ih.mode = 'count'
+  ),
+  sess as (
+    select
+      *,
+      sum(is_new_session) over (partition by location_id order by timestamp) as session_no
+    from counts
+  )
+  select
+    s.session_no::integer,
+    min(s.timestamp) as started_at,
+    max(s.timestamp) as ended_at,
+    count(*)::integer as count_rows,
+    count(distinct s.product_id)::integer as distinct_products
+  from sess s
+  group by s.session_no
+  order by s.session_no desc;
+$$;
+
+grant execute on function public.inventory_count_sessions(uuid, interval) to anon;
+grant execute on function public.inventory_count_sessions(uuid, interval) to authenticated;
+
+-- Latest snapshot (per product) within a given session, joined with product info.
+drop function if exists public.inventory_session_snapshot(uuid, integer, interval);
+create or replace function public.inventory_session_snapshot(
+  p_location_id uuid,
+  p_session_no integer,
+  p_gap interval default interval '5 hours'
+) returns table (
+  product_id uuid,
+  brand text,
+  product_name text,
+  zusatz text,
+  short_name text,
+  quantity integer,
+  counted_at timestamptz
+)
+language sql
+stable
+as $$
+  with counts as (
+    select
+      ih.location_id,
+      ih.product_id,
+      ih.quantity,
+      ih.timestamp,
+      ih.id,
+      case
+        when lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) is null then 1
+        when ih.timestamp - lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) > p_gap then 1
+        else 0
+      end as is_new_session
+    from public.inventory_history ih
+    where ih.location_id = p_location_id
+      and ih.mode = 'count'
+  ),
+  sess as (
+    select
+      *,
+      sum(is_new_session) over (partition by location_id order by timestamp) as session_no
+    from counts
+  ),
+  latest as (
+    select distinct on (s.product_id)
+      s.product_id,
+      s.quantity,
+      s.timestamp as counted_at
+    from sess s
+    where s.session_no = p_session_no
+    order by s.product_id, s.timestamp desc
+  )
+  select
+    l.product_id,
+    coalesce(p.brand, '') as brand,
+    coalesce(p.product_name, '') as product_name,
+    coalesce(p.zusatz, '') as zusatz,
+    coalesce(p.short_name, '') as short_name,
+    l.quantity::integer as quantity,
+    l.counted_at
+  from latest l
+  join public.products p on p.id = l.product_id
+  order by p.brand, p.product_name, p.zusatz;
+$$;
+
+grant execute on function public.inventory_session_snapshot(uuid, integer, interval) to anon;
+grant execute on function public.inventory_session_snapshot(uuid, integer, interval) to authenticated;
+
+-- Products that were counted in the previous session but not counted in the target session.
+drop function if exists public.missing_counts_for_inventory_session(uuid, integer, interval);
+create or replace function public.missing_counts_for_inventory_session(
+  p_location_id uuid,
+  p_session_no integer,
+  p_gap interval default interval '5 hours'
+) returns table (
+  product_id uuid,
+  brand text,
+  product_name text,
+  zusatz text,
+  short_name text,
+  last_quantity integer,
+  last_count_at timestamptz
+)
+language sql
+stable
+as $$
+  with counts as (
+    select
+      ih.location_id,
+      ih.product_id,
+      ih.quantity,
+      ih.timestamp,
+      ih.id,
+      case
+        when lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) is null then 1
+        when ih.timestamp - lag(ih.timestamp) over (partition by ih.location_id order by ih.timestamp, ih.id) > p_gap then 1
+        else 0
+      end as is_new_session
+    from public.inventory_history ih
+    where ih.location_id = p_location_id
+      and ih.mode = 'count'
+  ),
+  sess as (
+    select
+      *,
+      sum(is_new_session) over (partition by location_id order by timestamp) as session_no
+    from counts
+  ),
+  prev_session as (
+    select (p_session_no - 1) as session_no
+  ),
+  prev_products as (
+    select distinct s.product_id
+    from sess s
+    join prev_session ps on ps.session_no = s.session_no
+  ),
+  cur_products as (
+    select distinct s.product_id
+    from sess s
+    where s.session_no = p_session_no
+  ),
+  missing as (
+    select pp.product_id
+    from prev_products pp
+    where pp.product_id not in (select product_id from cur_products)
+  ),
+  prev_latest as (
+    select distinct on (s.product_id)
+      s.product_id,
+      s.quantity as last_quantity,
+      s.timestamp as last_count_at
+    from sess s
+    join prev_session ps on ps.session_no = s.session_no
+    order by s.product_id, s.timestamp desc
+  )
+  select
+    m.product_id,
+    coalesce(p.brand, '') as brand,
+    coalesce(p.product_name, '') as product_name,
+    coalesce(p.zusatz, '') as zusatz,
+    coalesce(p.short_name, '') as short_name,
+    coalesce(pl.last_quantity, 0)::integer as last_quantity,
+    pl.last_count_at
+  from missing m
+  left join prev_latest pl on pl.product_id = m.product_id
+  join public.products p on p.id = m.product_id
+  order by p.brand, p.product_name, p.zusatz;
+$$;
+
+grant execute on function public.missing_counts_for_inventory_session(uuid, integer, interval) to anon;
+grant execute on function public.missing_counts_for_inventory_session(uuid, integer, interval) to authenticated;
+
+-- Convenience: missing vs previous for the latest session.
+drop function if exists public.missing_counts_for_latest_inventory_session(uuid, interval);
+create or replace function public.missing_counts_for_latest_inventory_session(
+  p_location_id uuid,
+  p_gap interval default interval '5 hours'
+) returns table (
+  product_id uuid,
+  brand text,
+  product_name text,
+  zusatz text,
+  short_name text,
+  last_quantity integer,
+  last_count_at timestamptz
+)
+language sql
+stable
+as $$
+  with sessions as (
+    select *
+    from public.inventory_count_sessions(p_location_id, p_gap)
+  ),
+  latest as (
+    select max(session_no) as session_no
+    from sessions
+  )
+  select *
+  from public.missing_counts_for_inventory_session(
+    p_location_id,
+    (select session_no from latest),
+    p_gap
+  );
+$$;
+
+grant execute on function public.missing_counts_for_latest_inventory_session(uuid, interval) to anon;
+grant execute on function public.missing_counts_for_latest_inventory_session(uuid, interval) to authenticated;
 
 -- Usage helpers (consumption only, ignore refills)
 -- Calculates usage as sum of negative diffs between consecutive snapshots.
