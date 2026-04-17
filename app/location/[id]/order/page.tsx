@@ -260,18 +260,6 @@ function LocationOrderInner() {
                     <div className="mt-2 text-[11px] font-black text-black/55 text-center">
                       Bestellen
                     </div>
-                    <div className="mt-3 flex justify-center">
-                      <button
-                        type="button"
-                        className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
-                        onClick={() =>
-                          setDraftByProduct((m) => ({ ...m, [r.productId]: String(r.suggested) }))
-                        }
-                        title="Vorschlag übernehmen"
-                      >
-                        Vorschlag übernehmen
-                      </button>
-                    </div>
                   </div>
                 );
               })}
