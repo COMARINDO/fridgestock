@@ -191,14 +191,16 @@ function LocationOrderInner() {
             <strong>KW {isoWeek}</strong>
           </p>
         </div>
-        <button
-          type="button"
-          className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          onClick={() => void reload()}
-          disabled={busy || submitting}
-        >
-          Reload
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+            onClick={() => void reload()}
+            disabled={busy || submitting}
+          >
+            Reload
+          </button>
+        </div>
       </div>
 
       {err ? <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div> : null}
@@ -212,27 +214,45 @@ function LocationOrderInner() {
 
       {!busy ? (
         <>
-          <div className="mt-6 rounded-3xl border-2 border-black bg-white overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestand</th>
-                  <th className="p-3 font-black text-black tabular-nums">7d</th>
-                  <th className="p-3 font-black text-black tabular-nums">Vorschlag</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestellen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.productId} className="border-b border-black/10 align-middle">
-                    <td className="p-3 font-black text-black max-w-[260px] truncate">
-                      {r.name}
-                    </td>
-                    <td className="p-3 font-black tabular-nums">{r.stock}</td>
-                    <td className="p-3 font-black tabular-nums">{r.usage7d}</td>
-                    <td className="p-3 font-black tabular-nums">{r.suggested}</td>
-                    <td className="p-3">
+          {rows.length === 0 ? (
+            <div className="mt-6 rounded-3xl border-2 border-black bg-white p-4 text-sm font-black text-black/60">
+              Keine Positionen zum Bestellen.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-3">
+              {rows.map((r) => {
+                const draftN = Math.max(
+                  0,
+                  Math.floor(Number((r.draft || "").replace(/[^\d]/g, "")) || 0)
+                );
+                const draftIsZero = draftN === 0;
+                return (
+                  <div
+                    key={r.productId}
+                    className="w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-lg font-black text-black truncate">{r.name}</div>
+                        <div className="mt-1 text-[11px] font-black text-black/55">
+                          Bestand: <span className="text-black">{r.stock}</span> · 7d:{" "}
+                          <span className="text-black">{r.usage7d}</span> · Vorschlag:{" "}
+                          <span className="text-black">{r.suggested}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99] shrink-0"
+                        onClick={() =>
+                          setDraftByProduct((m) => ({ ...m, [r.productId]: String(r.suggested) }))
+                        }
+                        title="Vorschlag übernehmen"
+                      >
+                        Vorschlag
+                      </button>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-center gap-3">
                       <Input
                         value={r.draft}
                         onChange={(e) =>
@@ -242,20 +262,21 @@ function LocationOrderInner() {
                           }))
                         }
                         inputMode="numeric"
-                        className="h-11 w-28 text-center text-lg font-black"
+                        className={[
+                          "h-14 w-40 text-center text-3xl font-black",
+                          draftIsZero ? "bg-white" : "bg-red-50 border-red-800",
+                        ].join(" ")}
                         placeholder="0"
                       />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {rows.length === 0 ? (
-              <p className="p-4 text-sm text-black/60 font-black">
-                Keine Positionen zum Bestellen.
-              </p>
-            ) : null}
-          </div>
+                    </div>
+                    <div className="mt-2 text-[11px] font-black text-black/55 text-center">
+                      Bestellen
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm font-black text-black">
             <div>Summe: {total}</div>

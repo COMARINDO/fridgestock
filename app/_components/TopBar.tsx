@@ -170,6 +170,8 @@ export function TopBar() {
 
   const btnDarkSmall =
     "h-10 px-3 inline-flex items-center rounded-2xl bg-black text-white text-[14px] font-black active:scale-[0.99]";
+  const btnDangerSmall =
+    "h-10 px-3 inline-flex items-center rounded-2xl bg-red-700 text-white text-[14px] font-black active:scale-[0.99]";
   const btnMode =
     "h-10 px-3 rounded-2xl border-2 text-[14px] font-black transition-colors active:scale-[0.99]";
 
@@ -191,7 +193,7 @@ export function TopBar() {
               {isLocationScreen ? (
                 <button
                   type="button"
-                  className={btnDarkSmall}
+                  className={btnDangerSmall}
                   onClick={() => {
                     const locId = location?.location_id ?? "";
                     if (!locId.trim()) return;
