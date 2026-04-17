@@ -201,10 +201,12 @@ export default function AdminSubmittedOrdersPage() {
                   className="h-12 px-4 rounded-2xl border-2 border-black bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
                   onClick={() => {
                     void (async () => {
+                      const code = window.prompt("Admin-Code eingeben") ?? "";
+                      if (!code.trim()) return;
                       setModalBusy(true);
                       setErr(null);
                       try {
-                        await confirmSubmittedOrderDelivery(open.id);
+                        await confirmSubmittedOrderDelivery({ id: open.id, adminCode: code });
                         setOpen(null);
                         await reload();
                       } catch (e: unknown) {

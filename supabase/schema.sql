@@ -173,8 +173,9 @@ begin
 end;
 $$;
 
-grant execute on function public.process_open_order_requests(timestamptz) to anon;
 grant execute on function public.process_open_order_requests(timestamptz) to authenticated;
+revoke execute on function public.process_open_order_requests(timestamptz) from public;
+revoke execute on function public.process_open_order_requests(timestamptz) from anon;
 
 create index if not exists submitted_orders_loc_created_idx
   on public.submitted_orders (location_id, created_at desc);
@@ -257,8 +258,9 @@ begin
 end;
 $$;
 
-grant execute on function public.confirm_submitted_order(uuid) to anon;
 grant execute on function public.confirm_submitted_order(uuid) to authenticated;
+revoke execute on function public.confirm_submitted_order(uuid) from public;
+revoke execute on function public.confirm_submitted_order(uuid) from anon;
 
 alter table public.inventory_history add column if not exists is_transfer boolean not null default false;
 alter table public.inventory_history add column if not exists mode text;
