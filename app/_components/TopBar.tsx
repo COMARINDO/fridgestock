@@ -107,22 +107,36 @@ export function TopBar() {
       return;
     }
 
-    setGuardIntent(intent);
-    setGuardBusy(true);
-    setGuardErr(null);
-    setGuardMissing([]);
-    setGuardOpen(true);
     try {
       const missing = await getMissingCountsForActiveInventorySession({
         locationId: locId,
         gapHours: 5,
       });
+      // If nothing is missing, proceed immediately without showing a modal.
+      if (!missing || missing.length === 0) {
+        if (intent === "switchToAdd") {
+          updateScanMode("add");
+          return;
+        }
+        if (intent === "logout") {
+          exitAdmin();
+          logout();
+          router.replace("/login");
+          return;
+        }
+      }
+
+      setGuardIntent(intent);
+      setGuardBusy(false);
+      setGuardErr(null);
       setGuardMissing(missing);
+      setGuardOpen(true);
     } catch (e: unknown) {
+      setGuardIntent(intent);
       setGuardErr(errorMessage(e, "Konnte Inventur-Check nicht laden."));
       setGuardMissing([]);
-    } finally {
       setGuardBusy(false);
+      setGuardOpen(true);
     }
   }
 
