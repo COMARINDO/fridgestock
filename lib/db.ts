@@ -517,10 +517,15 @@ export async function reportOrderRequests(args: {
 }
 
 export async function listOpenOrderRequests(): Promise<OrderRequestRow[]> {
-  const { data, error } = await from("order_requests")
-    .select("id,location_id,product_id,quantity,created_at,updated_at,processed_at")
-    .eq("processed_at", null)
-    .order("updated_at", { ascending: false });
+  // Important: PostgREST null checks must use `is null` (not eq null), otherwise
+  // `null` can be sent as the string "null" and break timestamptz parsing.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase builder typing not available in our wrapper
+  const q: any = from("order_requests").select(
+    "id,location_id,product_id,quantity,created_at,updated_at,processed_at"
+  );
+  const { data, error } = await q.is("processed_at", null).order("updated_at", {
+    ascending: false,
+  });
   if (error) throw error;
   return (Array.isArray(data) ? data : []) as OrderRequestRow[];
 }
