@@ -7,6 +7,7 @@ import type {
   InventorySessionSnapshotRow,
   Location,
   OrderOverrideRow,
+  OrderRequestRow,
   Product,
   SubmittedOrderItem,
   SubmittedOrderRow,
@@ -477,6 +478,71 @@ export async function setInventoryQuantity(args: {
 
   // Keep return shape stable for existing callers (none rely on return today).
   void data;
+}
+
+export async function reportOrderRequests(args: {
+  locationId: string;
+  items: Array<{ product_id: string; quantity: number }>;
+}): Promise<{ locationId: string; reportedItems: number; updatedAt: string }> {
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+
+  const locationId = args.locationId.trim();
+  if (!locationId) throw new Error("Ort fehlt.");
+
+  const items = (Array.isArray(args.items) ? args.items : [])
+    .map((it) => ({
+      product_id: String(it.product_id ?? "").trim(),
+      quantity: Math.max(0, Math.floor(Number(it.quantity) || 0)),
+    }))
+    .filter((it) => it.product_id);
+
+  const { data, error } = await supabase.rpc("report_order_requests", {
+    p_location_id: locationId,
+    p_items: items,
+  });
+  if (error) throw error;
+
+  const row =
+    Array.isArray(data) && data.length > 0 ? (data[0] as Record<string, unknown>) : null;
+  return {
+    locationId,
+    reportedItems: Math.max(0, Math.floor(Number(row?.reported_items ?? 0) || 0)),
+    updatedAt: String(row?.updated_at ?? ""),
+  };
+}
+
+export async function listOpenOrderRequests(): Promise<OrderRequestRow[]> {
+  const { data, error } = await from("order_requests")
+    .select("id,location_id,product_id,quantity,created_at,updated_at,processed_at")
+    .eq("processed_at", null)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as OrderRequestRow[];
+}
+
+export async function processOpenOrderRequests(): Promise<{
+  processedRows: number;
+  processedAt: string;
+}> {
+  const supabase = getSupabase() as unknown as {
+    rpc: (
+      fn: string,
+      rpcArgs: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
+  const { data, error } = await supabase.rpc("process_open_order_requests", {});
+  if (error) throw error;
+  const row =
+    Array.isArray(data) && data.length > 0 ? (data[0] as Record<string, unknown>) : null;
+  return {
+    processedRows: Math.max(0, Math.floor(Number(row?.processed_rows ?? 0) || 0)),
+    processedAt: String(row?.processed_at ?? ""),
+  };
 }
 
 function hoursToInterval(hours: number): string {

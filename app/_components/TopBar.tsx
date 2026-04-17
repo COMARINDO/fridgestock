@@ -212,7 +212,7 @@ export function TopBar() {
                     router.push(`/location/${encodeURIComponent(locId)}/order`);
                   }}
                 >
-                  Bestellen
+                  Bedarf
                 </button>
               ) : null}
             </div>

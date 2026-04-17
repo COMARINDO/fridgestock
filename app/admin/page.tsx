@@ -245,12 +245,6 @@ function AdminDashboard({ onExit }: { onExit: () => void }) {
             Bestellübersicht
           </Link>
           <Link
-            href="/admin/submitted-orders"
-            className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          >
-            Bestellungen
-          </Link>
-          <Link
             href="/admin/bookings"
             className="h-11 px-4 inline-flex items-center rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
           >

@@ -9,8 +9,10 @@ import {
   getWeeklyUsageWithCoverageByLocationProduct,
   listInventoryAll,
   listLocations,
+  listOpenOrderRequests,
   listOrderOverrides,
   listProducts,
+  processOpenOrderRequests,
   updateProduct,
   updateProductMetroData,
   upsertOrderOverride,
@@ -39,7 +41,19 @@ function resolveLocationIdByName(
   return hit?.id ?? null;
 }
 
-type TabId = "central" | "hofstetten" | "kirchberg" | "gesamt";
+type TabId = "demand" | "central" | "hofstetten" | "kirchberg" | "gesamt";
+
+type DemandRowModel = {
+  productId: string;
+  name: string;
+  metro_order_number: string | null;
+  metro_unit: string | null;
+  stockRabenstein: number;
+  demandTeich: number;
+  demandFiliale: number;
+  totalDemand: number;
+  suggestedOrder: number;
+};
 
 type CentralRowModel = {
   productId: string;
@@ -76,6 +90,9 @@ export default function AdminOrdersPage() {
   const [useAi, setUseAi] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [openRequests, setOpenRequests] = useState<
+    Array<{ location_id: string; product_id: string; quantity: number }>
+  >([]);
   const [usageByLoc, setUsageByLoc] = useState<
     Record<string, Record<string, number>>
   >({});
@@ -88,7 +105,7 @@ export default function AdminOrdersPage() {
   const [overrides, setOverrides] = useState<OrderOverrideRow[]>([]);
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("central");
+  const [activeTab, setActiveTab] = useState<TabId>("demand");
 
   const [editing, setEditing] = useState<{
     locationId: string;
@@ -108,6 +125,8 @@ export default function AdminOrdersPage() {
   } | null>(null);
   const [productDraft, setProductDraft] = useState("");
   const [productSaveBusy, setProductSaveBusy] = useState(false);
+  const [placeBusy, setPlaceBusy] = useState(false);
+  const [placeMsg, setPlaceMsg] = useState<string | null>(null);
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -153,12 +172,13 @@ export default function AdminOrdersPage() {
 
   const reload = useCallback(async () => {
     setErr(null);
-    const [locs, prods, usageMeta, invAll, ovs] = await Promise.all([
+    const [locs, prods, usageMeta, invAll, ovs, reqs] = await Promise.all([
       listLocations(),
       listProducts(),
       getWeeklyUsageWithCoverageByLocationProduct({ days: 7, useAi }),
       listInventoryAll(),
       listOrderOverrides(),
+      listOpenOrderRequests(),
     ]);
 
     const invMap: Record<string, Record<string, number>> = {};
@@ -173,6 +193,13 @@ export default function AdminOrdersPage() {
     setDaysCoveredByLoc(usageMeta.daysCoveredByLoc);
     setInventoryQty(invMap);
     setOverrides(ovs);
+    setOpenRequests(
+      (Array.isArray(reqs) ? reqs : []).map((r) => ({
+        location_id: r.location_id,
+        product_id: r.product_id,
+        quantity: Math.max(0, Math.floor(Number((r as any).quantity) || 0)),
+      }))
+    );
   }, [useAi]);
 
   useEffect(() => {
@@ -269,6 +296,51 @@ export default function AdminOrdersPage() {
     teichId,
     filialeId,
   ]);
+
+  const demandRows = useMemo(() => {
+    if (!rabensteinId) return [] as DemandRowModel[];
+    const tId = teichId;
+    const out: DemandRowModel[] = [];
+
+    const demandTeichByProd = new Map<string, number>();
+    const demandFilialeByProd = new Map<string, number>();
+
+    for (const r of openRequests) {
+      const pid = r.product_id;
+      const qty = Math.max(0, Math.floor(Number(r.quantity) || 0));
+      if (!pid || qty <= 0) continue;
+      if (tId && r.location_id === tId) {
+        demandTeichByProd.set(pid, (demandTeichByProd.get(pid) ?? 0) + qty);
+      } else if (r.location_id === rabensteinId) {
+        // ignore (warehouse should not report demand)
+      } else {
+        demandFilialeByProd.set(pid, (demandFilialeByProd.get(pid) ?? 0) + qty);
+      }
+    }
+
+    for (const p of products) {
+      const dT = demandTeichByProd.get(p.id) ?? 0;
+      const dF = demandFilialeByProd.get(p.id) ?? 0;
+      const total = dT + dF;
+      const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
+      const suggestedOrder = Math.max(0, total - stockRab);
+      const include = total > 0 || stockRab > 0 || suggestedOrder > 0;
+      if (!include) continue;
+      out.push({
+        productId: p.id,
+        name: formatProductName(p),
+        metro_order_number: p.metro_order_number ?? null,
+        metro_unit: p.metro_unit ?? null,
+        stockRabenstein: stockRab,
+        demandTeich: dT,
+        demandFiliale: dF,
+        totalDemand: total,
+        suggestedOrder,
+      });
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name, "de"));
+    return out;
+  }, [openRequests, products, rabensteinId, teichId, inventoryQty]);
 
   const hofstettenRows = useMemo(() => {
     if (!hofstettenId) return [] as LocalOutletRowModel[];
@@ -465,6 +537,10 @@ export default function AdminOrdersPage() {
     () => centralRows.reduce((s, r) => s + r.displayOrder, 0),
     [centralRows]
   );
+  const sumSuggestedDemand = useMemo(
+    () => demandRows.reduce((s, r) => s + r.suggestedOrder, 0),
+    [demandRows]
+  );
   const sumHof = useMemo(
     () => hofstettenRows.reduce((s, r) => s + r.displayOrder, 0),
     [hofstettenRows]
@@ -652,10 +728,9 @@ export default function AdminOrdersPage() {
           </div>
           <h1 className="text-2xl font-black text-black mt-1">Bestellübersicht</h1>
           <p className="mt-1 text-sm text-black/65">
-            <strong>{RABENSTEIN_LAGER_NAME}</strong> mit {TEICH_NAME}: zentrales Lager;{" "}
-            <strong>{HOFSTETTEN_NAME}</strong> und <strong>{KIRCHBERG_NAME}</strong>: je
-            Platzerl Verbrauch 7d minus lokaler Bestand. Reiter{" "}
-            <strong>Gesamt</strong>: Summen pro Produkt.
+            Platzerl melden Bedarf. Im Reiter <strong>Bedarf (zentral)</strong> wird daraus der
+            Bestellvorschlag für <strong>{RABENSTEIN_LAGER_NAME}</strong> berechnet (Total Bedarf −
+            Lager-Stock).
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -688,6 +763,13 @@ export default function AdminOrdersPage() {
 
       {!busy && !err ? (
         <div className="mt-6 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <button
+            type="button"
+            className={`${tabBtn} ${activeTab === "demand" ? tabBtnActive : tabBtnIdle}`}
+            onClick={() => setActiveTab("demand")}
+          >
+            Bedarf (zentral)
+          </button>
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "central" ? tabBtnActive : tabBtnIdle}`}
@@ -747,6 +829,95 @@ export default function AdminOrdersPage() {
         <div className="mt-8 text-black font-black">Lade…</div>
       ) : err ? (
         <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div>
+      ) : null}
+
+      {placeMsg && !busy && !err ? (
+        <div className="mt-6 rounded-3xl border-2 border-emerald-800/30 bg-emerald-50 p-4 text-emerald-950 text-sm font-black">
+          {placeMsg}
+        </div>
+      ) : null}
+
+      {!busy && !err && activeTab === "demand" && rabensteinId ? (
+        <>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-black text-black/70">
+              Offene Meldungen: <strong>{openRequests.length}</strong>
+            </div>
+            <button
+              type="button"
+              disabled={placeBusy || openRequests.length === 0}
+              className="h-12 px-4 rounded-2xl bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
+              onClick={async () => {
+                setPlaceBusy(true);
+                setPlaceMsg(null);
+                try {
+                  const res = await processOpenOrderRequests();
+                  setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
+                  await reload();
+                } catch (e: unknown) {
+                  setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
+                } finally {
+                  setPlaceBusy(false);
+                }
+              }}
+            >
+              {placeBusy ? "Plaziere…" : "Place order"}
+            </button>
+          </div>
+
+          <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead>
+                <tr className="border-b-2 border-black bg-black/[0.03]">
+                  <th className="p-3 font-black text-black">Produkt</th>
+                  <th className="p-3 font-black text-black tabular-nums">{TEICH_NAME} Bedarf</th>
+                  <th className="p-3 font-black text-black tabular-nums">Filiale Bedarf</th>
+                  <th className="p-3 font-black text-black tabular-nums">Total</th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    {RABENSTEIN_LAGER_NAME}
+                    <br />
+                    Stock
+                  </th>
+                  <th className="p-3 font-black text-black tabular-nums">Vorschlag</th>
+                  <th className="p-3 font-black text-black">Metro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {demandRows.map((r) => (
+                  <tr key={r.productId} className="border-b border-black/10 align-middle">
+                    <td className="p-3 font-black text-black max-w-[260px]">{r.name}</td>
+                    <td className="p-3 font-black text-black tabular-nums">{r.demandTeich}</td>
+                    <td className="p-3 font-black text-black tabular-nums">{r.demandFiliale}</td>
+                    <td className="p-3 font-black text-black tabular-nums">{r.totalDemand}</td>
+                    <td className="p-3 font-black text-black tabular-nums">{r.stockRabenstein}</td>
+                    <td className="p-3 font-black text-black tabular-nums">{r.suggestedOrder}</td>
+                    <td className="p-3 text-xs font-black text-black/70">
+                      {r.metro_order_number ? (
+                        <>
+                          <div className="font-black text-black">{r.metro_order_number}</div>
+                          <div className="text-black/60">{r.metro_unit ?? ""}</div>
+                        </>
+                      ) : (
+                        <span className="text-black/40">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {demandRows.length === 0 ? (
+                  <tr>
+                    <td className="p-4 text-sm font-black text-black/60" colSpan={7}>
+                      Keine offenen Bedarfsmeldungen.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </section>
+
+          <div className="mt-4 flex justify-end text-sm font-black text-black">
+            Summe (Vorschlag): {sumSuggestedDemand}
+          </div>
+        </>
       ) : null}
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (

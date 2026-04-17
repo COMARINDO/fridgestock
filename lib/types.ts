@@ -95,3 +95,13 @@ export type SubmittedOrderRow = {
   delivered_at?: string | null;
   items: SubmittedOrderItem[];
 };
+
+export type OrderRequestRow = {
+  id: string; // uuid
+  location_id: string; // uuid
+  product_id: string; // uuid
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+  processed_at?: string | null;
+};

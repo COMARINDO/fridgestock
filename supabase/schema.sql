@@ -39,6 +39,143 @@ create table if not exists public.submitted_orders (
   delivered_at timestamptz
 );
 
+-- Centralized ordering: locations report demand, warehouse places a single order.
+create table if not exists public.order_requests (
+  id uuid primary key default gen_random_uuid(),
+  location_id uuid not null references public.locations(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
+  quantity integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+
+create index if not exists order_requests_open_by_product_idx
+  on public.order_requests (product_id, location_id)
+  where processed_at is null;
+
+-- Enforce at most one *open* request per (location, product).
+create unique index if not exists order_requests_one_open_per_loc_prod_idx
+  on public.order_requests (location_id, product_id)
+  where processed_at is null;
+
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'order_requests_quantity_nonneg') then
+    alter table public.order_requests drop constraint order_requests_quantity_nonneg;
+  end if;
+  alter table public.order_requests
+    add constraint order_requests_quantity_nonneg
+    check (quantity >= 0);
+end;
+$$;
+
+-- Batch upsert of demand from one location.
+drop function if exists public.report_order_requests(uuid, jsonb);
+create or replace function public.report_order_requests(
+  p_location_id uuid,
+  p_items jsonb
+) returns table (
+  location_id uuid,
+  reported_items integer,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_reported int := 0;
+  rec record;
+  v_pid uuid;
+  v_qty int;
+begin
+  if p_location_id is null then
+    raise exception 'location_id required' using errcode = 'P0001';
+  end if;
+  if jsonb_typeof(p_items) <> 'array' then
+    raise exception 'items must be array' using errcode = 'P0001';
+  end if;
+
+  for rec in
+    select
+      (x->>'product_id')::uuid as product_id,
+      coalesce((x->>'quantity')::int, 0) as quantity
+    from jsonb_array_elements(p_items) as x
+  loop
+    v_pid := rec.product_id;
+    v_qty := greatest(0, rec.quantity);
+    if v_pid is null then
+      continue;
+    end if;
+
+    -- Update existing open request if present.
+    update public.order_requests
+    set quantity = v_qty,
+        updated_at = v_now
+    where location_id = p_location_id
+      and product_id = v_pid
+      and processed_at is null;
+
+    if found then
+      v_reported := v_reported + 1;
+      continue;
+    end if;
+
+    -- Otherwise insert a new open request. Unique partial index prevents dupes.
+    begin
+      insert into public.order_requests (location_id, product_id, quantity, created_at, updated_at, processed_at)
+      values (p_location_id, v_pid, v_qty, v_now, v_now, null);
+      v_reported := v_reported + 1;
+    exception when unique_violation then
+      -- Race: another reporter inserted concurrently; retry update.
+      update public.order_requests
+      set quantity = v_qty,
+          updated_at = v_now
+      where location_id = p_location_id
+        and product_id = v_pid
+        and processed_at is null;
+      if found then
+        v_reported := v_reported + 1;
+      end if;
+    end;
+  end loop;
+
+  return query select p_location_id, v_reported::integer, v_now;
+end;
+$$;
+
+grant execute on function public.report_order_requests(uuid, jsonb) to anon;
+grant execute on function public.report_order_requests(uuid, jsonb) to authenticated;
+
+-- Place order: mark all currently-open demand rows as processed.
+drop function if exists public.process_open_order_requests(timestamptz);
+create or replace function public.process_open_order_requests(
+  p_processed_at timestamptz default now()
+) returns table (
+  processed_rows integer,
+  processed_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := coalesce(p_processed_at, now());
+  v_rows int := 0;
+begin
+  update public.order_requests
+  set processed_at = v_now
+  where processed_at is null;
+  get diagnostics v_rows = row_count;
+  return query select v_rows::integer, v_now;
+end;
+$$;
+
+grant execute on function public.process_open_order_requests(timestamptz) to anon;
+grant execute on function public.process_open_order_requests(timestamptz) to authenticated;
+
 create index if not exists submitted_orders_loc_created_idx
   on public.submitted_orders (location_id, created_at desc);
 

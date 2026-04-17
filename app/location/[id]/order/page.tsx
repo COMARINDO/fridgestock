@@ -9,23 +9,11 @@ import { useAuth } from "@/app/providers";
 import {
   getWeeklyUsageWithCoverageByLocationProduct,
   listProductsWithInventoryForLocation,
-  submitOrder,
+  reportOrderRequests,
 } from "@/lib/db";
 import { computeLocalOutletOrder } from "@/lib/orderSuggestions";
-import type { SubmittedOrderItem } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
-
-function getIsoWeekYear(d: Date): { isoYear: number; isoWeek: number } {
-  // ISO week date algorithm: move to Thursday of current week.
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const isoYear = date.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
-  const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return { isoYear, isoWeek: weekNo };
-}
 
 export default function LocationOrderPage() {
   return (
@@ -47,8 +35,6 @@ function LocationOrderInner() {
     return assigned === locationId;
   }, [sessionLocation?.location_id, locationId]);
 
-  const { isoYear, isoWeek } = useMemo(() => getIsoWeekYear(new Date()), []);
-
   const [products, setProducts] = useState<Array<{ id: string } & Record<string, any>>>([]);
   const [usageByProduct, setUsageByProduct] = useState<Record<string, number>>({});
   const [daysCoveredByProduct, setDaysCoveredByProduct] = useState<Record<string, number>>({});
@@ -56,13 +42,13 @@ function LocationOrderInner() {
   const [busy, setBusy] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [reportedAt, setReportedAt] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!locationId) return;
     setBusy(true);
     setErr(null);
-    setSubmittedId(null);
+    setReportedAt(null);
     try {
       const [rows, usageMeta] = await Promise.all([
         listProductsWithInventoryForLocation(locationId),
@@ -154,23 +140,23 @@ function LocationOrderInner() {
       return;
     }
     if (!locationId) return;
-    const items: SubmittedOrderItem[] = rows
+    const items = rows
       .map((r) => ({
         product_id: r.productId,
         quantity: Math.max(0, Math.floor(Number(r.draft.replace(/[^\d]/g, "")) || 0)),
       }))
       .filter((it) => it.quantity > 0);
     if (items.length === 0) {
-      setErr("Keine Positionen in der Bestellung.");
+      setErr("Kein Bedarf zum Melden.");
       return;
     }
     setSubmitting(true);
     setErr(null);
     try {
-      const res = await submitOrder({ locationId, isoYear, isoWeek, items });
-      setSubmittedId(res.id);
+      const res = await reportOrderRequests({ locationId, items });
+      setReportedAt(res.updatedAt || new Date().toISOString());
     } catch (e: unknown) {
-      setErr(errorMessage(e, "Bestellung konnte nicht gespeichert werden."));
+      setErr(errorMessage(e, "Bedarf konnte nicht gemeldet werden."));
     } finally {
       setSubmitting(false);
     }
@@ -185,7 +171,7 @@ function LocationOrderInner() {
               ← Zurück
             </Link>
           </div>
-          <h1 className="text-2xl font-black text-black mt-1">Bestellen</h1>
+          <h1 className="text-2xl font-black text-black mt-1">Bedarf melden</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -200,9 +186,9 @@ function LocationOrderInner() {
       </div>
 
       {err ? <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div> : null}
-      {submittedId ? (
+      {reportedAt ? (
         <div className="mt-6 rounded-3xl border-2 border-emerald-800/30 bg-emerald-50 p-4 text-emerald-950 text-sm font-black">
-          Bestellung gespeichert. (ID: {submittedId})
+          Bedarf gemeldet.
         </div>
       ) : null}
 
@@ -212,7 +198,7 @@ function LocationOrderInner() {
         <>
           {rows.length === 0 ? (
             <div className="mt-6 rounded-3xl border-2 border-black bg-white p-4 text-sm font-black text-black/60">
-              Keine Positionen zum Bestellen.
+              Kein Bedarf zu melden.
             </div>
           ) : (
             <div className="mt-6 grid gap-3">
@@ -251,7 +237,7 @@ function LocationOrderInner() {
                             : "border-red-800 bg-white",
                         ].join(" ")}
                         placeholder="0"
-                        aria-label="Bestellen"
+                        aria-label="Bedarf"
                       />
                     </div>
                   </div>
@@ -274,7 +260,7 @@ function LocationOrderInner() {
                 disabled={submitting || rows.length === 0}
                 onClick={() => void submit()}
               >
-                {submitting ? "Sende…" : "Bestellung abschicken"}
+                {submitting ? "Sende…" : "Bedarf melden"}
               </Button>
             </div>
           </div>

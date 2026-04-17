@@ -14,7 +14,8 @@ declare
     'inventory',
     'inventory_history',
     'order_overrides',
-    'submitted_orders'
+    'submitted_orders',
+    'order_requests'
   ];
 begin
   foreach t in array tables
