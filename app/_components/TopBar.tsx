@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
-import { getMissingCountsForLatestInventorySession, setInventoryQuantity } from "@/lib/db";
+import { getMissingCountsForLatestInventorySession } from "@/lib/db";
 import type { InventoryMissingCountRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 
@@ -45,6 +45,18 @@ export function TopBar() {
     const name = (m.product_name ?? "").trim();
     const zusatz = (m.zusatz ?? "").trim();
     return [brand, name].filter(Boolean).join(" - ") + (zusatz ? ` (${zusatz})` : "");
+  }
+
+  function formatLastInventoryAge(missing: InventoryMissingCountRow[]): string | null {
+    const ts = missing
+      .map((m) => (typeof m.last_count_at === "string" ? Date.parse(m.last_count_at) : NaN))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a)[0];
+    if (!ts) return null;
+    const days = Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
+    if (days <= 0) return "Last inventory: heute";
+    if (days === 1) return "Last inventory: gestern";
+    return `Last inventory: vor ${days} Tagen`;
   }
 
   async function logoutWithOptionalGuard() {
@@ -109,35 +121,6 @@ export function TopBar() {
     } catch (e: unknown) {
       setGuardErr(errorMessage(e, "Konnte Inventur-Check nicht laden."));
       setGuardMissing([]);
-    } finally {
-      setGuardBusy(false);
-    }
-  }
-
-  async function applyAllMissingAsZeroAndProceed() {
-    const locId = location?.location_id ?? "";
-    if (!locId.trim()) {
-      // No location context -> just proceed.
-      proceedGuardIntent();
-      return;
-    }
-    if (guardMissing.length === 0) {
-      proceedGuardIntent();
-      return;
-    }
-    setGuardBusy(true);
-    setGuardErr(null);
-    try {
-      for (const m of guardMissing) {
-        await setInventoryQuantity({
-          locationId: locId,
-          productId: m.product_id,
-          quantity: 0,
-        });
-      }
-      proceedGuardIntent();
-    } catch (e: unknown) {
-      setGuardErr(errorMessage(e, "Auf 0 setzen fehlgeschlagen."));
     } finally {
       setGuardBusy(false);
     }
@@ -245,9 +228,14 @@ export function TopBar() {
                   {guardBusy
                     ? "Prüfe…"
                     : guardMissing.length > 0
-                      ? `${guardMissing.length} Artikel wurden in dieser Inventur (5h-Session) nicht gezählt.`
+                      ? `Du hast ${guardMissing.length} Produkte von der letzten Inventur nicht gezählt.`
                       : "Keine fehlenden Artikel gefunden."}
                 </div>
+                {!guardBusy && guardMissing.length > 0 ? (
+                  <div className="mt-1 text-xs font-black text-black/50">
+                    {formatLastInventoryAge(guardMissing)}
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -292,37 +280,27 @@ export function TopBar() {
             ) : null}
 
             <div className="mt-5 grid gap-3">
-              {guardMissing.length > 0 ? (
-                <button
-                  type="button"
-                  className="h-14 w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50 bg-black text-white shadow-sm"
-                  disabled={guardBusy}
-                  onClick={() => void applyAllMissingAsZeroAndProceed()}
-                >
-                  Alle auf 0 setzen & weiter
-                </button>
-              ) : null}
               <button
                 type="button"
                 className="h-14 w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50 bg-[#f2d2b6] text-black border-2 border-black shadow-sm"
                 disabled={guardBusy}
                 onClick={() => {
-                  // "Weiter inventieren" -> just close the modal.
+                  // Continue counting -> just close the modal.
                   setGuardOpen(false);
                   setGuardIntent(null);
                   setGuardMissing([]);
                   setGuardErr(null);
                 }}
               >
-                Weiter inventieren
+                Continue counting
               </button>
-              {!guardBusy && guardMissing.length === 0 ? (
+              {!guardBusy ? (
                 <button
                   type="button"
                   className="h-14 w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50 bg-black text-white shadow-sm"
                   onClick={() => proceedGuardIntent()}
                 >
-                  Weiter
+                  Ignore
                 </button>
               ) : null}
             </div>

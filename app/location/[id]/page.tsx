@@ -1190,25 +1190,16 @@ function LocationInner() {
     }
   }
 
-  async function setAllLeaveMissingToZeroAndLeave() {
-    if (!locationId) return;
-    if (leaveMissing.length === 0) {
-      router.replace("/");
-      return;
-    }
-    setLeaveGuardBusy(true);
-    setLeaveGuardErr(null);
-    try {
-      for (const m of leaveMissing) {
-        await setInventoryQuantity({ locationId, productId: m.product_id, quantity: 0 });
-      }
-      setLeaveGuardOpen(false);
-      router.replace("/");
-    } catch (e: unknown) {
-      setLeaveGuardErr(errorMessage(e, "Auf 0 setzen fehlgeschlagen."));
-    } finally {
-      setLeaveGuardBusy(false);
-    }
+  function formatLastInventoryAge(missing: InventoryMissingCountRow[]): string | null {
+    const ts = missing
+      .map((m) => (typeof m.last_count_at === "string" ? Date.parse(m.last_count_at) : NaN))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a)[0];
+    if (!ts) return null;
+    const days = Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
+    if (days <= 0) return "Last inventory: heute";
+    if (days === 1) return "Last inventory: gestern";
+    return `Last inventory: vor ${days} Tagen`;
   }
 
   if (error) {
@@ -1696,9 +1687,14 @@ function LocationInner() {
                   {leaveGuardBusy
                     ? "Prüfe…"
                     : leaveMissing.length > 0
-                      ? `${leaveMissing.length} Artikel wurden in dieser Inventur (5h-Session) nicht gezählt.`
+                      ? `Du hast ${leaveMissing.length} Produkte von der letzten Inventur nicht gezählt.`
                       : "Keine fehlenden Artikel gefunden."}
                 </div>
+                {!leaveGuardBusy && leaveMissing.length > 0 ? (
+                  <div className="mt-1 text-xs font-black text-black/50">
+                    {formatLastInventoryAge(leaveMissing)}
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -1739,23 +1735,14 @@ function LocationInner() {
             ) : null}
 
             <div className="mt-5 grid gap-3">
-              {leaveMissing.length > 0 ? (
-                <Button
-                  className="w-full h-14 text-lg"
-                  disabled={leaveGuardBusy}
-                  onClick={() => void setAllLeaveMissingToZeroAndLeave()}
-                >
-                  Alle auf 0 setzen & zurück
-                </Button>
-              ) : null}
               <ButtonSecondary
                 className="w-full h-14 text-lg"
                 disabled={leaveGuardBusy}
                 onClick={() => setLeaveGuardOpen(false)}
               >
-                Weiter inventieren
+                Continue counting
               </ButtonSecondary>
-              {!leaveGuardBusy && leaveMissing.length === 0 ? (
+              {!leaveGuardBusy ? (
                 <Button
                   className="w-full h-14 text-lg"
                   onClick={() => {
@@ -1763,7 +1750,7 @@ function LocationInner() {
                     router.replace("/");
                   }}
                 >
-                  Zurück
+                  Ignore
                 </Button>
               ) : null}
             </div>

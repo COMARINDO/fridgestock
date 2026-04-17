@@ -9,7 +9,6 @@ import {
   getMissingCountsForInventorySession,
   listInventoryCountSessions,
   listLocations,
-  setInventoryQuantity,
 } from "@/lib/db";
 import type {
   InventoryCountSession,
@@ -149,35 +148,11 @@ export default function AdminInventorySessionsPage() {
   );
 
   async function setMissingToZero(productId: string) {
-    const lid = activeLocId.trim();
-    if (!lid) return;
-    setErr(null);
-    try {
-      await setInventoryQuantity({ locationId: lid, productId, quantity: 0 });
-      await reloadDetails();
-    } catch (e: unknown) {
-      setErr(errorMessage(e, "Auf 0 setzen fehlgeschlagen."));
-    }
+    void productId;
   }
 
   async function setAllMissingToZero() {
-    const lid = activeLocId.trim();
-    if (!lid) return;
-    const list = missing.filter((m) => !ignoredMissing[m.product_id]);
-    if (list.length === 0) return;
-    setErr(null);
-    setDetailBusy(true);
-    try {
-      for (const m of list) {
-        await setInventoryQuantity({ locationId: lid, productId: m.product_id, quantity: 0 });
-      }
-      await reloadDetails();
-      await reloadSessions();
-    } catch (e: unknown) {
-      setErr(errorMessage(e, "Auf 0 setzen fehlgeschlagen."));
-    } finally {
-      setDetailBusy(false);
-    }
+    // Removed: bulk destructive actions.
   }
 
   if (!adminHydrated) {
@@ -337,13 +312,6 @@ export default function AdminInventorySessionsPage() {
                     {missing.filter((m) => !ignoredMissing[m.product_id]).length}
                   </div>
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Button
-                      className="h-11 text-sm"
-                      disabled={missing.filter((m) => !ignoredMissing[m.product_id]).length === 0 || detailBusy}
-                      onClick={() => void setAllMissingToZero()}
-                    >
-                      Alle fehlenden auf 0 setzen
-                    </Button>
                     <ButtonSecondary
                       className="h-11 text-sm"
                       disabled={detailBusy}
@@ -386,13 +354,6 @@ export default function AdminInventorySessionsPage() {
                                   onClick={() => setIgnoredMissing((cur) => ({ ...cur, [m.product_id]: true }))}
                                 >
                                   Ignorieren
-                                </button>
-                                <button
-                                  type="button"
-                                  className="h-10 px-3 rounded-2xl border-2 border-black bg-black text-xs font-black text-white active:scale-[0.99]"
-                                  onClick={() => void setMissingToZero(m.product_id)}
-                                >
-                                  Auf 0 setzen
                                 </button>
                               </div>
                             </div>
