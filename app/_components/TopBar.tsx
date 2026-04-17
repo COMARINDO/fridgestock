@@ -168,6 +168,14 @@ export function TopBar() {
     window.dispatchEvent(new Event("fridge-scanmode"));
   }
 
+  function navigateToLocationMainAndSetMode(next: "set" | "add") {
+    updateScanMode(next);
+    const locId = location?.location_id ?? "";
+    if (locId.trim()) {
+      router.push(`/location/${encodeURIComponent(locId)}`);
+    }
+  }
+
   const btnDarkSmall =
     "h-10 px-3 inline-flex items-center rounded-2xl bg-black text-white text-[14px] font-black active:scale-[0.99]";
   const btnDangerSmall =
@@ -214,7 +222,7 @@ export function TopBar() {
                       ? "border-blue-700 bg-blue-700 text-white"
                       : "border-black bg-white text-black",
                   ].join(" ")}
-                  onClick={() => updateScanMode("set")}
+                  onClick={() => navigateToLocationMainAndSetMode("set")}
                 >
                   Inventur
                 </button>
@@ -231,7 +239,7 @@ export function TopBar() {
                       void openGuard("switchToAdd");
                       return;
                     }
-                    updateScanMode("add");
+                    navigateToLocationMainAndSetMode("add");
                   }}
                 >
                   Buchen

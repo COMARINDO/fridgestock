@@ -233,11 +233,6 @@ function LocationOrderInner() {
                   >
                     <div className="text-center">
                       <div className="text-lg font-black text-black">{r.name}</div>
-                      <div className="mt-1 text-[11px] font-black text-black/55">
-                        Bestand: <span className="text-black">{r.stock}</span> · 7d:{" "}
-                        <span className="text-black">{r.usage7d}</span> · Vorschlag:{" "}
-                        <span className="text-black">{r.suggested}</span>
-                      </div>
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3">
@@ -262,9 +257,6 @@ function LocationOrderInner() {
                         placeholder="0"
                         aria-label="Bestellen"
                       />
-                    </div>
-                    <div className="mt-2 text-[11px] font-black text-black/55 text-center">
-                      Bestellen
                     </div>
                   </div>
                 );

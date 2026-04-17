@@ -161,7 +161,10 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
         <div style={mergedStyle}>
           <div
             className={[
-              "w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm",
+              "w-full max-w-full rounded-3xl border-2 p-4 shadow-sm",
+              r.scanMode === "add"
+                ? "border-emerald-800 bg-emerald-50"
+                : "border-black bg-white",
               ring,
             ].join(" ")}
             onClick={(e) => {
