@@ -229,27 +229,15 @@ function LocationOrderInner() {
                 return (
                   <div
                     key={r.productId}
-                    className="w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                    className="w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-lg font-black text-black truncate">{r.name}</div>
-                        <div className="mt-1 text-[11px] font-black text-black/55">
-                          Bestand: <span className="text-black">{r.stock}</span> · 7d:{" "}
-                          <span className="text-black">{r.usage7d}</span> · Vorschlag:{" "}
-                          <span className="text-black">{r.suggested}</span>
-                        </div>
+                    <div className="text-center">
+                      <div className="text-lg font-black text-black">{r.name}</div>
+                      <div className="mt-1 text-[11px] font-black text-black/55">
+                        Bestand: <span className="text-black">{r.stock}</span> · 7d:{" "}
+                        <span className="text-black">{r.usage7d}</span> · Vorschlag:{" "}
+                        <span className="text-black">{r.suggested}</span>
                       </div>
-                      <button
-                        type="button"
-                        className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99] shrink-0"
-                        onClick={() =>
-                          setDraftByProduct((m) => ({ ...m, [r.productId]: String(r.suggested) }))
-                        }
-                        title="Vorschlag übernehmen"
-                      >
-                        Vorschlag
-                      </button>
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3">
@@ -263,7 +251,7 @@ function LocationOrderInner() {
                         }
                         inputMode="numeric"
                         className={[
-                          "h-14 w-40 text-center text-3xl font-black",
+                          "h-14 w-full max-w-[180px] text-center text-3xl font-black",
                           draftIsZero ? "bg-white" : "bg-red-50 border-red-800",
                         ].join(" ")}
                         placeholder="0"
@@ -271,6 +259,18 @@ function LocationOrderInner() {
                     </div>
                     <div className="mt-2 text-[11px] font-black text-black/55 text-center">
                       Bestellen
+                    </div>
+                    <div className="mt-3 flex justify-center">
+                      <button
+                        type="button"
+                        className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
+                        onClick={() =>
+                          setDraftByProduct((m) => ({ ...m, [r.productId]: String(r.suggested) }))
+                        }
+                        title="Vorschlag übernehmen"
+                      >
+                        Vorschlag übernehmen
+                      </button>
                     </div>
                   </div>
                 );
