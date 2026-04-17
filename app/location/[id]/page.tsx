@@ -13,7 +13,7 @@ import {
   applyInventoryDelta,
   recordInventoryAdjustment,
   setInventoryQuantity,
-  getMissingCountsForLatestInventorySession,
+  getMissingCountsForActiveInventorySession,
   getLatestInventorySessionCountedProductIds,
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
@@ -1172,15 +1172,25 @@ function LocationInner() {
       router.replace("/");
       return;
     }
+    // Only warn when leaving an active inventory session (Inventur mode).
+    if (scanMode !== "set") {
+      router.replace("/");
+      return;
+    }
     setLeaveGuardOpen(true);
     setLeaveGuardBusy(true);
     setLeaveGuardErr(null);
     setLeaveMissing([]);
     try {
-      const miss = await getMissingCountsForLatestInventorySession({
+      const miss = await getMissingCountsForActiveInventorySession({
         locationId,
         gapHours: 5,
       });
+      if (!miss || miss.length === 0) {
+        setLeaveGuardOpen(false);
+        router.replace("/");
+        return;
+      }
       setLeaveMissing(miss);
     } catch (e: unknown) {
       setLeaveGuardErr(errorMessage(e, "Konnte Inventur-Check nicht laden."));
@@ -1197,9 +1207,9 @@ function LocationInner() {
       .sort((a, b) => b - a)[0];
     if (!ts) return null;
     const days = Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
-    if (days <= 0) return "Last inventory: heute";
-    if (days === 1) return "Last inventory: gestern";
-    return `Last inventory: vor ${days} Tagen`;
+    if (days <= 0) return "Letzte Inventur: heute";
+    if (days === 1) return "Letzte Inventur: gestern";
+    return `Letzte Inventur: vor ${days} Tagen`;
   }
 
   if (error) {
@@ -1679,7 +1689,7 @@ function LocationInner() {
           <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-black">Inventur-Check</div>
+                <div className="text-xs text-black">Inventur-Hinweis</div>
                 <div className="text-2xl font-black leading-tight text-black">
                   Nicht gezählte Artikel
                 </div>
@@ -1740,7 +1750,7 @@ function LocationInner() {
                 disabled={leaveGuardBusy}
                 onClick={() => setLeaveGuardOpen(false)}
               >
-                Continue counting
+                Weiter inventieren
               </ButtonSecondary>
               {!leaveGuardBusy ? (
                 <Button
@@ -1750,7 +1760,7 @@ function LocationInner() {
                     router.replace("/");
                   }}
                 >
-                  Ignore
+                  Ignorieren
                 </Button>
               ) : null}
             </div>

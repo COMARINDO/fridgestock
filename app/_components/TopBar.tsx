@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
-import { getMissingCountsForLatestInventorySession } from "@/lib/db";
+import { getMissingCountsForActiveInventorySession } from "@/lib/db";
 import type { InventoryMissingCountRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 
@@ -54,24 +54,24 @@ export function TopBar() {
       .sort((a, b) => b - a)[0];
     if (!ts) return null;
     const days = Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
-    if (days <= 0) return "Last inventory: heute";
-    if (days === 1) return "Last inventory: gestern";
-    return `Last inventory: vor ${days} Tagen`;
+    if (days <= 0) return "Letzte Inventur: heute";
+    if (days === 1) return "Letzte Inventur: gestern";
+    return `Letzte Inventur: vor ${days} Tagen`;
   }
 
   async function logoutWithOptionalGuard() {
     const locId = location?.location_id ?? "";
-    // If we don't have a concrete location context, just logout.
-    if (!isLocationScreen || !locId.trim()) {
+    // Only guard when leaving an active inventory session (Inventur mode).
+    if (!isLocationScreen || !locId.trim() || scanMode !== "set") {
       exitAdmin();
       logout();
       router.replace("/login");
       return;
     }
 
-    // Only show the guard if there is something missing.
+    // Only show the guard if there is something missing in the ACTIVE session.
     try {
-      const missing = await getMissingCountsForLatestInventorySession({
+      const missing = await getMissingCountsForActiveInventorySession({
         locationId: locId,
         gapHours: 5,
       });
@@ -113,7 +113,7 @@ export function TopBar() {
     setGuardMissing([]);
     setGuardOpen(true);
     try {
-      const missing = await getMissingCountsForLatestInventorySession({
+      const missing = await getMissingCountsForActiveInventorySession({
         locationId: locId,
         gapHours: 5,
       });
@@ -220,7 +220,7 @@ export function TopBar() {
           <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-black">Inventur-Check</div>
+                <div className="text-xs text-black">Inventur-Hinweis</div>
                 <div className="text-2xl font-black leading-tight text-black">
                   Nicht gezählte Artikel
                 </div>
@@ -285,14 +285,14 @@ export function TopBar() {
                 className="h-14 w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50 bg-[#f2d2b6] text-black border-2 border-black shadow-sm"
                 disabled={guardBusy}
                 onClick={() => {
-                  // Continue counting -> just close the modal.
+                  // Weiter inventieren -> nur Modal schließen.
                   setGuardOpen(false);
                   setGuardIntent(null);
                   setGuardMissing([]);
                   setGuardErr(null);
                 }}
               >
-                Continue counting
+                Weiter inventieren
               </button>
               {!guardBusy ? (
                 <button
@@ -300,7 +300,7 @@ export function TopBar() {
                   className="h-14 w-full rounded-2xl px-5 py-4 text-[17px] font-extrabold leading-none active:scale-[0.99] disabled:opacity-50 bg-black text-white shadow-sm"
                   onClick={() => proceedGuardIntent()}
                 >
-                  Ignore
+                  Ignorieren
                 </button>
               ) : null}
             </div>

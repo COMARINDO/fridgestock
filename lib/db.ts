@@ -582,6 +582,37 @@ export async function getMissingCountsForLatestInventorySession(args: {
   return (Array.isArray(data) ? data : []) as InventoryMissingCountRow[];
 }
 
+export async function getActiveInventorySessionNo(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<number | null> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return null;
+  const gapHours = args.gapHours ?? 5;
+  const sessions = await listInventoryCountSessions({ locationId, gapHours });
+  const latest = sessions[0];
+  if (!latest?.ended_at) return null;
+  const endedMs = Date.parse(latest.ended_at);
+  if (!Number.isFinite(endedMs)) return null;
+  const gapMs = Math.max(1, gapHours) * 60 * 60 * 1000;
+  const ageMs = Date.now() - endedMs;
+  // "Active" means last count is within the gap window.
+  if (ageMs <= gapMs) return latest.session_no ?? null;
+  return null;
+}
+
+export async function getMissingCountsForActiveInventorySession(args: {
+  locationId: string;
+  gapHours?: number;
+}): Promise<InventoryMissingCountRow[]> {
+  const locationId = args.locationId.trim();
+  if (!locationId) return [];
+  const gapHours = args.gapHours ?? 5;
+  const sessionNo = await getActiveInventorySessionNo({ locationId, gapHours });
+  if (sessionNo == null) return [];
+  return await getMissingCountsForInventorySession({ locationId, sessionNo, gapHours });
+}
+
 export async function getLatestInventorySessionNo(args: {
   locationId: string;
   gapHours?: number;
