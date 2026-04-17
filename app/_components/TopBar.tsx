@@ -47,6 +47,44 @@ export function TopBar() {
     return [brand, name].filter(Boolean).join(" - ") + (zusatz ? ` (${zusatz})` : "");
   }
 
+  async function logoutWithOptionalGuard() {
+    const locId = location?.location_id ?? "";
+    // If we don't have a concrete location context, just logout.
+    if (!isLocationScreen || !locId.trim()) {
+      exitAdmin();
+      logout();
+      router.replace("/login");
+      return;
+    }
+
+    // Only show the guard if there is something missing.
+    try {
+      const missing = await getMissingCountsForLatestInventorySession({
+        locationId: locId,
+        gapHours: 5,
+      });
+      if (!missing || missing.length === 0) {
+        exitAdmin();
+        logout();
+        router.replace("/login");
+        return;
+      }
+      // Open modal only if we have missing items.
+      setGuardIntent("logout");
+      setGuardMissing(missing);
+      setGuardErr(null);
+      setGuardBusy(false);
+      setGuardOpen(true);
+    } catch (e: unknown) {
+      // If the check fails, default to showing the guard (so user can decide).
+      setGuardIntent("logout");
+      setGuardMissing([]);
+      setGuardErr(errorMessage(e, "Konnte Inventur-Check nicht laden."));
+      setGuardBusy(false);
+      setGuardOpen(true);
+    }
+  }
+
   async function openGuard(intent: "logout" | "switchToAdd") {
     const locId = location?.location_id ?? "";
     if (!isLocationScreen || !locId.trim()) {
@@ -147,7 +185,7 @@ export function TopBar() {
               <button
                 type="button"
                 onClick={() => {
-                  void openGuard("logout");
+                  void logoutWithOptionalGuard();
                 }}
                 className={btnDarkSmall}
               >
