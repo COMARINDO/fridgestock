@@ -164,6 +164,8 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
               "w-full max-w-full rounded-3xl border-2 p-4 shadow-sm",
               r.scanMode === "add"
                 ? "border-emerald-800 bg-emerald-50"
+                : r.scanMode === "set"
+                  ? "border-blue-800 bg-blue-50"
                 : "border-black bg-white",
               ring,
             ].join(" ")}

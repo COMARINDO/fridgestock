@@ -229,7 +229,7 @@ function LocationOrderInner() {
                 return (
                   <div
                     key={r.productId}
-                    className="w-full max-w-full rounded-3xl border-2 border-black bg-white p-4 shadow-sm"
+                    className="w-full max-w-full rounded-3xl border-2 border-red-800 bg-red-50 p-4 shadow-sm"
                   >
                     <div className="text-center">
                       <div className="text-lg font-black text-black">{r.name}</div>
