@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
-import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
+import { Button, ButtonSecondary } from "@/app/_components/ui";
 import { useAuth } from "@/app/providers";
 import {
   getWeeklyUsageWithCoverageByLocationProduct,
@@ -241,7 +241,11 @@ function LocationOrderInner() {
                     </div>
 
                     <div className="mt-4 flex items-center justify-center gap-3">
-                      <Input
+                      <input
+                        inputMode="numeric"
+                        type="tel"
+                        pattern="[0-9]*"
+                        enterKeyHint="done"
                         value={r.draft}
                         onChange={(e) =>
                           setDraftByProduct((m) => ({
@@ -249,12 +253,14 @@ function LocationOrderInner() {
                             [r.productId]: e.target.value.replace(/[^\d]/g, ""),
                           }))
                         }
-                        inputMode="numeric"
                         className={[
-                          "h-14 w-full max-w-[180px] text-center text-3xl font-black",
-                          draftIsZero ? "bg-white" : "bg-red-50 border-red-800",
+                          "h-14 w-full max-w-[180px] rounded-2xl border-2 px-4 text-center text-3xl font-black text-black outline-none focus:ring-2 focus:ring-black/20",
+                          draftIsZero
+                            ? "border-black bg-white"
+                            : "border-red-800 bg-red-50",
                         ].join(" ")}
                         placeholder="0"
+                        aria-label="Bestellen"
                       />
                     </div>
                     <div className="mt-2 text-[11px] font-black text-black/55 text-center">
