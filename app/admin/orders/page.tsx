@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { getAiToggle } from "@/lib/getAiToggle";
 import {
+  deleteAllOpenOrderRequests,
+  deleteOpenOrderRequest,
   getWeeklyUsageWithCoverageByLocationProduct,
   listInventoryAll,
   listLocations,
@@ -13,6 +15,7 @@ import {
   listOrderOverrides,
   listProducts,
   processOpenOrderRequests,
+  updateOpenOrderRequestQuantity,
   updateProduct,
   updateProductMetroData,
   upsertOrderOverride,
@@ -43,14 +46,20 @@ function resolveLocationIdByName(
 
 type TabId = "demand" | "central" | "hofstetten" | "kirchberg" | "gesamt";
 
+type DemandBreakdownItem = {
+  id: string;
+  locationId: string;
+  locationName: string;
+  quantity: number;
+};
+
 type DemandRowModel = {
   productId: string;
   name: string;
   metro_order_number: string | null;
   metro_unit: string | null;
   stockRabenstein: number;
-  demandTeich: number;
-  demandFiliale: number;
+  breakdown: DemandBreakdownItem[];
   totalDemand: number;
   suggestedOrder: number;
 };
@@ -91,7 +100,7 @@ export default function AdminOrdersPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [openRequests, setOpenRequests] = useState<
-    Array<{ location_id: string; product_id: string; quantity: number }>
+    Array<{ id: string; location_id: string; product_id: string; quantity: number }>
   >([]);
   const [usageByLoc, setUsageByLoc] = useState<
     Record<string, Record<string, number>>
@@ -127,6 +136,10 @@ export default function AdminOrdersPage() {
   const [productSaveBusy, setProductSaveBusy] = useState(false);
   const [placeBusy, setPlaceBusy] = useState(false);
   const [placeMsg, setPlaceMsg] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [demandEditingId, setDemandEditingId] = useState<string | null>(null);
+  const [demandEditDraft, setDemandEditDraft] = useState("");
+  const [demandBusyId, setDemandBusyId] = useState<string | null>(null);
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -195,6 +208,7 @@ export default function AdminOrdersPage() {
     setOverrides(ovs);
     setOpenRequests(
       (Array.isArray(reqs) ? reqs : []).map((r) => ({
+        id: String(r.id ?? ""),
         location_id: r.location_id,
         product_id: r.product_id,
         quantity: Math.max(0, Math.floor(Number((r as any).quantity) || 0)),
@@ -299,29 +313,30 @@ export default function AdminOrdersPage() {
 
   const demandRows = useMemo(() => {
     if (!rabensteinId) return [] as DemandRowModel[];
-    const tId = teichId;
-    const out: DemandRowModel[] = [];
+    const locNameById = new Map(locations.map((l) => [l.id, l.name]));
 
-    const demandTeichByProd = new Map<string, number>();
-    const demandFilialeByProd = new Map<string, number>();
-
+    const byProduct = new Map<string, DemandBreakdownItem[]>();
     for (const r of openRequests) {
       const pid = r.product_id;
       const qty = Math.max(0, Math.floor(Number(r.quantity) || 0));
       if (!pid || qty <= 0) continue;
-      if (tId && r.location_id === tId) {
-        demandTeichByProd.set(pid, (demandTeichByProd.get(pid) ?? 0) + qty);
-      } else if (r.location_id === rabensteinId) {
-        // ignore (warehouse should not report demand)
-      } else {
-        demandFilialeByProd.set(pid, (demandFilialeByProd.get(pid) ?? 0) + qty);
-      }
+      // Warehouse should not report demand; ignore if it did.
+      if (r.location_id === rabensteinId) continue;
+      const list = byProduct.get(pid) ?? [];
+      list.push({
+        id: r.id,
+        locationId: r.location_id,
+        locationName: locNameById.get(r.location_id) ?? r.location_id,
+        quantity: qty,
+      });
+      byProduct.set(pid, list);
     }
 
+    const out: DemandRowModel[] = [];
     for (const p of products) {
-      const dT = demandTeichByProd.get(p.id) ?? 0;
-      const dF = demandFilialeByProd.get(p.id) ?? 0;
-      const total = dT + dF;
+      const breakdown = byProduct.get(p.id) ?? [];
+      breakdown.sort((a, b) => a.locationName.localeCompare(b.locationName, "de"));
+      const total = breakdown.reduce((s, b) => s + b.quantity, 0);
       const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
       const suggestedOrder = Math.max(0, total - stockRab);
       const include = total > 0 || stockRab > 0 || suggestedOrder > 0;
@@ -332,15 +347,14 @@ export default function AdminOrdersPage() {
         metro_order_number: p.metro_order_number ?? null,
         metro_unit: p.metro_unit ?? null,
         stockRabenstein: stockRab,
-        demandTeich: dT,
-        demandFiliale: dF,
+        breakdown,
         totalDemand: total,
         suggestedOrder,
       });
     }
     out.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return out;
-  }, [openRequests, products, rabensteinId, teichId, inventoryQty]);
+  }, [openRequests, products, rabensteinId, inventoryQty, locations]);
 
   const hofstettenRows = useMemo(() => {
     if (!hofstettenId) return [] as LocalOutletRowModel[];
@@ -696,6 +710,48 @@ export default function AdminOrdersPage() {
     }
   }
 
+  async function saveDemandEdit(id: string) {
+    const n = Math.max(
+      0,
+      Math.floor(Number(demandEditDraft.replace(/[^\d]/g, "")) || 0)
+    );
+    setDemandBusyId(id);
+    setErr(null);
+    try {
+      if (n === 0) {
+        await deleteOpenOrderRequest(id);
+      } else {
+        await updateOpenOrderRequestQuantity({ id, quantity: n });
+      }
+      setDemandEditingId(null);
+      setDemandEditDraft("");
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Speichern fehlgeschlagen."));
+    } finally {
+      setDemandBusyId(null);
+    }
+  }
+
+  async function deleteDemandEntry(id: string, label: string) {
+    const ok = window.confirm(`Bedarf „${label}" wirklich löschen?`);
+    if (!ok) return;
+    setDemandBusyId(id);
+    setErr(null);
+    try {
+      await deleteOpenOrderRequest(id);
+      if (demandEditingId === id) {
+        setDemandEditingId(null);
+        setDemandEditDraft("");
+      }
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Bedarf konnte nicht gelöscht werden."));
+    } finally {
+      setDemandBusyId(null);
+    }
+  }
+
   const tabBtn =
     "h-11 px-3 sm:px-4 rounded-2xl border-2 text-sm font-black whitespace-nowrap shrink-0 transition-colors";
   const tabBtnActive = "border-black bg-black text-white";
@@ -843,44 +899,69 @@ export default function AdminOrdersPage() {
             <div className="text-sm font-black text-black/70">
               Offene Meldungen: <strong>{openRequests.length}</strong>
             </div>
-            <button
-              type="button"
-              disabled={placeBusy || openRequests.length === 0}
-              className="h-12 px-4 rounded-2xl bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
-              onClick={async () => {
-                const code = window.prompt("Admin-Code eingeben") ?? "";
-                if (!code.trim()) return;
-                setPlaceBusy(true);
-                setPlaceMsg(null);
-                try {
-                  const res = await processOpenOrderRequests({
-                    adminCode: code,
-                  });
-                  setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
-                  await reload();
-                } catch (e: unknown) {
-                  setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
-                } finally {
-                  setPlaceBusy(false);
-                }
-              }}
-            >
-              {placeBusy ? "Plaziere…" : "Place order"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={resetBusy || placeBusy || openRequests.length === 0}
+                className="h-12 px-4 rounded-2xl border-2 border-red-800 bg-red-50 text-red-900 text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                onClick={async () => {
+                  const ok = window.confirm(
+                    `Alle ${openRequests.length} offenen Bedarfsmeldungen wirklich zurücksetzen? Das kann nicht rückgängig gemacht werden.`
+                  );
+                  if (!ok) return;
+                  setResetBusy(true);
+                  setPlaceMsg(null);
+                  setErr(null);
+                  try {
+                    const removed = await deleteAllOpenOrderRequests();
+                    setPlaceMsg(`Bedarf zurückgesetzt. Entfernt: ${removed}`);
+                    await reload();
+                  } catch (e: unknown) {
+                    setErr(errorMessage(e, "Bedarf konnte nicht zurückgesetzt werden."));
+                  } finally {
+                    setResetBusy(false);
+                  }
+                }}
+              >
+                {resetBusy ? "Setze zurück…" : "Bedarf zurücksetzen"}
+              </button>
+              <button
+                type="button"
+                disabled={placeBusy || resetBusy || openRequests.length === 0}
+                className="h-12 px-4 rounded-2xl bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                onClick={async () => {
+                  const code = window.prompt("Admin-Code eingeben") ?? "";
+                  if (!code.trim()) return;
+                  setPlaceBusy(true);
+                  setPlaceMsg(null);
+                  try {
+                    const res = await processOpenOrderRequests({
+                      adminCode: code,
+                    });
+                    setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
+                    await reload();
+                  } catch (e: unknown) {
+                    setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
+                  } finally {
+                    setPlaceBusy(false);
+                  }
+                }}
+              >
+                {placeBusy ? "Plaziere…" : "Place order"}
+              </button>
+            </div>
           </div>
 
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black tabular-nums">{TEICH_NAME} Bedarf</th>
-                  <th className="p-3 font-black text-black tabular-nums">Filiale Bedarf</th>
-                  <th className="p-3 font-black text-black tabular-nums">Total</th>
+                  <th className="p-3 font-black text-black">Produkt / Bedarf je Platzerl</th>
+                  <th className="p-3 font-black text-black tabular-nums">Gesamt</th>
                   <th className="p-3 font-black text-black tabular-nums">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
-                    Stock
+                    <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">Vorschlag</th>
                   <th className="p-3 font-black text-black">Metro</th>
@@ -888,12 +969,118 @@ export default function AdminOrdersPage() {
               </thead>
               <tbody>
                 {demandRows.map((r) => (
-                  <tr key={r.productId} className="border-b border-black/10 align-middle">
-                    <td className="p-3 font-black text-black max-w-[260px]">{r.name}</td>
-                    <td className="p-3 font-black text-black tabular-nums">{r.demandTeich}</td>
-                    <td className="p-3 font-black text-black tabular-nums">{r.demandFiliale}</td>
+                  <tr key={r.productId} className="border-b border-black/10 align-top">
+                    <td className="p-3 max-w-[360px]">
+                      <div className="font-black text-black">{r.name}</div>
+                      {r.breakdown.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {r.breakdown.map((b) => {
+                            const isEd = demandEditingId === b.id;
+                            const isBusy = demandBusyId === b.id;
+                            const chipLabel = `${b.locationName}: ${b.quantity}`;
+                            if (isEd) {
+                              return (
+                                <span
+                                  key={b.id}
+                                  className="inline-flex items-center gap-1 rounded-xl border-2 border-black bg-white px-2 py-1 text-xs font-black text-black"
+                                >
+                                  <span className="text-black/70">{b.locationName}:</span>
+                                  <input
+                                    inputMode="numeric"
+                                    type="tel"
+                                    pattern="[0-9]*"
+                                    className="h-7 w-14 rounded-md border-2 border-black text-center text-sm font-black tabular-nums"
+                                    value={demandEditDraft}
+                                    autoFocus
+                                    onChange={(e) =>
+                                      setDemandEditDraft(
+                                        e.target.value.replace(/[^\d]/g, "")
+                                      )
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void saveDemandEdit(b.id);
+                                      if (e.key === "Escape") {
+                                        setDemandEditingId(null);
+                                        setDemandEditDraft("");
+                                      }
+                                    }}
+                                    disabled={isBusy}
+                                    aria-label={`Bedarf ${b.locationName}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="h-7 px-2 rounded-md bg-black text-white text-xs font-black disabled:opacity-50"
+                                    onClick={() => void saveDemandEdit(b.id)}
+                                    disabled={isBusy}
+                                  >
+                                    OK
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="h-7 px-2 rounded-md border-2 border-black bg-white text-xs font-black disabled:opacity-50"
+                                    onClick={() => {
+                                      setDemandEditingId(null);
+                                      setDemandEditDraft("");
+                                    }}
+                                    disabled={isBusy}
+                                    aria-label="Abbrechen"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                key={b.id}
+                                className="inline-flex items-center gap-1 rounded-xl border-2 border-black bg-white pl-2 pr-1 py-1 text-xs font-black text-black"
+                              >
+                                <button
+                                  type="button"
+                                  className="font-black text-black disabled:opacity-50"
+                                  disabled={isBusy}
+                                  onClick={() => {
+                                    setDemandEditingId(b.id);
+                                    setDemandEditDraft(String(b.quantity));
+                                  }}
+                                  title="Menge bearbeiten"
+                                >
+                                  {chipLabel}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="h-6 w-6 inline-flex items-center justify-center rounded-md text-black/60 hover:bg-red-50 hover:text-red-900 disabled:opacity-50"
+                                  disabled={isBusy}
+                                  onClick={() => void deleteDemandEntry(b.id, chipLabel)}
+                                  aria-label={`Bedarf ${chipLabel} löschen`}
+                                  title="Löschen"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] font-black text-black/40">
+                          Keine Meldungen.
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 font-black text-black tabular-nums">{r.totalDemand}</td>
-                    <td className="p-3 font-black text-black tabular-nums">{r.stockRabenstein}</td>
+                    <td
+                      className={[
+                        "p-3 font-black tabular-nums",
+                        r.stockRabenstein < 0 ? "text-red-800" : "text-black",
+                      ].join(" ")}
+                    >
+                      {r.stockRabenstein}
+                      {r.stockRabenstein < 0 ? (
+                        <span className="ml-1 text-[11px] font-black text-red-800/80">
+                          Backorder
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="p-3 font-black text-black tabular-nums">{r.suggestedOrder}</td>
                     <td className="p-3 text-xs font-black text-black/70">
                       {r.metro_order_number ? (
@@ -909,7 +1096,7 @@ export default function AdminOrdersPage() {
                 ))}
                 {demandRows.length === 0 ? (
                   <tr>
-                    <td className="p-4 text-sm font-black text-black/60" colSpan={7}>
+                    <td className="p-4 text-sm font-black text-black/60" colSpan={5}>
                       Keine offenen Bedarfsmeldungen.
                     </td>
                   </tr>

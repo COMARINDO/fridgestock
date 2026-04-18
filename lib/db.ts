@@ -553,6 +553,71 @@ async function callAdminOrderAction<TResponse extends { ok?: boolean; error?: un
   return data;
 }
 
+export async function updateOpenOrderRequestQuantity(args: {
+  id: string;
+  quantity: number;
+}): Promise<void> {
+  const id = String(args.id ?? "").trim();
+  if (!id) throw new Error("Bedarfs-ID fehlt.");
+  const qty = Math.max(0, Math.floor(Number(args.quantity) || 0));
+
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => {
+          is: (c: string, v: unknown) => Promise<{ error: unknown }>;
+        };
+      };
+    };
+  };
+  const { error } = await supabase
+    .from("order_requests")
+    .update({ quantity: qty, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("processed_at", null);
+  if (error) throw error;
+}
+
+export async function deleteAllOpenOrderRequests(): Promise<number> {
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      delete: (opts?: { count?: "exact" | "planned" | "estimated" }) => {
+        is: (
+          c: string,
+          v: unknown
+        ) => Promise<{ data: unknown; error: unknown; count?: number | null }>;
+      };
+    };
+  };
+  const { error, count } = await supabase
+    .from("order_requests")
+    .delete({ count: "exact" })
+    .is("processed_at", null);
+  if (error) throw error;
+  return Math.max(0, Math.floor(Number(count ?? 0) || 0));
+}
+
+export async function deleteOpenOrderRequest(id: string): Promise<void> {
+  const rid = String(id ?? "").trim();
+  if (!rid) throw new Error("Bedarfs-ID fehlt.");
+
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      delete: () => {
+        eq: (c: string, v: unknown) => {
+          is: (c: string, v: unknown) => Promise<{ error: unknown }>;
+        };
+      };
+    };
+  };
+  const { error } = await supabase
+    .from("order_requests")
+    .delete()
+    .eq("id", rid)
+    .is("processed_at", null);
+  if (error) throw error;
+}
+
 export async function processOpenOrderRequests(args: { adminCode: string }): Promise<{
   processedRows: number;
   processedAt: string;
