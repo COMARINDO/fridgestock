@@ -23,6 +23,7 @@ import {
 import {
   computeCentralWarehouseOrder,
   computeLocalOutletOrder,
+  computeRabensteinGesamtOrderFromDemandReports,
 } from "@/lib/orderSuggestions";
 import {
   HOFSTETTEN_NAME,
@@ -462,28 +463,31 @@ export default function AdminOrdersPage() {
       const pname = (p.product_name ?? "").trim();
       const name = [brand, pname].filter(Boolean).join(" - ");
 
-      // Central (lager): demand = Teich + Filiale + Lager usage; stock = Lager stock
+      // Central (lager): Gesamt = Bedarfsmeldung Teich + Filiale − Lagerbestand Rabenstein;
+      // dann Stück-Defizit in Bestelleinheiten (min_quantity) umrechnen; bei Defizit < 0 → 1 Einheit.
       let central = 0;
       if (rabensteinId) {
         const tId = teichId;
         const fId = filialeId;
-        const usageTeich = Math.max(0, Math.round(tId ? (usageByLoc[tId]?.[p.id] ?? 0) : 0));
-        const usageFiliale = Math.max(
-          0,
-          Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
-        );
+        let demandTeich = 0;
+        let demandFiliale = 0;
+        for (const req of openRequests) {
+          if (req.product_id !== p.id) continue;
+          const q = Math.max(0, Math.floor(Number(req.quantity) || 0));
+          if (tId && req.location_id === tId) demandTeich += q;
+          else if (fId && req.location_id === fId) demandFiliale += q;
+        }
         const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
-        const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
-        const { orderQuantity } = computeCentralWarehouseOrder({
-          usageTeich7d: usageTeich,
-          usageFiliale7d: usageFiliale,
-          daysCoveredTeich: tId ? (daysCoveredByLoc[tId]?.[p.id] ?? 0) : 0,
-          daysCoveredFiliale: fId ? (daysCoveredByLoc[fId]?.[p.id] ?? 0) : 0,
+        const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
+        const piecesPerUnit = mq > 0 ? mq : 1;
+        const fromDemand = computeRabensteinGesamtOrderFromDemandReports({
+          demandTeich,
+          demandFiliale,
           stockRabenstein: stockRab,
-          stockTeich,
+          piecesPerOrderUnit: piecesPerUnit,
         });
         const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
-        central = ov ? ov.quantity : orderQuantity;
+        central = ov ? ov.quantity : fromDemand;
       }
 
       // Local outlets
@@ -545,6 +549,7 @@ export default function AdminOrdersPage() {
     daysCoveredByLoc,
     inventoryQty,
     overrideByKey,
+    openRequests,
   ]);
 
   const sumCentral = useMemo(
@@ -1686,7 +1691,10 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "gesamt" ? (
         <>
           <p className="mt-6 text-xs font-black text-black/55">
-            Alle Produkte; Bestellung ist die Summe aus zentral + Hofstetten + Kirchberg.
+            Alle Produkte; Bestellung ist die Summe aus zentral + Hofstetten + Kirchberg. Zentral (
+            {RABENSTEIN_LAGER_NAME}): Bedarfsmeldung {TEICH_NAME} + {RABENSTEIN_FILIALE_NAME} −
+            Lagerbestand; bei negativem Stück-Saldo mindestens 1 Einheit, sonst Aufteilung nach Stück
+            pro Einheit (min_quantity).
           </p>
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">

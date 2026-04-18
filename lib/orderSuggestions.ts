@@ -105,6 +105,32 @@ export function computeCentralWarehouseOrder(input: {
   return { totalUsage7d, orderQuantity };
 }
 
+/**
+ * Gesamt-Tab (Rabenstein): nur aus Bedarfsmeldungen Teich + Filiale, abzüglich Zentrallagerbestand.
+ * delta (Stück) = Bedarf Teich + Bedarf Filiale − Bestand Rabenstein Lager.
+ * − delta < 0 → mindestens 1 Bestelleinheit (z. B. eine Kiste).
+ * − delta ≥ 0 → ceil(delta / Stück pro Einheit); Einheit = max(1, min_quantity).
+ */
+export function computeRabensteinGesamtOrderFromDemandReports(input: {
+  demandTeich: number;
+  demandFiliale: number;
+  stockRabenstein: number;
+  /** Stück pro Bestelleinheit (z. B. 12 pro Kiste). ≤0 oder fehlend → 1. */
+  piecesPerOrderUnit: number;
+}): number {
+  const dT = Math.max(0, Math.round(Number(input.demandTeich) || 0));
+  const dF = Math.max(0, Math.round(Number(input.demandFiliale) || 0));
+  const stock = Math.floor(Number(input.stockRabenstein) || 0);
+  const delta = dT + dF - stock;
+  const rawPack = Math.floor(Number(input.piecesPerOrderUnit) || 0);
+  const pack = rawPack > 0 ? rawPack : 1;
+
+  if (delta < 0) {
+    return 1;
+  }
+  return Math.ceil(delta / pack);
+}
+
 /** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch 7d − Bestand)). */
 export function computeLocalOutletOrder(input: {
   usage7d: number;
