@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { listLocations } from "@/lib/db";
@@ -18,9 +19,16 @@ export default function HomePage() {
 
 function HomeInner() {
   const { location } = useAuth();
+  const router = useRouter();
   const [locations, setLocations] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = location?.location_id;
+    if (!id) return;
+    router.replace(`/location/${encodeURIComponent(id)}`);
+  }, [location?.location_id, router]);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +48,17 @@ function HomeInner() {
     () => [...locations].sort((a, b) => a.name.localeCompare(b.name)),
     [locations]
   );
+
+  // Normal flow: logged-in users have an assigned location and are redirected.
+  if (location?.location_id) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <main className="w-full px-4 py-6">
+          <div className="text-black font-black">Weiterleitung…</div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col">

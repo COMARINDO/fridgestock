@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
+import { useRouter } from "next/navigation";
 import {
   getGlobalOverviewByProduct,
   getWeeklyUsageByLocationProduct,
@@ -25,6 +26,7 @@ import {
   DEFAULT_CRATE_SIZE,
 } from "@/lib/inventoryInsights";
 import { useAdmin } from "@/app/admin-provider";
+import { useAuth } from "@/app/providers";
 
 type Row = Product & { quantity: number };
 
@@ -38,6 +40,8 @@ export default function OverviewPage() {
 
 function OverviewInner() {
   const { isAdmin } = useAdmin();
+  const { location } = useAuth();
+  const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [parentLocations, setParentLocations] = useState<Location[]>([]);
   const [stockByLocationProduct, setStockByLocationProduct] = useState<
@@ -93,6 +97,22 @@ function OverviewInner() {
   const [barcodeBusy, setBarcodeBusy] = useState(false);
   const [barcodeErr, setBarcodeErr] = useState<string | null>(null);
   const barcodeSvgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    // Non-admin should not land on global overview.
+    if (isAdmin) return;
+    const id = location?.location_id;
+    if (!id) return;
+    router.replace(`/location/${encodeURIComponent(id)}`);
+  }, [isAdmin, location?.location_id, router]);
+
+  if (!isAdmin && location?.location_id) {
+    return (
+      <main className="w-full px-4 py-8 text-center text-black">
+        <p className="font-black">Weiterleitung…</p>
+      </main>
+    );
+  }
 
   async function reload() {
     const [data, locs, inv, usageByLoc] = await Promise.all([
