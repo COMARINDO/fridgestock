@@ -81,32 +81,12 @@ function NavBlock({
 function AdminOrdersSubnav() {
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab") ?? "demand";
-  const [useAi, setUseAi] = useAiConsumptionToggle();
 
   const subHref = (t: string) => `/admin/orders?tab=${t}`;
   const active = (t: string) => tab === t;
 
   return (
     <div className="mt-2 space-y-3 rounded-xl border border-black/[0.07] bg-black/[0.015] p-2">
-      <div>
-        <button
-          type="button"
-          className={[
-            "h-9 w-full rounded-lg border px-2.5 text-[12px] font-black transition-colors active:scale-[0.99]",
-            useAi
-              ? "border-emerald-700/30 bg-emerald-600 text-white hover:bg-emerald-600/90"
-              : "border-black/15 bg-white text-black hover:bg-black/[0.04]",
-          ].join(" ")}
-          onClick={() => setUseAi((v) => !v)}
-          title="KI-Prognose an/aus"
-        >
-          {useAi ? "KI Prognose aktiv" : "Klassische Berechnung"}
-        </button>
-        <p className="mt-1 px-1 text-[10px] font-bold leading-snug text-black/45">
-          Ohne KI-Daten: gleiche Logik wie „klassisch“.
-        </p>
-      </div>
-
       <div className="space-y-0.5">
         <div className={`pb-0.5 ${groupTitleClass}`}>1 · Rabenstein</div>
         <Link
@@ -141,6 +121,52 @@ function AdminOrdersSubnav() {
   );
 }
 
+function PillSwitch({
+  label,
+  checked,
+  onChange,
+  title,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      title={title}
+      className={[
+        "flex h-9 w-full items-center justify-between gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors active:scale-[0.99]",
+        checked
+          ? "border-black/15 bg-black/[0.04] text-black"
+          : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
+      ].join(" ")}
+    >
+      <span className="truncate">{label}</span>
+      <span
+        className={[
+          "inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
+          checked
+            ? "border-emerald-700/30 bg-emerald-600"
+            : "border-black/15 bg-black/10",
+        ].join(" ")}
+        aria-hidden
+      >
+        <span
+          className={[
+            "ml-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+            checked ? "translate-x-4" : "translate-x-0",
+          ].join(" ")}
+        />
+      </span>
+    </button>
+  );
+}
+
 export function AdminNavSuspenseFallback() {
   return (
     <aside
@@ -156,6 +182,7 @@ export function AdminNav() {
   const { exitAdmin } = useAdmin();
   const onOrders = pathname === "/admin/orders" || pathname.startsWith("/admin/orders/");
   const [showExtras, setShowExtras] = useAdminNavExtrasToggle();
+  const [useAi, setUseAi] = useAiConsumptionToggle();
 
   return (
     <aside
@@ -194,40 +221,21 @@ export function AdminNav() {
           <NavBlock title="Debug · Historie" items={debug} pathname={pathname} />
         ) : null}
         <div className="mt-auto flex flex-col gap-2 border-t border-black/10 pt-3">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showExtras}
-            onClick={() => setShowExtras((v) => !v)}
-            className={[
-              "flex h-9 w-full items-center justify-between gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors active:scale-[0.99]",
-              showExtras
-                ? "border-black/15 bg-black/[0.04] text-black"
-                : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
-            ].join(" ")}
+          <PillSwitch
+            label="KI-Prognose"
+            checked={useAi}
+            onChange={() => setUseAi((v) => !v)}
+            title="KI-Prognose an/aus"
+          />
+          <PillSwitch
+            label="Monitoring & Debug"
+            checked={showExtras}
+            onChange={() => setShowExtras((v) => !v)}
             title="Monitoring & Debug ein-/ausblenden"
-          >
-            <span className="truncate">Monitoring &amp; Debug</span>
-            <span
-              className={[
-                "inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
-                showExtras
-                  ? "border-emerald-700/30 bg-emerald-600"
-                  : "border-black/15 bg-black/10",
-              ].join(" ")}
-              aria-hidden
-            >
-              <span
-                className={[
-                  "ml-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                  showExtras ? "translate-x-4" : "translate-x-0",
-                ].join(" ")}
-              />
-            </span>
-          </button>
+          />
           <button
             type="button"
-            className="h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"
+            className="mt-1 h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"
             onClick={() => {
               exitAdmin();
               router.replace("/login");
