@@ -1,12 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAdmin } from "@/app/admin-provider";
 
 const navLink =
-  "inline-flex items-center rounded-xl px-2.5 py-1.5 text-xs font-black transition-colors sm:text-sm";
-const navLinkIdle = "text-black/75 hover:bg-black/5 hover:text-black";
+  "flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-black transition-colors sm:text-[15px]";
+const navLinkIdle = "text-black/80 hover:bg-black/5 hover:text-black";
 const navLinkActive = "bg-black text-white";
 
 type NavItem = { href: string; label: string };
@@ -30,86 +31,77 @@ function matchActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function NavBlock({
+  title,
+  items,
+  pathname,
+  extra,
+}: {
+  title: string;
+  items: NavItem[];
+  pathname: string;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-black/45">
+        {title}
+      </div>
+      <div className="flex flex-col gap-1">
+        {items.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`${navLink} ${matchActive(pathname, item.href) ? navLinkActive : navLinkIdle}`}
+          >
+            {item.label}
+          </Link>
+        ))}
+        {extra}
+      </div>
+    </div>
+  );
+}
+
 export function AdminNav() {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const { exitAdmin } = useAdmin();
 
   return (
-    <nav
-      className="sticky top-[72px] z-30 border-b-2 border-black bg-[var(--background)]/95 backdrop-blur-sm text-left"
+    <aside
+      className="sticky top-[72px] z-30 flex h-[calc(100vh-72px)] w-56 shrink-0 flex-col border-r-2 border-black bg-[var(--background)] sm:w-60"
       aria-label="Admin-Navigation"
     >
-      <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4">
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-black/45 sm:text-xs">
-              Monitoring
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {monitoring.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${navLink} ${matchActive(pathname, item.href) ? navLinkActive : navLinkIdle}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-black/10 pt-2 sm:border-t-0 sm:pt-0">
-            <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-black/45 sm:text-xs">
-              Aktionen
-            </span>
-            <div className="flex flex-wrap items-center gap-1">
-              {actions.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${navLink} ${matchActive(pathname, item.href) ? navLinkActive : navLinkIdle}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <span
-                className="hidden rounded-xl border border-dashed border-black/25 px-2 py-1 text-[10px] font-black text-black/40 sm:inline"
-                title="Geplant"
-              >
-                Transfers
-              </span>
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-black/10 pt-2 sm:border-t-0 sm:pt-0">
-            <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-black/45 sm:text-xs">
-              Debug / Historie
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {debug.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${navLink} ${matchActive(pathname, item.href) ? navLinkActive : navLinkIdle}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-          <div className="self-start border-t border-black/10 pt-2 sm:border-t-0 sm:pt-0">
-            <button
-              type="button"
-              className="h-9 rounded-2xl border-2 border-black bg-white px-3 text-xs font-black text-black active:scale-[0.99] sm:h-10 sm:px-4 sm:text-sm"
-              onClick={() => {
-                exitAdmin();
-                router.replace("/login");
-              }}
+      <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-3 sm:p-4">
+        <NavBlock title="Monitoring" items={monitoring} pathname={pathname} />
+        <NavBlock
+          title="Aktionen"
+          items={actions}
+          pathname={pathname}
+          extra={
+            <span
+              className="mt-1 inline-flex rounded-xl border border-dashed border-black/25 px-2 py-1.5 text-[10px] font-black text-black/40"
+              title="Geplant"
             >
-              Admin beenden
-            </button>
-          </div>
+              Transfers
+            </span>
+          }
+        />
+        <NavBlock title="Debug / Historie" items={debug} pathname={pathname} />
+        <div className="mt-auto border-t border-black/10 pt-4">
+          <button
+            type="button"
+            className="h-10 w-full rounded-2xl border-2 border-black bg-white px-3 text-sm font-black text-black active:scale-[0.99]"
+            onClick={() => {
+              exitAdmin();
+              router.replace("/login");
+            }}
+          >
+            Admin beenden
+          </button>
         </div>
-      </div>
-    </nav>
+      </nav>
+    </aside>
   );
 }
