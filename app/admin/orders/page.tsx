@@ -129,7 +129,11 @@ type CentralRowModel = {
   deltaStück: number;
   /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
-  /** Vorschlag OHNE Reserve-Aufschlag (für Formel-Anzeige). */
+  /** Reserve-Baseline in Stück (= max(0, deltaStück)). */
+  reserveStueckFrom: number;
+  /** Nach Reserve-Aufschlag in Stück (ceil). Gleich reserveStueckFrom wenn Reserve = 0. */
+  reserveStueckTo: number;
+  /** Vorschlag OHNE Reserve-Aufschlag (Einheiten). */
   calculatedOrderBaseline: number;
   calculatedOrder: number;
   displayOrder: number;
@@ -151,6 +155,10 @@ type LocalOutletRowModel = {
   calculatedUnits: number;
   /** Einheiten-Vorschlag OHNE Reserve-Aufschlag (für Indikator). */
   calculatedUnitsBaseline: number;
+  /** Reserve-Baseline in Stück. */
+  reserveStueckFrom: number;
+  /** Nach Reserve-Aufschlag in Stück. */
+  reserveStueckTo: number;
   displayUnits: number;
   overridden: boolean;
 };
@@ -341,13 +349,17 @@ function AdminOrdersPageContent() {
         metro_unit: p.metro_unit,
       });
       const deltaStück = demandTeich + demandOther - stockRab;
-      const calculatedOrderRaw = computeRabensteinGesamtOrderFromDemandReports({
+      const calculatedOrderBaseline = computeRabensteinGesamtOrderFromDemandReports({
         demandTeich,
         demandFiliale: demandOther,
         stockRabenstein: stockRab,
         piecesPerOrderUnit: piecesPerUnit,
       });
-      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
+      // Reserve greift auf STÜCK-Bedarf (deltaStück), dann auf Einheiten runden.
+      const reserveStueckFrom = Math.max(0, deltaStück);
+      const reserveStueckTo = applyOrderReservePct(reserveStueckFrom, reservePct);
+      const calculatedOrder =
+        reserveStueckTo > 0 ? Math.ceil(reserveStueckTo / piecesPerUnit) : 0;
 
       const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
       const overridden = ov !== undefined;
@@ -373,7 +385,9 @@ function AdminOrdersPageContent() {
         demandOther,
         deltaStück,
         piecesPerOrderUnit: piecesPerUnit,
-        calculatedOrderBaseline: calculatedOrderRaw,
+        reserveStueckFrom,
+        reserveStueckTo,
+        calculatedOrderBaseline,
         calculatedOrder,
         displayOrder,
         overridden,
@@ -456,16 +470,12 @@ function AdminOrdersPageContent() {
         min_quantity: p.min_quantity,
         metro_unit: p.metro_unit,
       });
-      // Reserve greift auf Einheiten (das ist die sichtbare Größe + Metro-Bestellmenge).
-      const calculatedUnitsBaseline = orderPiecesToUnits(calculatedOrderBaseline, pack);
-      const calculatedUnits = applyOrderReservePct(calculatedUnitsBaseline, reservePct);
-      // Stück bleiben konsistent zu den Einheiten:
-      //   * Reserve = 0 → unveränderter Stück-Baseline-Wert.
-      //   * Reserve > 0 → Einheiten × pack (falls Reserve auf volle Gebinde aufgestockt hat).
-      const calculatedOrder =
-        reservePct > 0 && calculatedUnits > calculatedUnitsBaseline
-          ? calculatedUnits * pack
-          : calculatedOrderBaseline;
+      // Reserve greift auf STÜCK-Bedarf, dann Einheiten aufrunden.
+      const reserveStueckFrom = Math.max(0, calculatedOrderBaseline);
+      const reserveStueckTo = applyOrderReservePct(reserveStueckFrom, reservePct);
+      const calculatedOrder = reserveStueckTo;
+      const calculatedUnitsBaseline = orderPiecesToUnits(reserveStueckFrom, pack);
+      const calculatedUnits = orderPiecesToUnits(reserveStueckTo, pack);
       const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
@@ -489,6 +499,8 @@ function AdminOrdersPageContent() {
         piecesPerOrderUnit: pack,
         calculatedUnits,
         calculatedUnitsBaseline,
+        reserveStueckFrom,
+        reserveStueckTo,
         displayUnits,
         overridden,
       });
@@ -523,12 +535,12 @@ function AdminOrdersPageContent() {
         min_quantity: p.min_quantity,
         metro_unit: p.metro_unit,
       });
-      const calculatedUnitsBaseline = orderPiecesToUnits(calculatedOrderBaseline, pack);
-      const calculatedUnits = applyOrderReservePct(calculatedUnitsBaseline, reservePct);
-      const calculatedOrder =
-        reservePct > 0 && calculatedUnits > calculatedUnitsBaseline
-          ? calculatedUnits * pack
-          : calculatedOrderBaseline;
+      // Reserve greift auf STÜCK-Bedarf, dann Einheiten aufrunden.
+      const reserveStueckFrom = Math.max(0, calculatedOrderBaseline);
+      const reserveStueckTo = applyOrderReservePct(reserveStueckFrom, reservePct);
+      const calculatedOrder = reserveStueckTo;
+      const calculatedUnitsBaseline = orderPiecesToUnits(reserveStueckFrom, pack);
+      const calculatedUnits = orderPiecesToUnits(reserveStueckTo, pack);
       const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
@@ -552,6 +564,8 @@ function AdminOrdersPageContent() {
         piecesPerOrderUnit: pack,
         calculatedUnits,
         calculatedUnitsBaseline,
+        reserveStueckFrom,
+        reserveStueckTo,
         displayUnits,
         overridden,
       });
@@ -1006,8 +1020,8 @@ function AdminOrdersPageContent() {
             +{reservePct} %
           </span>
           <span>
-            Reserve aktiv · auf alle Bestellvorschläge aufgeschlagen (aufgerundet auf volle
-            Einheiten). Overrides bleiben unberührt.
+            Reserve aktiv · auf den Stück-Bedarf aufgeschlagen (aufgerundet), dann werden
+            Einheiten neu gerechnet. Overrides bleiben unberührt.
           </span>
         </div>
       ) : null}
@@ -1310,15 +1324,20 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
-                  const reserveBump =
-                    reservePct > 0 && r.calculatedOrder > r.calculatedOrderBaseline;
+                  const reserveActive =
+                    reservePct > 0 && r.reserveStueckTo > r.reserveStueckFrom;
+                  const reserveUnitsBump = r.calculatedOrder > r.calculatedOrderBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[240px]">
                         <div className="truncate">{r.name}</div>
-                        {!showFormula && reserveBump && !r.overridden ? (
+                        {!showFormula && reserveActive && !r.overridden ? (
                           <div className="mt-0.5 text-[11px] font-black text-emerald-800">
-                            +{reservePct} % Reserve · {r.calculatedOrderBaseline} → {r.calculatedOrder} E.
+                            +{reservePct} % Reserve · Stück {r.reserveStueckFrom} → {r.reserveStueckTo}
+                            {" · "}
+                            {reserveUnitsBump
+                              ? `${r.calculatedOrderBaseline} → ${r.calculatedOrder} E.`
+                              : `weiterhin ${r.calculatedOrder} E.`}
                           </div>
                         ) : null}
                         {showFormula ? (
@@ -1340,8 +1359,8 @@ function AdminOrdersPageContent() {
                               </>
                             ) : reservePct > 0 ? (
                               <>
-                                ⌈{r.deltaStück}÷{r.piecesPerOrderUnit}⌉ ={" "}
-                                {r.calculatedOrderBaseline} Einheit(en) · ⌈·(1+{reservePct}%)⌉ ={" "}
+                                +{reservePct}% auf Δ ⌈{r.reserveStueckFrom}·(1+{reservePct}%)⌉ ={" "}
+                                {r.reserveStueckTo} Stück · ⌈{r.reserveStueckTo}÷{r.piecesPerOrderUnit}⌉ ={" "}
                                 <strong className="text-black">{r.calculatedOrder}</strong> Einheit(en).
                               </>
                             ) : (
@@ -1355,8 +1374,8 @@ function AdminOrdersPageContent() {
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800 mt-1">
                             Manuell: {r.displayOrder} E. (Vorschlag: {r.calculatedOrder} E.
-                            {reserveBump
-                              ? ` · +${reservePct} % Reserve aus ${r.calculatedOrderBaseline}`
+                            {reserveActive
+                              ? ` · +${reservePct} % Reserve: Stück ${r.reserveStueckFrom} → ${r.reserveStueckTo}`
                               : ""}
                             )
                           </div>
@@ -1544,22 +1563,27 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
-                  const reserveBump =
-                    reservePct > 0 && r.calculatedUnits > r.calculatedUnitsBaseline;
+                  const reserveActive =
+                    reservePct > 0 && r.reserveStueckTo > r.reserveStueckFrom;
+                  const reserveUnitsBump = r.calculatedUnits > r.calculatedUnitsBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[200px]">
                         <div className="truncate">{r.name}</div>
-                        {reserveBump && !r.overridden ? (
+                        {reserveActive && !r.overridden ? (
                           <div className="mt-0.5 text-[11px] font-black text-emerald-800">
-                            +{reservePct} % Reserve · {r.calculatedUnitsBaseline} → {r.calculatedUnits} E.
+                            +{reservePct} % Reserve · Stück {r.reserveStueckFrom} → {r.reserveStueckTo}
+                            {" · "}
+                            {reserveUnitsBump
+                              ? `${r.calculatedUnitsBaseline} → ${r.calculatedUnits} E.`
+                              : `weiterhin ${r.calculatedUnits} E.`}
                           </div>
                         ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
                             Manuell (Vorschlag: {r.calculatedUnits} E.
-                            {reserveBump
-                              ? ` · +${reservePct} % Reserve aus ${r.calculatedUnitsBaseline}`
+                            {reserveActive
+                              ? ` · +${reservePct} % Reserve: Stück ${r.reserveStueckFrom} → ${r.reserveStueckTo}`
                               : ""}
                             )
                           </div>
@@ -1745,22 +1769,27 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
-                  const reserveBump =
-                    reservePct > 0 && r.calculatedUnits > r.calculatedUnitsBaseline;
+                  const reserveActive =
+                    reservePct > 0 && r.reserveStueckTo > r.reserveStueckFrom;
+                  const reserveUnitsBump = r.calculatedUnits > r.calculatedUnitsBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[200px]">
                         <div className="truncate">{r.name}</div>
-                        {reserveBump && !r.overridden ? (
+                        {reserveActive && !r.overridden ? (
                           <div className="mt-0.5 text-[11px] font-black text-emerald-800">
-                            +{reservePct} % Reserve · {r.calculatedUnitsBaseline} → {r.calculatedUnits} E.
+                            +{reservePct} % Reserve · Stück {r.reserveStueckFrom} → {r.reserveStueckTo}
+                            {" · "}
+                            {reserveUnitsBump
+                              ? `${r.calculatedUnitsBaseline} → ${r.calculatedUnits} E.`
+                              : `weiterhin ${r.calculatedUnits} E.`}
                           </div>
                         ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
                             Manuell (Vorschlag: {r.calculatedUnits} E.
-                            {reserveBump
-                              ? ` · +${reservePct} % Reserve aus ${r.calculatedUnitsBaseline}`
+                            {reserveActive
+                              ? ` · +${reservePct} % Reserve: Stück ${r.reserveStueckFrom} → ${r.reserveStueckTo}`
                               : ""}
                             )
                           </div>
