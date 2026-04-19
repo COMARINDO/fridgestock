@@ -15,7 +15,6 @@ import {
   listProducts,
   processOpenOrderRequests,
   updateOpenOrderRequestQuantity,
-  updateProduct,
   updateProductMetroData,
   upsertOrderOverride,
 } from "@/lib/db";
@@ -49,7 +48,20 @@ function resolveLocationIdByName(
   return hit?.id ?? null;
 }
 
-type TabId = "demand" | "central" | "hofstetten" | "kirchberg" | "gesamt";
+function piecesPerOrderUnitFromProduct(p: Pick<Product, "min_quantity">): number {
+  const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
+  return mq > 0 ? mq : 1;
+}
+
+/** Stück-Bedarf in Metro-Einheiten (Aufrunden; 0 Stück → 0 Einheiten). */
+function orderPiecesToUnits(pieces: number, pack: number): number {
+  const n = Math.max(0, Math.floor(Number(pieces) || 0));
+  const pk = Math.max(1, Math.floor(Number(pack) || 0) || 1);
+  if (n <= 0) return 0;
+  return Math.ceil(n / pk);
+}
+
+type TabId = "demand" | "central" | "hofstetten" | "kirchberg";
 
 type DemandBreakdownItem = {
   id: string;
@@ -77,6 +89,8 @@ type CentralRowModel = {
   stockRabenstein: number;
   stockTeich: number;
   stockFiliale: number;
+  /** Verbrauch 7 Tage (Stück): Teich + Rabenstein-Filiale (Planungsgröße). */
+  bedarf7dStück: number;
   /** Meldungen (Stück), Teich */
   demandTeich: number;
   /** Meldungen (Stück), alle anderen Platzerl außer Zentrallager */
@@ -92,9 +106,14 @@ type LocalOutletRowModel = {
   metro_order_number: string | null;
   metro_unit: string | null;
   stock: number;
+  /** Verbrauch / Bedarf (Stück), Rollfenster 7 Tage */
   usage7d: number;
+  /** Nachbestell-Bedarf in Stück (Vorschlagslogik) */
   calculatedOrder: number;
   displayOrder: number;
+  piecesPerOrderUnit: number;
+  calculatedUnits: number;
+  displayUnits: number;
   overridden: boolean;
 };
 
@@ -134,12 +153,6 @@ export default function AdminOrdersPage() {
   } | null>(null);
   const [metroDraft, setMetroDraft] = useState("");
   const [metroSaveBusy, setMetroSaveBusy] = useState(false);
-  const [productEditing, setProductEditing] = useState<{
-    productId: string;
-    field: "name" | "zusatz";
-  } | null>(null);
-  const [productDraft, setProductDraft] = useState("");
-  const [productSaveBusy, setProductSaveBusy] = useState(false);
   const [placeBusy, setPlaceBusy] = useState(false);
   const [placeMsg, setPlaceMsg] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
@@ -255,6 +268,14 @@ export default function AdminOrdersPage() {
       const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
       const stockFiliale = fId ? (inventoryQty[fId]?.[p.id] ?? 0) : 0;
 
+      const usageTeich7 = tId
+        ? Math.max(0, Math.round(usageByLoc[tId]?.[p.id] ?? 0))
+        : 0;
+      const usageFiliale7 = fId
+        ? Math.max(0, Math.round(usageByLoc[fId]?.[p.id] ?? 0))
+        : 0;
+      const bedarf7dStück = usageTeich7 + usageFiliale7;
+
       let demandTeich = 0;
       let demandOther = 0;
       for (const req of openRequests) {
@@ -298,6 +319,7 @@ export default function AdminOrdersPage() {
         stockRabenstein: stockRab,
         stockTeich,
         stockFiliale,
+        bedarf7dStück,
         demandTeich,
         demandOther,
         calculatedOrder,
@@ -311,6 +333,7 @@ export default function AdminOrdersPage() {
     products,
     openRequests,
     inventoryQty,
+    usageByLoc,
     overrideByKey,
     rabensteinId,
     teichId,
@@ -379,6 +402,9 @@ export default function AdminOrdersPage() {
       const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
+      const pack = piecesPerOrderUnitFromProduct(p);
+      const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
+      const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
         usage > 0 ||
         stock > 0 ||
@@ -395,6 +421,9 @@ export default function AdminOrdersPage() {
         usage7d: usage,
         calculatedOrder,
         displayOrder,
+        piecesPerOrderUnit: pack,
+        calculatedUnits,
+        displayUnits,
         overridden,
       });
     }
@@ -426,6 +455,9 @@ export default function AdminOrdersPage() {
       const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
+      const pack = piecesPerOrderUnitFromProduct(p);
+      const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
+      const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
         usage > 0 ||
         stock > 0 ||
@@ -442,120 +474,15 @@ export default function AdminOrdersPage() {
         usage7d: usage,
         calculatedOrder,
         displayOrder,
+        piecesPerOrderUnit: pack,
+        calculatedUnits,
+        displayUnits,
         overridden,
       });
     }
     list.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return list;
   }, [products, usageByLoc, daysCoveredByLoc, inventoryQty, overrideByKey, kirchbergId]);
-
-  const gesamtRows = useMemo(() => {
-    // Show ALL products, with ordering totals.
-    const out: Array<{
-      productId: string;
-      name: string;
-      zusatz: string | null;
-      metro_order_number: string | null;
-      metro_unit: string | null;
-      rabenstein: number;
-      hofstetten: number;
-      kirchberg: number;
-      sum: number;
-    }> = [];
-
-    for (const p of products) {
-      const brand = (p.brand ?? "").trim();
-      const pname = (p.product_name ?? "").trim();
-      const name = [brand, pname].filter(Boolean).join(" - ");
-
-      // Central (lager): Gesamt = Bedarfsmeldung Teich + sonstige Platzerl − Lagerbestand Rabenstein;
-      // dann Stück-Defizit in Bestelleinheiten (min_quantity) umrechnen; bei Defizit < 0 → 1 Einheit.
-      let central = 0;
-      if (rabensteinId) {
-        const tId = teichId;
-        let demandTeich = 0;
-        let demandFiliale = 0;
-        for (const req of openRequests) {
-          if (req.product_id !== p.id) continue;
-          const q = Math.max(0, Math.floor(Number(req.quantity) || 0));
-          if (q <= 0) continue;
-          if (req.location_id === rabensteinId) continue;
-          if (tId && req.location_id === tId) demandTeich += q;
-          else demandFiliale += q;
-        }
-        const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
-        const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
-        const piecesPerUnit = mq > 0 ? mq : 1;
-        const fromDemand = computeRabensteinGesamtOrderFromDemandReports({
-          demandTeich,
-          demandFiliale,
-          stockRabenstein: stockRab,
-          piecesPerOrderUnit: piecesPerUnit,
-        });
-        const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
-        central = ov ? ov.quantity : fromDemand;
-      }
-
-      // Local outlets
-      let hof = 0;
-      if (hofstettenId) {
-        const usage = Math.max(0, Math.round(usageByLoc[hofstettenId]?.[p.id] ?? 0));
-        const stock = inventoryQty[hofstettenId]?.[p.id] ?? 0;
-        const { orderQuantity } = computeLocalOutletOrder({
-          usage7d: usage,
-          stock,
-          daysCovered: daysCoveredByLoc[hofstettenId]?.[p.id] ?? 0,
-        });
-        const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
-        hof = ov ? ov.quantity : orderQuantity;
-      }
-
-      let kir = 0;
-      if (kirchbergId) {
-        const usage = Math.max(0, Math.round(usageByLoc[kirchbergId]?.[p.id] ?? 0));
-        const stock = inventoryQty[kirchbergId]?.[p.id] ?? 0;
-        const { orderQuantity } = computeLocalOutletOrder({
-          usage7d: usage,
-          stock,
-          daysCovered: daysCoveredByLoc[kirchbergId]?.[p.id] ?? 0,
-        });
-        const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
-        kir = ov ? ov.quantity : orderQuantity;
-      }
-
-      const sum = central + hof + kir;
-      out.push({
-        productId: p.id,
-        name,
-        zusatz: p.zusatz ?? null,
-        metro_order_number: p.metro_order_number ?? null,
-        metro_unit: p.metro_unit ?? null,
-        rabenstein: central,
-        hofstetten: hof,
-        kirchberg: kir,
-        sum,
-      });
-    }
-
-    out.sort((a, b) => {
-      const ao = a.sum > 0 ? 0 : 1;
-      const bo = b.sum > 0 ? 0 : 1;
-      if (ao !== bo) return ao - bo;
-      return a.name.localeCompare(b.name, "de");
-    });
-    return out;
-  }, [
-    products,
-    rabensteinId,
-    teichId,
-    hofstettenId,
-    kirchbergId,
-    usageByLoc,
-    daysCoveredByLoc,
-    inventoryQty,
-    overrideByKey,
-    openRequests,
-  ]);
 
   const sumCentral = useMemo(
     () => centralRows.reduce((s, r) => s + r.displayOrder, 0),
@@ -566,28 +493,28 @@ export default function AdminOrdersPage() {
     [demandRows]
   );
   const sumHof = useMemo(
-    () => hofstettenRows.reduce((s, r) => s + r.displayOrder, 0),
+    () => hofstettenRows.reduce((s, r) => s + r.displayUnits, 0),
     [hofstettenRows]
   );
   const sumKir = useMemo(
-    () => kirchbergRows.reduce((s, r) => s + r.displayOrder, 0),
+    () => kirchbergRows.reduce((s, r) => s + r.displayUnits, 0),
     [kirchbergRows]
-  );
-  const sumGesamt = useMemo(
-    () => gesamtRows.reduce((s, r) => s + r.sum, 0),
-    [gesamtRows]
   );
 
   async function saveEdit() {
     if (!editing) return;
     const n = Math.max(0, Math.floor(Number(editDraft.replace(/[^\d]/g, "")) || 0));
+    const product = products.find((p) => p.id === editing.productId);
+    const pack = piecesPerOrderUnitFromProduct(product ?? {});
+    const isCentral = Boolean(rabensteinId && editing.locationId === rabensteinId);
+    const quantity = isCentral ? n : n * pack;
     setSaveBusy(true);
     setErr(null);
     try {
       await upsertOrderOverride({
         locationId: editing.locationId,
         productId: editing.productId,
-        quantity: n,
+        quantity,
       });
       setEditing(null);
       await reload();
@@ -647,76 +574,6 @@ export default function AdminOrdersPage() {
       setErr(errorMessage(e, "Speichern fehlgeschlagen."));
     } finally {
       setMetroSaveBusy(false);
-    }
-  }
-
-  async function saveProductEdit() {
-    if (!productEditing) return;
-    setProductSaveBusy(true);
-    setErr(null);
-
-    const productId = productEditing.productId;
-    const prev = products.find((p) => p.id === productId) ?? null;
-    if (!prev) {
-      setProductEditing(null);
-      setProductSaveBusy(false);
-      return;
-    }
-
-    const raw = productDraft.trim();
-
-    let nextBrand = (prev.brand ?? "").trim();
-    let nextName = (prev.product_name ?? "").trim();
-    let nextZusatz = prev.zusatz ?? null;
-
-    if (productEditing.field === "zusatz") {
-      nextZusatz = raw ? raw : null;
-    } else {
-      // Edit "Product Name" as: "Brand - Name" (fallback: keep brand, change name)
-      const parts = raw.split("-").map((s) => s.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        nextBrand = parts[0] ?? nextBrand;
-        nextName = parts.slice(1).join(" - ") || nextName;
-      } else if (parts.length === 1) {
-        nextName = parts[0] ?? nextName;
-      }
-      if (!nextBrand) nextBrand = prev.brand ?? "";
-      if (!nextName) nextName = prev.product_name ?? "";
-    }
-
-    // Optimistic UI update
-    setProducts((cur) =>
-      cur.map((p) =>
-        p.id === productId
-          ? {
-              ...p,
-              brand: nextBrand,
-              product_name: nextName,
-              zusatz: nextZusatz,
-            }
-          : p
-      )
-    );
-
-    try {
-      await updateProduct({
-        productId,
-        brand: nextBrand,
-        product_name: nextName,
-        zusatz: nextZusatz,
-        barcode: prev.barcode ?? null,
-        short_name: prev.short_name ?? null,
-        min_quantity: prev.min_quantity ?? null,
-      });
-      setProductEditing(null);
-    } catch (e: unknown) {
-      // rollback
-      setProducts((cur) =>
-        cur.map((p) => (p.id === productId ? prev : p))
-      );
-      setErr(errorMessage(e, "Speichern fehlgeschlagen."));
-    } finally {
-      setProductSaveBusy(false);
     }
   }
 
@@ -794,9 +651,10 @@ export default function AdminOrdersPage() {
         <section className={`${adminReadSectionClass} mt-6`}>
           <h2 className={adminSectionTitleClass}>Bereiche wählen</h2>
           <p className="mt-1 text-sm font-black text-black/75">
-            Reiter: zuerst <strong>Rabenstein</strong> (Bedarf und Lager), dann die Außenplatzerl,
-            zuletzt die <strong>Übersicht</strong>. Tabellen sind überwiegend <strong>Lesen</strong>;
-            Zellen zum Bearbeiten (Overrides, Metro, Bedarf-Chips) sind <strong>Aktionen</strong>.
+            Reiter: <strong>Rabenstein</strong> (Bedarf und Lager), dann{" "}
+            <strong>{HOFSTETTEN_NAME}</strong> und <strong>{KIRCHBERG_NAME}</strong> – jeweils
+            eigene Bestellung. Tabellen sind überwiegend <strong>Lesen</strong>; Zellen zum Bearbeiten
+            (Overrides, Metro, Bedarf-Chips) sind <strong>Aktionen</strong>.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -859,14 +717,6 @@ export default function AdminOrdersPage() {
               title={`Schritt 3: ${KIRCHBERG_NAME}`}
             >
               3 · {KIRCHBERG_NAME}
-            </button>
-            <button
-              type="button"
-              className={`${tabBtn} ${activeTab === "gesamt" ? tabBtnActive : tabBtnIdle}`}
-              onClick={() => setActiveTab("gesamt")}
-              title="Schritt 4: Übersicht – Summen vor der Bestellung"
-            >
-              4 · Übersicht
             </button>
           </div>
         </section>
@@ -1144,19 +994,25 @@ export default function AdminOrdersPage() {
           <div className={`${adminReadSectionClass} mt-6`}>
             <p className={adminSectionTitleClass}>Rabenstein · Lager</p>
             <p className="mt-2 text-sm font-black text-black/75">
-              Vorschlag für das Zentrallager aus Bedarfsmeldungen ({TEICH_NAME} + sonstige Platzerl)
-              gegenüber Lagerbestand {RABENSTEIN_LAGER_NAME}; Bestellen in Metro-Einheiten
-              (min. eine Einheit bei negativem Stück-Defizit). Klick auf die Bestellmenge:
-              manueller Override (*). Metro-Felder bearbeiten wirkt auf alle Tabs.
+              <strong>Bedarf 7d (Stück):</strong> Summe Verbrauch 7 Tage an {TEICH_NAME} +{" "}
+              {RABENSTEIN_FILIALE_NAME} (Orientierung). <strong>Bestellen (Einheiten):</strong> aus
+              Meldungen gegenüber Lagerbestand {RABENSTEIN_LAGER_NAME}, gerundet auf Metro-Einheiten (
+              <code className="text-xs">min_quantity</code>; mindestens 1 Einheit bei negativem
+              Stück-Defizit). Klick auf die Bestellmenge: Override (*). Metro-Felder gelten app-weit.
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
                   <th className="p-3 font-black text-black">Metro Nr</th>
                   <th className="p-3 font-black text-black">Einheit</th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bedarf 7d
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                  </th>
                   <th className="p-3 font-black text-black tabular-nums">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
@@ -1182,7 +1038,11 @@ export default function AdminOrdersPage() {
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestellen</th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bestellen
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1202,7 +1062,7 @@ export default function AdminOrdersPage() {
                         <div className="truncate">{r.name}</div>
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedOrder})
+                            Manuell (Vorschlag: {r.calculatedOrder} E.)
                           </div>
                         ) : null}
                       </td>
@@ -1269,6 +1129,7 @@ export default function AdminOrdersPage() {
                           </button>
                         )}
                       </td>
+                      <td className="p-3 font-black tabular-nums text-black">{r.bedarf7dStück}</td>
                       <td
                         className={[
                           "p-3 font-black tabular-nums",
@@ -1371,7 +1232,7 @@ export default function AdminOrdersPage() {
             ) : null}
           </section>
           <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe ({RABENSTEIN_LAGER_NAME}): {sumCentral}
+            Summe Einheiten ({RABENSTEIN_LAGER_NAME}): {sumCentral}
           </div>
         </>
       ) : null}
@@ -1381,20 +1242,30 @@ export default function AdminOrdersPage() {
           <div className={`${adminReadSectionClass} mt-6`}>
             <p className={adminSectionTitleClass}>Schritt 2 · {HOFSTETTEN_NAME}</p>
             <p className="mt-2 text-sm font-black text-black/75">
-              Lokaler Vorschlag aus Bestand und 7-Tage-Verbrauch; Spalte „Bestellen“ ist überschreibbar
-              (* = manuell).
+              Eigene Bestellung für dieses Platzerl: <strong>Bedarf 7d (Stück)</strong> aus dem
+              erfassten Verbrauch; <strong>Bestellen (Einheiten)</strong> = Nachbestell-Bedarf in
+              Stück, aufgerundet auf Metro-Einheiten (<code className="text-xs">min_quantity</code>
+              ). Klick auf die Menge: Override in Einheiten (*).
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[520px] text-left text-sm">
+            <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
                   <th className="p-3 font-black text-black">Metro Nr</th>
                   <th className="p-3 font-black text-black">Einheit</th>
                   <th className="p-3 font-black text-black tabular-nums">Bestand</th>
-                  <th className="p-3 font-black text-black tabular-nums">Verbrauch 7d</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestellen</th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bedarf 7d
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                  </th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bestellen
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1414,7 +1285,7 @@ export default function AdminOrdersPage() {
                         <div className="truncate">{r.name}</div>
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedOrder})
+                            Manuell (Vorschlag: {r.calculatedUnits} E.)
                           </div>
                         ) : null}
                       </td>
@@ -1528,10 +1399,10 @@ export default function AdminOrdersPage() {
                                 locationId: hofstettenId,
                                 productId: r.productId,
                               });
-                              setEditDraft(String(r.displayOrder));
+                              setEditDraft(String(r.displayUnits));
                             }}
                           >
-                            {r.displayOrder}
+                            {r.displayUnits}
                             {r.overridden ? (
                               <span className="ml-1 text-amber-700" title="Override">
                                 *
@@ -1550,7 +1421,7 @@ export default function AdminOrdersPage() {
             ) : null}
           </section>
           <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe ({HOFSTETTEN_NAME}): {sumHof}
+            Summe Einheiten ({HOFSTETTEN_NAME}): {sumHof}
           </div>
         </>
       ) : null}
@@ -1560,19 +1431,28 @@ export default function AdminOrdersPage() {
           <div className={`${adminReadSectionClass} mt-6`}>
             <p className={adminSectionTitleClass}>Schritt 3 · {KIRCHBERG_NAME}</p>
             <p className="mt-2 text-sm font-black text-black/75">
-              Wie Hofstetten: Vorschlag für dieses Platzerl, optional manuell anpassen.
+              Wie Hofstetten: eigene Bestellung; <strong>Bedarf 7d (Stück)</strong> und{" "}
+              <strong>Bestellen (Einheiten)</strong> wie im Schritt davor beschrieben.
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[520px] text-left text-sm">
+            <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
                   <th className="p-3 font-black text-black">Metro Nr</th>
                   <th className="p-3 font-black text-black">Einheit</th>
                   <th className="p-3 font-black text-black tabular-nums">Bestand</th>
-                  <th className="p-3 font-black text-black tabular-nums">Verbrauch 7d</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestellen</th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bedarf 7d
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                  </th>
+                  <th className="p-3 font-black text-black tabular-nums">
+                    Bestellen
+                    <br />
+                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1592,7 +1472,7 @@ export default function AdminOrdersPage() {
                         <div className="truncate">{r.name}</div>
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedOrder})
+                            Manuell (Vorschlag: {r.calculatedUnits} E.)
                           </div>
                         ) : null}
                       </td>
@@ -1706,10 +1586,10 @@ export default function AdminOrdersPage() {
                                 locationId: kirchbergId,
                                 productId: r.productId,
                               });
-                              setEditDraft(String(r.displayOrder));
+                              setEditDraft(String(r.displayUnits));
                             }}
                           >
-                            {r.displayOrder}
+                            {r.displayUnits}
                             {r.overridden ? (
                               <span className="ml-1 text-amber-700" title="Override">
                                 *
@@ -1728,196 +1608,11 @@ export default function AdminOrdersPage() {
             ) : null}
           </section>
           <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe ({KIRCHBERG_NAME}): {sumKir}
+            Summe Einheiten ({KIRCHBERG_NAME}): {sumKir}
           </div>
         </>
       ) : null}
 
-      {!busy && !err && activeTab === "gesamt" ? (
-        <>
-          <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 4 · Übersicht (Check vor der Bestellung)</p>
-            <p className="mt-2 text-sm font-black text-black/75">
-              Eine Zeile pro Produkt: Summe aus Zentrallager (Meldungen Teich + Filiale minus
-              Lagerbestand, in Einheiten nach <code className="text-xs">min_quantity</code>) plus{" "}
-              {HOFSTETTEN_NAME} plus {KIRCHBERG_NAME}. Hier prüfen, ob Metro-Nr. und Mengen stimmen –
-              die App bestellt nicht automatisch bei Metro.
-            </p>
-          </div>
-          <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black">Zusatz</th>
-                  <th className="p-3 font-black text-black">Metro Nr</th>
-                  <th className="p-3 font-black text-black">Einheit</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestellung</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gesamtRows.map((r) => {
-                  const editMetroNr =
-                    metroEditing?.productId === r.productId &&
-                    metroEditing?.field === "metro_order_number";
-                  const editMetroUnit =
-                    metroEditing?.productId === r.productId &&
-                    metroEditing?.field === "metro_unit";
-                  const editName =
-                    productEditing?.productId === r.productId &&
-                    productEditing?.field === "name";
-                  const editZusatz =
-                    productEditing?.productId === r.productId &&
-                    productEditing?.field === "zusatz";
-                  return (
-                    <tr key={r.productId} className="border-b border-black/10 align-middle">
-                      <td className="p-3 font-black text-black max-w-[220px]">
-                        {editName ? (
-                          <input
-                            className="h-10 w-full min-w-[12rem] rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={productDraft}
-                            autoFocus
-                            onChange={(e) => setProductDraft(e.target.value)}
-                            onBlur={() => void saveProductEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveProductEdit();
-                              if (e.key === "Escape") setProductEditing(null);
-                            }}
-                            disabled={productSaveBusy}
-                            aria-label="Produktname"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-10 w-full rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black"
-                            onClick={() => {
-                              setProductEditing({ productId: r.productId, field: "name" });
-                              setProductDraft(r.name ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            <div className="truncate">{r.name || "-"}</div>
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3 font-black text-black/70 max-w-[120px] truncate">
-                        {editZusatz ? (
-                          <input
-                            className="h-10 w-full min-w-[7rem] rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={productDraft}
-                            autoFocus
-                            onChange={(e) => setProductDraft(e.target.value)}
-                            onBlur={() => void saveProductEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveProductEdit();
-                              if (e.key === "Escape") setProductEditing(null);
-                            }}
-                            disabled={productSaveBusy}
-                            aria-label="Zusatz"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-10 w-full rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black/80"
-                            onClick={() => {
-                              setProductEditing({ productId: r.productId, field: "zusatz" });
-                              setProductDraft(r.zusatz ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            <div className="truncate">{r.zusatz?.trim() ? r.zusatz : "-"}</div>
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {editMetroNr ? (
-                          <input
-                            className="h-10 w-28 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={metroDraft}
-                            autoFocus
-                            onChange={(e) => setMetroDraft(e.target.value)}
-                            onBlur={() => void saveMetroEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveMetroEdit();
-                              if (e.key === "Escape") setMetroEditing(null);
-                            }}
-                            disabled={metroSaveBusy}
-                            aria-label="Metro Nummer"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className={[
-                              "h-10 min-w-[7rem] rounded-xl border-2 px-2 text-sm font-black text-left",
-                              r.metro_order_number?.trim()
-                                ? "border-black bg-white text-black"
-                                : "border-red-800 bg-red-50 text-red-900",
-                            ].join(" ")}
-                            onClick={() => {
-                              setMetroEditing({ productId: r.productId, field: "metro_order_number" });
-                              setMetroDraft(r.metro_order_number ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            {r.metro_order_number?.trim() ? r.metro_order_number : "-"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {editMetroUnit ? (
-                          <input
-                            className="h-10 w-24 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={metroDraft}
-                            autoFocus
-                            onChange={(e) => setMetroDraft(e.target.value)}
-                            onBlur={() => void saveMetroEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveMetroEdit();
-                              if (e.key === "Escape") setMetroEditing(null);
-                            }}
-                            disabled={metroSaveBusy}
-                            aria-label="Metro Einheit"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-10 min-w-[5.5rem] rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black"
-                            onClick={() => {
-                              setMetroEditing({ productId: r.productId, field: "metro_unit" });
-                              setMetroDraft(r.metro_unit ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            {r.metro_unit?.trim() ? r.metro_unit : "-"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3 font-black tabular-nums text-black">
-                        {r.sum}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {gesamtRows.length === 0 ? (
-              <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
-            ) : null}
-          </section>
-          <div className="mt-4 flex flex-wrap justify-end gap-4 text-sm font-black text-black">
-            <span>
-              Σ {RABENSTEIN_LAGER_NAME}: {sumCentral}
-            </span>
-            <span>
-              Σ {HOFSTETTEN_NAME}: {sumHof}
-            </span>
-            <span>
-              Σ {KIRCHBERG_NAME}: {sumKir}
-            </span>
-            <span className="border-l-2 border-black/20 pl-4">Übersicht: {sumGesamt}</span>
-          </div>
-        </>
-      ) : null}
     </main>
   );
 }
