@@ -3,6 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/app/providers";
 import { AdminProvider } from "@/app/admin-provider";
 import { TopBar } from "@/app/_components/TopBar";
+import { ServiceWorkerCleanup } from "@/app/_components/ServiceWorkerCleanup";
 
 export const metadata: Metadata = {
   title: "Ordarella",
@@ -19,6 +20,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[var(--background)] text-black">
         <AuthProvider>
           <AdminProvider>
+            <ServiceWorkerCleanup />
             <TopBar />
             <div className="flex-1 flex flex-col pt-[72px]">{children}</div>
           </AdminProvider>

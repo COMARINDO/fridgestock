@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { updateSubmittedOrderItemsServer } from "@/lib/serverOps";
 import { getServerActionSecret } from "@/lib/serverActionSecret";
+import { actorFromRequest, logAudit } from "@/lib/auditLog";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const actor = actorFromRequest(request);
+  let orderId = "";
+  let itemsCount = 0;
   try {
     const expected = getServerActionSecret();
     if (!expected) {
@@ -27,10 +31,16 @@ export async function POST(request: Request) {
 
     const provided = (body.adminCode ?? "").trim();
     if (!provided || provided !== expected) {
+      await logAudit({
+        action: "orders.update_items",
+        actor,
+        ok: false,
+        error: "Unauthorized",
+      });
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 403 });
     }
 
-    const orderId = (body.orderId ?? "").trim();
+    orderId = (body.orderId ?? "").trim();
     if (!orderId) {
       return NextResponse.json({ ok: false, error: "orderId fehlt." }, { status: 400 });
     }
@@ -41,12 +51,27 @@ export async function POST(request: Request) {
           quantity: Math.max(0, Math.floor(Number(it?.quantity) || 0)),
         }))
       : [];
+    itemsCount = items.length;
 
     const result = await updateSubmittedOrderItemsServer({ orderId, items });
+    await logAudit({
+      action: "orders.update_items",
+      actor,
+      payload: { orderId, itemsCount },
+      result,
+      ok: true,
+    });
     return NextResponse.json({ ok: true, ...result });
   } catch (e: unknown) {
     const message =
       e instanceof Error ? e.message : typeof e === "string" ? e : "Konnte Bestellung nicht ändern.";
+    await logAudit({
+      action: "orders.update_items",
+      actor,
+      payload: { orderId: orderId || null, itemsCount },
+      ok: false,
+      error: message,
+    });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

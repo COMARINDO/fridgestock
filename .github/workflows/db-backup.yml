@@ -1,0 +1,68 @@
+name: DB Backup (pg_dump)
+
+# Vollstaendiges, restore-faehiges Backup der Supabase-DB ueber pg_dump.
+# Laeuft taeglich um 02:30 UTC und kann manuell via "Run workflow" gestartet
+# werden. Output wird als GitHub-Artifact 30 Tage aufbewahrt.
+#
+# Setup einmalig:
+#   Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+#     Name : DATABASE_URL
+#     Value: postgres://postgres.<PROJECT_REF>:<DB_PASSWORD>@<HOST>:5432/postgres
+#            (Supabase Dashboard -> Project Settings -> Database -> Connection string -> URI;
+#             Port 5432 verwenden, NICHT den Pooler-Port 6543.)
+#
+# Restore (lokal):
+#   Artifact runterladen, dann:
+#   pg_restore --clean --if-exists --no-owner --no-privileges \
+#     --dbname="$DATABASE_URL" backup-YYYY-MM-DD.dump
+
+on:
+  schedule:
+    # 02:30 UTC taeglich. Bewusst 30 Min nach dem CSV-Backup-Cron (02:00 UTC)
+    # auf Vercel, damit beide Backups nicht gleichzeitig auf die DB hauen.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  pg_dump:
+    name: pg_dump custom format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install postgresql-client (matching server version)
+        run: |
+          sudo apt-get update
+          # Supabase laeuft auf PG 15/16. ubuntu-latest liefert per Default
+          # eine ausreichend aktuelle libpq/pg_dump. Falls das mal bricht,
+          # hier explizit eine pg-Version aus dem Postgres-APT-Repo pinnen.
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set."
+            exit 1
+          fi
+          STAMP=$(date -u +%F)
+          OUT="backup-${STAMP}.dump"
+          # --schema=public  -> nur App-Tabellen, kein Supabase-internes (auth, storage, ...)
+          # --no-owner/-no-privileges -> restore in beliebigem Projekt/User moeglich
+          # --format=custom  -> kompakt + selektiver Restore via pg_restore
+          pg_dump "$DATABASE_URL" \
+            --schema=public \
+            --no-owner --no-privileges \
+            --format=custom \
+            --file="$OUT"
+          ls -lh "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          retention-days: 30
+          if-no-files-found: error

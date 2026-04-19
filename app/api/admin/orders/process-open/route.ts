@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerActionSecret } from "@/lib/serverActionSecret";
 import { processOpenOrderRequestsServer } from "@/lib/serverOps";
+import { actorFromRequest, logAudit } from "@/lib/auditLog";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ function unauthorized() {
 }
 
 export async function POST(request: Request) {
+  const actor = actorFromRequest(request);
   try {
     let body: { adminCode?: string };
     try {
@@ -26,9 +28,23 @@ export async function POST(request: Request) {
     }
 
     const providedCode = body.adminCode?.trim() ?? "";
-    if (!providedCode || providedCode !== expectedSecret) return unauthorized();
+    if (!providedCode || providedCode !== expectedSecret) {
+      await logAudit({
+        action: "orders.process_open",
+        actor,
+        ok: false,
+        error: "Unauthorized",
+      });
+      return unauthorized();
+    }
 
     const result = await processOpenOrderRequestsServer();
+    await logAudit({
+      action: "orders.process_open",
+      actor,
+      ok: true,
+      result: { processedRows: result.processedRows, processedAt: result.processedAt },
+    });
     return NextResponse.json({
       ok: true,
       processedRows: result.processedRows,
@@ -36,6 +52,12 @@ export async function POST(request: Request) {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Konnte Bestellung nicht platzieren.";
+    await logAudit({
+      action: "orders.process_open",
+      actor,
+      ok: false,
+      error: message,
+    });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

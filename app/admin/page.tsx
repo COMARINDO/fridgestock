@@ -94,6 +94,7 @@ function AdminDashboard() {
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const reload = useCallback(async () => {
     const data = await getGlobalOverviewByProduct();
@@ -143,6 +144,52 @@ function AdminDashboard() {
     }
   }
 
+  async function downloadBackup() {
+    setDownloadBusy(true);
+    setErr(null);
+    try {
+      const code = window.prompt("Backup-Code eingeben") ?? "";
+      if (!code.trim()) {
+        setDownloadBusy(false);
+        return;
+      }
+      const res = await fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminCode: code, download: true }),
+      });
+      if (!res.ok) {
+        const raw = await res.text();
+        let msg = `HTTP ${res.status}`;
+        try {
+          const j = JSON.parse(raw) as { error?: string };
+          if (j.error) msg = j.error;
+        } catch {
+          if (raw.trim()) msg = raw.trim().slice(0, 300);
+        }
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") ?? "";
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      const filename =
+        m?.[1] ??
+        `backup-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Backup konnte nicht heruntergeladen werden."));
+    } finally {
+      setDownloadBusy(false);
+    }
+  }
+
   const totalPieces = rows.reduce((acc, r) => acc + (Number(r.quantity) || 0), 0);
 
   return (
@@ -152,14 +199,26 @@ function AdminDashboard() {
         title="Ordarella · Admin"
         description="Schneller Zugriff auf Bestände, Inventur, Bestellungen und Historie."
         actions={
-          <button
-            type="button"
-            disabled={backupBusy}
-            className={adminSecondaryButtonClass}
-            onClick={() => void sendBackup()}
-          >
-            {backupBusy ? "Backup…" : "Backup senden"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={downloadBusy}
+              className={adminSecondaryButtonClass}
+              onClick={() => void downloadBackup()}
+              title="Vollbackup als CSV-Datei direkt herunterladen"
+            >
+              {downloadBusy ? "Backup…" : "Backup herunterladen"}
+            </button>
+            <button
+              type="button"
+              disabled={backupBusy}
+              className={adminSecondaryButtonClass}
+              onClick={() => void sendBackup()}
+              title="Vollbackup per Email versenden"
+            >
+              {backupBusy ? "Backup…" : "Backup senden"}
+            </button>
+          </div>
         }
       />
 

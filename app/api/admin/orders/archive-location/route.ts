@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { archiveOrderForLocationServer } from "@/lib/serverOps";
 import { getServerActionSecret } from "@/lib/serverActionSecret";
+import { actorFromRequest, logAudit } from "@/lib/auditLog";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const actor = actorFromRequest(request);
+  let locationId = "";
+  let itemsCount = 0;
+  let closeOpenRequests = false;
   try {
     const expected = getServerActionSecret();
     if (!expected) {
@@ -28,10 +33,17 @@ export async function POST(request: Request) {
 
     const provided = (body.adminCode ?? "").trim();
     if (!provided || provided !== expected) {
+      await logAudit({
+        action: "orders.archive_location",
+        actor,
+        locationId: (body.locationId ?? "").trim() || null,
+        ok: false,
+        error: "Unauthorized",
+      });
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 403 });
     }
 
-    const locationId = (body.locationId ?? "").trim();
+    locationId = (body.locationId ?? "").trim();
     if (!locationId) {
       return NextResponse.json({ ok: false, error: "locationId fehlt." }, { status: 400 });
     }
@@ -42,16 +54,34 @@ export async function POST(request: Request) {
           quantity: Math.max(0, Math.floor(Number(it?.quantity) || 0)),
         }))
       : [];
+    itemsCount = items.length;
+    closeOpenRequests = Boolean(body.closeOpenRequests);
 
     const result = await archiveOrderForLocationServer({
       locationId,
       items,
-      closeOpenRequests: Boolean(body.closeOpenRequests),
+      closeOpenRequests,
+    });
+    await logAudit({
+      action: "orders.archive_location",
+      actor,
+      locationId,
+      payload: { itemsCount, closeOpenRequests },
+      result,
+      ok: true,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e: unknown) {
     const message =
       e instanceof Error ? e.message : typeof e === "string" ? e : "Konnte Bestellung nicht archivieren.";
+    await logAudit({
+      action: "orders.archive_location",
+      actor,
+      locationId: locationId || null,
+      payload: { itemsCount, closeOpenRequests },
+      ok: false,
+      error: message,
+    });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

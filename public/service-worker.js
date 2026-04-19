@@ -1,58 +1,51 @@
+// Self-destruct service worker.
+//
+// Hintergrund: Frühere App-Versionen haben moeglicherweise einen Service-Worker
+// registriert. Aktuell wird er ueberhaupt nicht mehr registriert — alte SWs auf
+// User-Geraeten halten aber gecachte JS-Bundles fest und sorgen fuer schwer
+// reproduzierbare "Bug-X-funktioniert-nicht-mehr"-Reports nach Deploys.
+//
+// Dieser SW deregistriert sich selbst beim Activate und loescht alle Caches.
+// Sobald jeder User die App einmal geoeffnet hat, ist der alte SW weg und
+// der Browser holt wieder frische Files direkt vom Server.
+//
+// Wenn die App spaeter echte Offline-Faehigkeit braucht, hier komplett neu
+// schreiben (mit Versioning + Workbox o.ae.).
+
+const SW_VERSION = "self-destruct-v1";
+
 self.addEventListener("install", () => {
-  // Activate immediately
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // Cleanup old caches on activate
-      const keys = await caches.keys();
-      await Promise.all(
-        keys
-          .filter((k) => k.startsWith("fridge-static-") && k !== CACHE)
-          .map((k) => caches.delete(k))
-      );
-      await self.clients.claim();
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) {
+        console.warn("[sw] cache cleanup failed", e);
+      }
+      try {
+        await self.registration.unregister();
+      } catch (e) {
+        console.warn("[sw] unregister failed", e);
+      }
+      try {
+        const clients = await self.clients.matchAll({ type: "window" });
+        for (const client of clients) {
+          client.navigate(client.url);
+        }
+      } catch (e) {
+        console.warn("[sw] reload clients failed", e);
+      }
     })()
   );
 });
 
-const CACHE = "fridge-static-v2";
-const DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
+// Pass everything through; no caching while shutting down.
+self.addEventListener("fetch", () => {});
 
-// Minimal cache-first for static assets (kept intentionally simple).
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
-
-  // Avoid caching in local development to prevent stale JS/HMR issues.
-  if (DEV_HOSTS.has(self.location.hostname)) return;
-
-  const isStatic =
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname === "/manifest.webmanifest" ||
-    url.pathname === "/service-worker.js" ||
-    url.pathname.startsWith("/icon") ||
-    url.pathname.startsWith("/apple-icon") ||
-    url.pathname.endsWith(".svg") ||
-    url.pathname.endsWith(".png") ||
-    url.pathname.endsWith(".jpg") ||
-    url.pathname.endsWith(".jpeg") ||
-    url.pathname.endsWith(".webp");
-
-  if (!isStatic) return;
-
-  event.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req);
-      if (cached) return cached;
-      const res = await fetch(req);
-      if (res.ok) cache.put(req, res.clone());
-      return res;
-    })
-  );
-});
-
+// Touch SW_VERSION so browsers see byte-changes when this file is updated.
+self.SW_VERSION = SW_VERSION;
