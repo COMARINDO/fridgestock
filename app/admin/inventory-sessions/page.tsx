@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
@@ -44,7 +43,7 @@ type ProductLike = {
 
 export default function AdminInventorySessionsPage() {
   const router = useRouter();
-  const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
+  const { isAdmin, adminHydrated } = useAdmin();
 
   const [locs, setLocs] = useState<Location[]>([]);
   const [activeLocId, setActiveLocId] = useState<string>("");
@@ -173,28 +172,11 @@ export default function AdminInventorySessionsPage() {
 
   return (
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-black text-black/50">
-            <Link href="/admin" className="underline">
-              ← Admin
-            </Link>
-          </div>
-          <h1 className="text-2xl font-black text-black mt-1">Inventur-Sessions</h1>
-          <p className="mt-1 text-sm text-black/65">
-            Session-Erkennung: <strong>5 Stunden Pause</strong> starten neue Inventur.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          onClick={() => {
-            exitAdmin();
-            router.replace("/login");
-          }}
-        >
-          Admin-Modus beenden
-        </button>
+      <div>
+        <h1 className="text-2xl font-black text-black">Inventur-Sessions</h1>
+        <p className="mt-1 text-sm text-black/65">
+          Session-Erkennung: <strong>5 Stunden Pause</strong> starten neue Inventur.
+        </p>
       </div>
 
       {busy ? <div className="mt-8 text-black font-black">Lade…</div> : null}

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
@@ -35,6 +34,12 @@ import {
 import type { Location, OrderOverrideRow, Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
+import {
+  adminActionSectionClass,
+  adminDangerButtonLgClass,
+  adminReadSectionClass,
+  adminSectionTitleClass,
+} from "@/app/admin/_components/adminUi";
 
 function resolveLocationIdByName(
   locations: Location[],
@@ -95,7 +100,7 @@ type LocalOutletRowModel = {
 
 export default function AdminOrdersPage() {
   const router = useRouter();
-  const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
+  const { isAdmin, adminHydrated } = useAdmin();
 
   const [useAi, setUseAi] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -780,18 +785,22 @@ export default function AdminOrdersPage() {
 
   return (
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-black text-black/50">
-            <Link href="/admin" className="underline">
-              ← Admin
-            </Link>
-          </div>
-          <h1 className="text-2xl font-black text-black mt-1">Bestellübersicht</h1>
-          <p className="mt-1 text-sm text-black/65">
-            Platzerl melden Bedarf. Im Reiter <strong>Bedarf (zentral)</strong> wird daraus der
-            Bestellvorschlag für <strong>{RABENSTEIN_LAGER_NAME}</strong> berechnet (Total Bedarf −
-            Lager-Stock).
+      <div>
+        <h1 className="text-2xl font-black text-black">Bestellübersicht</h1>
+        <p className="mt-1 text-sm text-black/65">
+          Platzerl melden Bedarf. Im Reiter <strong>Bedarf (zentral)</strong> wird daraus der
+          Bestellvorschlag für <strong>{RABENSTEIN_LAGER_NAME}</strong> berechnet (Total Bedarf −
+          Lager-Stock).
+        </p>
+      </div>
+
+      {!busy && !err ? (
+        <section className={`${adminReadSectionClass} mt-6`}>
+          <h2 className={adminSectionTitleClass}>Lesen</h2>
+          <p className="mt-1 text-sm font-black text-black/75">
+            Übersicht, Tabs und Tabellen – Kennzahlen ohne zentrale Schreibaktionen. In den anderen
+            Reitern: Overrides und Metro-Felder sind <strong>bearbeitbar</strong> (gelten als
+            Aktionen).
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -809,21 +818,7 @@ export default function AdminOrdersPage() {
               (Fallback: wenn keine KI-Daten vorhanden sind, wird klassisch gerechnet)
             </span>
           </div>
-        </div>
-        <button
-          type="button"
-          className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          onClick={() => {
-            exitAdmin();
-            router.replace("/login");
-          }}
-        >
-          Admin-Modus beenden
-        </button>
-      </div>
-
-      {!busy && !err ? (
-        <div className="mt-6 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "demand" ? tabBtnActive : tabBtnIdle}`}
@@ -860,6 +855,7 @@ export default function AdminOrdersPage() {
             Gesamt
           </button>
         </div>
+        </section>
       ) : null}
 
       {!rabensteinId && !busy && !err ? (
@@ -900,62 +896,12 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "demand" && rabensteinId ? (
         <>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-black text-black/70">
-              Offene Meldungen: <strong>{openRequests.length}</strong>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={resetBusy || placeBusy || openRequests.length === 0}
-                className="h-12 px-4 rounded-2xl border-2 border-red-800 bg-red-50 text-red-900 text-sm font-black active:scale-[0.99] disabled:opacity-50"
-                onClick={async () => {
-                  const ok = window.confirm(
-                    `Alle ${openRequests.length} offenen Bedarfsmeldungen wirklich zurücksetzen? Das kann nicht rückgängig gemacht werden.`
-                  );
-                  if (!ok) return;
-                  setResetBusy(true);
-                  setPlaceMsg(null);
-                  setErr(null);
-                  try {
-                    const removed = await deleteAllOpenOrderRequests();
-                    setPlaceMsg(`Bedarf zurückgesetzt. Entfernt: ${removed}`);
-                    await reload();
-                  } catch (e: unknown) {
-                    setErr(errorMessage(e, "Bedarf konnte nicht zurückgesetzt werden."));
-                  } finally {
-                    setResetBusy(false);
-                  }
-                }}
-              >
-                {resetBusy ? "Setze zurück…" : "Bedarf zurücksetzen"}
-              </button>
-              <button
-                type="button"
-                disabled={placeBusy || resetBusy || openRequests.length === 0}
-                className="h-12 px-4 rounded-2xl bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
-                onClick={async () => {
-                  const code = window.prompt("Admin-Code eingeben") ?? "";
-                  if (!code.trim()) return;
-                  setPlaceBusy(true);
-                  setPlaceMsg(null);
-                  try {
-                    const res = await processOpenOrderRequests({
-                      adminCode: code,
-                    });
-                    setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
-                    await reload();
-                  } catch (e: unknown) {
-                    setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
-                  } finally {
-                    setPlaceBusy(false);
-                  }
-                }}
-              >
-                {placeBusy ? "Plaziere…" : "Place order"}
-              </button>
-            </div>
-          </div>
+          <section className={`${adminReadSectionClass} mt-6`}>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Bedarf (zentral) – Lesen</h3>
+            <p className="mt-1 text-sm font-black text-black/70">
+              Offene Meldungen: <strong>{openRequests.length}</strong>. Chips bearbeiten oder löschen
+              sind <strong>Aktionen</strong> (siehe Bereich unten bei Bedarf).
+            </p>
 
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[720px] text-left text-sm">
@@ -1054,11 +1000,11 @@ export default function AdminOrdersPage() {
                                 </button>
                                 <button
                                   type="button"
-                                  className="h-6 w-6 inline-flex items-center justify-center rounded-md text-black/60 hover:bg-red-50 hover:text-red-900 disabled:opacity-50"
+                                  className="h-6 w-6 inline-flex shrink-0 items-center justify-center rounded-md border-2 border-red-800 bg-red-50 text-sm font-black text-red-900 active:scale-[0.99] disabled:opacity-50"
                                   disabled={isBusy}
                                   onClick={() => void deleteDemandEntry(b.id, chipLabel)}
                                   aria-label={`Bedarf ${chipLabel} löschen`}
-                                  title="Löschen"
+                                  title="Löschen (irreversibel)"
                                 >
                                   ×
                                 </button>
@@ -1113,6 +1059,66 @@ export default function AdminOrdersPage() {
           <div className="mt-4 flex justify-end text-sm font-black text-black">
             Summe (Vorschlag): {sumSuggestedDemand}
           </div>
+          </section>
+
+          <section className={`${adminActionSectionClass} mt-4`}>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Bedarf (zentral) – Aktionen</h3>
+            <p className="mt-1 text-xs font-black text-amber-950/90">
+              Hier werden Meldungen gelöscht oder die Bestellrunde abgeschlossen. Nicht rückgängig
+              ohne Datenbank-Backup.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={resetBusy || placeBusy || openRequests.length === 0}
+                className={adminDangerButtonLgClass}
+                onClick={async () => {
+                  const ok = window.confirm(
+                    `Alle ${openRequests.length} offenen Bedarfsmeldungen wirklich zurücksetzen? Das kann nicht rückgängig gemacht werden.`
+                  );
+                  if (!ok) return;
+                  setResetBusy(true);
+                  setPlaceMsg(null);
+                  setErr(null);
+                  try {
+                    const removed = await deleteAllOpenOrderRequests();
+                    setPlaceMsg(`Bedarf zurückgesetzt. Entfernt: ${removed}`);
+                    await reload();
+                  } catch (e: unknown) {
+                    setErr(errorMessage(e, "Bedarf konnte nicht zurückgesetzt werden."));
+                  } finally {
+                    setResetBusy(false);
+                  }
+                }}
+              >
+                {resetBusy ? "Setze zurück…" : "Bedarf zurücksetzen"}
+              </button>
+              <button
+                type="button"
+                disabled={placeBusy || resetBusy || openRequests.length === 0}
+                className="h-12 rounded-2xl border-2 border-black bg-black px-4 text-sm font-black text-white active:scale-[0.99] disabled:opacity-50"
+                onClick={async () => {
+                  const code = window.prompt("Admin-Code eingeben") ?? "";
+                  if (!code.trim()) return;
+                  setPlaceBusy(true);
+                  setPlaceMsg(null);
+                  try {
+                    const res = await processOpenOrderRequests({
+                      adminCode: code,
+                    });
+                    setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
+                    await reload();
+                  } catch (e: unknown) {
+                    setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
+                  } finally {
+                    setPlaceBusy(false);
+                  }
+                }}
+              >
+                {placeBusy ? "Plaziere…" : "Place order"}
+              </button>
+            </div>
+          </section>
         </>
       ) : null}
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
@@ -14,6 +13,7 @@ import {
 import type { Location, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
+import { adminDangerButtonLgClass } from "@/app/admin/_components/adminUi";
 
 function fmtTs(iso: string): string {
   try {
@@ -98,13 +98,8 @@ export default function AdminSubmittedOrdersPage() {
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs font-black text-black/50">
-            <Link href="/admin" className="underline">
-              ← Admin
-            </Link>
-          </div>
-          <h1 className="text-2xl font-black text-black mt-1">Bestellungen</h1>
-          <p className="mt-1 text-sm text-black/65">Abgeschickte Bestellungen (KW)</p>
+          <h1 className="text-2xl font-black text-black">Abgeschickte Bestellungen</h1>
+          <p className="mt-1 text-sm text-black/65">Historie nach Kalenderwoche (Lesen).</p>
         </div>
         <button
           type="button"
@@ -222,7 +217,7 @@ export default function AdminSubmittedOrdersPage() {
                 <button
                   type="button"
                   disabled={modalBusy}
-                  className="h-12 px-4 rounded-2xl border-2 border-red-800 bg-red-50 text-red-900 text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                  className={`h-12 px-4 ${adminDangerButtonLgClass} disabled:opacity-50`}
                   onClick={() => {
                     void (async () => {
                       const ok = window.confirm("Bestellung wirklich löschen?");

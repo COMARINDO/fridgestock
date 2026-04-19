@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
@@ -14,6 +13,7 @@ import {
 } from "@/lib/db";
 import type { Location } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
+import { adminDangerButtonLgClass, adminDangerButtonSmClass } from "@/app/admin/_components/adminUi";
 
 type ModeFilter = "any" | "count" | "add" | "transfer" | "waste" | "loss";
 
@@ -34,7 +34,7 @@ function toIsoFromLocalDatetimeInput(v: string): string {
 
 export default function AdminBookingsPage() {
   const router = useRouter();
-  const { isAdmin, exitAdmin, adminHydrated } = useAdmin();
+  const { isAdmin, adminHydrated } = useAdmin();
 
   const [locs, setLocs] = useState<Location[]>([]);
   const [busy, setBusy] = useState(true);
@@ -152,30 +152,14 @@ export default function AdminBookingsPage() {
 
   return (
     <main className="w-full px-4 py-4 pb-28 max-w-5xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-black text-black/50">
-            <Link href="/admin" className="underline">
-              ← Admin
-            </Link>
-          </div>
-          <h1 className="text-2xl font-black text-black mt-1">Buchungen (History)</h1>
-          <p className="mt-1 text-sm text-black/65">
-            Übersicht aus <code>inventory_history</code>. Umbuchen korrigiert nur History.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-            onClick={() => {
-              exitAdmin();
-              router.replace("/login");
-            }}
-          >
-            Admin-Modus beenden
-          </button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-black text-black">Buchungen (History)</h1>
+        <p className="mt-1 text-sm text-black/65">
+          Übersicht aus <code>inventory_history</code>. Umbuchen korrigiert nur History.{" "}
+          <span className="font-black text-red-900/90">
+            Löschen und Umbuchen sind irreversibel bzw. riskant.
+          </span>
+        </p>
       </div>
 
       {err ? (
@@ -258,7 +242,7 @@ export default function AdminBookingsPage() {
           </div>
           <button
             type="button"
-            className="h-12 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
+            className={`h-12 px-4 ${adminDangerButtonLgClass}`}
             onClick={() => {
               setMoveOpen(true);
               setMoveErr(null);
@@ -306,7 +290,7 @@ export default function AdminBookingsPage() {
                 <td className="p-3 text-right">
                   <button
                     type="button"
-                    className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99] disabled:opacity-50"
+                    className={`${adminDangerButtonSmClass} disabled:opacity-50`}
                     disabled={deleteBusyId === r.id}
                     onClick={() => {
                       void (async () => {
