@@ -203,7 +203,7 @@ export function AdminNav() {
           Admin
         </div>
         <div className="mt-0.5 text-base font-black tracking-tight text-black">
-          Bstand
+          Ordarella
         </div>
       </div>
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4 pt-4 sm:px-4">

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Bstand",
-    short_name: "Bstand",
+    name: "Ordarella",
+    short_name: "Ordarella",
     description: "Schnelle mobile Inventory-App.",
     start_url: "/",
     display: "standalone",

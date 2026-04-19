@@ -149,7 +149,7 @@ function AdminDashboard() {
     <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-6">
       <AdminPageHeader
         eyebrow="Übersicht"
-        title="Bstand · Admin"
+        title="Ordarella · Admin"
         description="Schneller Zugriff auf Bestände, Inventur, Bestellungen und Historie."
         actions={
           <button

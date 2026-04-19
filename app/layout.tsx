@@ -5,7 +5,7 @@ import { AdminProvider } from "@/app/admin-provider";
 import { TopBar } from "@/app/_components/TopBar";
 
 export const metadata: Metadata = {
-  title: "Bstand",
+  title: "Ordarella",
   description: "Schnelle mobile Inventory-App.",
 };
 

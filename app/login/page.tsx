@@ -174,7 +174,7 @@ export default function LoginPage() {
         <div className="mt-10 flex justify-center pb-6">
           <Image
             src="/logo.png"
-            alt="Bstand"
+            alt="Ordarella"
             width={110}
             height={110}
             className="h-[100px] w-[100px] object-contain"

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
+import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
 import {
   archiveOrderForLocation,
   confirmSubmittedOrderDelivery,
@@ -153,6 +154,7 @@ function AdminOrdersPageContent() {
   const { isAdmin, adminHydrated } = useAdmin();
 
   const [useAi] = useAiConsumptionToggle();
+  const [showFormula, setShowFormula] = useOrderFormulaToggle();
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [openRequests, setOpenRequests] = useState<
@@ -884,7 +886,42 @@ function AdminOrdersPageContent() {
         title="Bestellungen"
         description={tabDescription}
         actions={
-          <span className={adminBadgeNeutralClass}>{tabTitle}</span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className={adminBadgeNeutralClass}>{tabTitle}</span>
+            {activeTab === "central" ? (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showFormula}
+                onClick={() => setShowFormula(!showFormula)}
+                title="Formel-Zeile unter Produkten ein-/ausblenden"
+                className={[
+                  "flex h-9 items-center justify-between gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors active:scale-[0.99]",
+                  showFormula
+                    ? "border-black/15 bg-black/[0.04] text-black"
+                    : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
+                ].join(" ")}
+              >
+                <span className="truncate">Formel</span>
+                <span
+                  className={[
+                    "inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
+                    showFormula
+                      ? "border-emerald-700/30 bg-emerald-600"
+                      : "border-black/15 bg-black/10",
+                  ].join(" ")}
+                  aria-hidden
+                >
+                  <span
+                    className={[
+                      "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                      showFormula ? "translate-x-4" : "translate-x-0.5",
+                    ].join(" ")}
+                  />
+                </span>
+              </button>
+            ) : null}
+          </div>
         }
       />
 
@@ -1190,29 +1227,31 @@ function AdminOrdersPageContent() {
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[240px]">
                         <div className="truncate">{r.name}</div>
-                        <div
-                          className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
-                          title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
-                        >
-                          Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
-                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} (
-                          {r.stockRabenstein}) ={" "}
-                          <span className="text-black">{r.deltaStück}</span>
-                          {" · "}
-                          {r.piecesPerOrderUnit} Stück/Einheit
-                          {". "}
-                          {r.deltaStück <= 0 ? (
-                            <>
-                              Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
-                              Lagerbestand).
-                            </>
-                          ) : (
-                            <>
-                              ⌈{r.deltaStück}÷{r.piecesPerOrderUnit}⌉ ={" "}
-                              <strong className="text-black">{r.calculatedOrder}</strong> Einheit(en).
-                            </>
-                          )}
-                        </div>
+                        {showFormula ? (
+                          <div
+                            className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
+                            title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
+                          >
+                            Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
+                            {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Ordarella{" "}
+                            {RABENSTEIN_LAGER_NAME} ({r.stockRabenstein}) ={" "}
+                            <span className="text-black">{r.deltaStück}</span>
+                            {" · "}
+                            {r.piecesPerOrderUnit} Stück/Einheit
+                            {". "}
+                            {r.deltaStück <= 0 ? (
+                              <>
+                                Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
+                                Lagerordarella).
+                              </>
+                            ) : (
+                              <>
+                                ⌈{r.deltaStück}÷{r.piecesPerOrderUnit}⌉ ={" "}
+                                <strong className="text-black">{r.calculatedOrder}</strong> Einheit(en).
+                              </>
+                            )}
+                          </div>
+                        ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800 mt-1">
                             Manuell: {r.displayOrder} E. (Vorschlag: {r.calculatedOrder} E.)

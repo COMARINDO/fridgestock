@@ -1,7 +1,7 @@
 /** Device-local admin flag (no backend). Key must match product requirement. */
 export const ADMIN_STORAGE_KEY = "isAdmin";
 
-const ADMIN_EVENT = "bstand-admin";
+const ADMIN_EVENT = "ordarella-admin";
 
 export function readIsAdminFromStorage(): boolean {
   if (typeof window === "undefined") return false;
