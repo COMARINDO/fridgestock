@@ -323,7 +323,7 @@ export function TopBar() {
                       {formatMissingLabel(m) || m.product_id}
                     </div>
                     <div className="text-xs font-black text-black/60 tabular-nums">
-                      letzte Ordarella: {m.last_quantity}
+                      letzter Bestand: {m.last_quantity}
                     </div>
                   </li>
                 ))}

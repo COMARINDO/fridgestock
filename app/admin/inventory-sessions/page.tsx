@@ -321,7 +321,7 @@ export default function AdminInventorySessionsPage() {
                   <>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                       <p className={adminMutedTextClass}>
-                        Diese Produkte hatten zuletzt Ordarella &gt; 0 und wurden in dieser
+                        Diese Produkte hatten zuletzt Bestand &gt; 0 und wurden in dieser
                         Session nicht erfasst.
                       </p>
                       <button
@@ -351,7 +351,7 @@ export default function AdminInventorySessionsPage() {
                                 {formatProductName(pseudo)}
                               </div>
                               <div className="text-[11px] font-bold tabular-nums text-black/60">
-                                letzte Ordarella: {m.last_quantity}
+                                letzter Bestand: {m.last_quantity}
                                 {m.last_count_at ? ` · ${fmtTs(m.last_count_at)}` : ""}
                               </div>
                             </div>

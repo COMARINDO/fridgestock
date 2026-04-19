@@ -121,7 +121,7 @@ type CentralRowModel = {
   demandTeich: number;
   /** Meldungen (Stück), außer Teich & Zentrallager (im UI: Rabenstein Geschäft + ggf. weitere Melder) */
   demandOther: number;
-  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. (ohne Lager) − Ordarella Lager Rabenstein */
+  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. (ohne Lager) − Bestand Lager Rabenstein */
   deltaStück: number;
   /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
@@ -784,7 +784,7 @@ function AdminOrdersPageContent() {
     const totalPositions = items.filter((it) => it.quantity > 0).length;
     const ok = window.confirm(
       `Lieferung für KW ${o.iso_week} (${o.iso_year}) buchen?\n\n` +
-        `Ordarella wird mit ${totalPositions} Position(en) erhöht. Mengen ohne Wert bleiben aus der Ordarella.`
+        `Bestand wird mit ${totalPositions} Position(en) erhöht. Mengen ohne Wert bleiben aus dem Bestand.`
     );
     if (!ok) return;
     const code = window.prompt("Admin-Code eingeben") ?? "";
@@ -875,7 +875,7 @@ function AdminOrdersPageContent() {
         ? "Vorschlag fürs Zentrallager. Bei „Bestellung archivieren“ entsteht eine offene Lieferung im Tab 4."
         : activeTab === "hofstetten" || activeTab === "kirchberg"
           ? "Eigene Bestellung für dieses Platzerl. „Bestellung archivieren“ legt eine offene Lieferung an."
-          : "Offene Lieferungen. Mengen ggf. anpassen (Teil-Lieferung) und buchen — Ordarella wird automatisch erhöht.";
+          : "Offene Lieferungen. Mengen ggf. anpassen (Teil-Lieferung) und buchen — Bestand wird automatisch erhöht.";
 
   return (
     <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
@@ -937,7 +937,7 @@ function AdminOrdersPageContent() {
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Gesamt</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    {RABENSTEIN_LAGER_NAME} · Ordarella
+                    {RABENSTEIN_LAGER_NAME} · Bestand
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Vorschlag</th>
                   <th className={`${adminTableStickyHeadCellClass}`}>Metro</th>
@@ -1166,7 +1166,7 @@ function AdminOrdersPageContent() {
                     Bedarf 7d · Stück
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    {RABENSTEIN_LAGER_NAME} · Ordarella
+                    {RABENSTEIN_LAGER_NAME} · Bestand
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bestellen · Einheiten
@@ -1195,7 +1195,7 @@ function AdminOrdersPageContent() {
                           title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
                         >
                           Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
-                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Ordarella {RABENSTEIN_LAGER_NAME} (
+                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} (
                           {r.stockRabenstein}) ={" "}
                           <span className="text-black">{r.deltaStück}</span>
                           {" · "}
@@ -1204,7 +1204,7 @@ function AdminOrdersPageContent() {
                           {r.deltaStück <= 0 ? (
                             <>
                               Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
-                              Lagerordarella).
+                              Lagerbestand).
                             </>
                           ) : (
                             <>
@@ -1381,7 +1381,7 @@ function AdminOrdersPageContent() {
                   <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
                   <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
-                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Ordarella</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bedarf 7d · Stück
                   </th>
@@ -1571,7 +1571,7 @@ function AdminOrdersPageContent() {
                   <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
                   <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
-                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Ordarella</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bedarf 7d · Stück
                   </th>
@@ -1801,7 +1801,7 @@ function AdminOrdersPageContent() {
                           disabled={isBusy || draftSum <= 0}
                           className={adminPrimaryButtonLgClass}
                           onClick={() => void bookDelivery(o)}
-                          title="Mengen anwenden und Ordarella erhöhen"
+                          title="Mengen anwenden und Bestand erhöhen"
                         >
                           {isBusy ? "Buche…" : "Lieferung buchen"}
                         </button>
