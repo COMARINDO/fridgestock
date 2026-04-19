@@ -998,23 +998,11 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
-          <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Rabenstein · Lager</p>
-            <p className="mt-2 text-sm font-black text-black/75">
-              <strong>Bedarf 7d (Stück):</strong> Summe Verbrauch 7 Tage an {TEICH_NAME} +{" "}
-              {RABENSTEIN_GESCHAEFT_NAME} (nur Orientierung, unabhängig von der Bestellmenge).{" "}
-              <strong>Bestellen (Einheiten):</strong> aus Meldungen vs. Bestand {RABENSTEIN_LAGER_NAME}
-              — unter jedem Produkt steht die <strong>exakte Rechnung</strong> (Δ Stück, Stück/Einheit,
-              Regel). Klick auf die Bestellmenge: Override (*). Metro-Felder gelten app-weit.
-            </p>
-          </div>
-          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[780px] text-left text-sm">
+          <section className="mt-6 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black">Metro Nr</th>
-                  <th className="p-3 font-black text-black">Einheit</th>
                   <th className="p-3 font-black text-black tabular-nums">
                     Bedarf 7d
                     <br />
@@ -1026,20 +1014,12 @@ export default function AdminOrdersPage() {
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    {TEICH_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Meldungen</span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_GESCHAEFT_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Meldungen</span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">
                     Bestellen
                     <br />
                     <span className="text-[11px] font-black text-black/55">Einheiten</span>
                   </th>
+                  <th className="p-3 text-right font-black text-black">Metro Nr</th>
+                  <th className="p-3 text-right font-black text-black">Einheit</th>
                 </tr>
               </thead>
               <tbody>
@@ -1086,69 +1066,6 @@ export default function AdminOrdersPage() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="p-3">
-                        {editMetroNr ? (
-                          <input
-                            className="h-10 w-28 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={metroDraft}
-                            autoFocus
-                            onChange={(e) => setMetroDraft(e.target.value)}
-                            onBlur={() => void saveMetroEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveMetroEdit();
-                              if (e.key === "Escape") setMetroEditing(null);
-                            }}
-                            disabled={metroSaveBusy}
-                            aria-label="Metro Nummer"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className={[
-                              "h-10 min-w-[7rem] rounded-xl border-2 px-2 text-sm font-black text-left",
-                              r.metro_order_number
-                                ? "border-black bg-white text-black"
-                                : "border-red-800 bg-red-50 text-red-900",
-                            ].join(" ")}
-                            onClick={() => {
-                              setMetroEditing({ productId: r.productId, field: "metro_order_number" });
-                              setMetroDraft(r.metro_order_number ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            {r.metro_order_number?.trim() ? r.metro_order_number : "–"}
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {editMetroUnit ? (
-                          <input
-                            className="h-10 w-24 rounded-xl border-2 border-black px-2 text-sm font-black text-black"
-                            value={metroDraft}
-                            autoFocus
-                            onChange={(e) => setMetroDraft(e.target.value)}
-                            onBlur={() => void saveMetroEdit()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void saveMetroEdit();
-                              if (e.key === "Escape") setMetroEditing(null);
-                            }}
-                            disabled={metroSaveBusy}
-                            aria-label="Metro Einheit"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-10 min-w-[5.5rem] rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-left text-black"
-                            onClick={() => {
-                              setMetroEditing({ productId: r.productId, field: "metro_unit" });
-                              setMetroDraft(r.metro_unit ?? "");
-                            }}
-                            title="Klicken zum Bearbeiten"
-                          >
-                            {r.metro_unit?.trim() ? r.metro_unit : "–"}
-                          </button>
-                        )}
-                      </td>
                       <td className="p-3 font-black tabular-nums text-black">{r.bedarf7dStück}</td>
                       <td
                         className={[
@@ -1162,12 +1079,6 @@ export default function AdminOrdersPage() {
                             Backorder
                           </span>
                         ) : null}
-                      </td>
-                      <td className="p-3 font-black tabular-nums text-black">
-                        {r.demandTeich}
-                      </td>
-                      <td className="p-3 font-black tabular-nums text-black">
-                        {r.demandOther}
                       </td>
                       <td className="p-3">
                         {isEd ? (
@@ -1213,6 +1124,69 @@ export default function AdminOrdersPage() {
                                 *
                               </span>
                             ) : null}
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        {editMetroNr ? (
+                          <input
+                            className="ml-auto block h-10 w-28 rounded-xl border-2 border-black px-2 text-right text-sm font-black text-black"
+                            value={metroDraft}
+                            autoFocus
+                            onChange={(e) => setMetroDraft(e.target.value)}
+                            onBlur={() => void saveMetroEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveMetroEdit();
+                              if (e.key === "Escape") setMetroEditing(null);
+                            }}
+                            disabled={metroSaveBusy}
+                            aria-label="Metro Nummer"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className={[
+                              "ml-auto flex h-10 min-w-[7rem] items-center justify-end rounded-xl border-2 px-2 text-sm font-black",
+                              r.metro_order_number
+                                ? "border-black bg-white text-black"
+                                : "border-red-800 bg-red-50 text-red-900",
+                            ].join(" ")}
+                            onClick={() => {
+                              setMetroEditing({ productId: r.productId, field: "metro_order_number" });
+                              setMetroDraft(r.metro_order_number ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            {r.metro_order_number?.trim() ? r.metro_order_number : "–"}
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        {editMetroUnit ? (
+                          <input
+                            className="ml-auto block h-10 w-24 rounded-xl border-2 border-black px-2 text-right text-sm font-black text-black"
+                            value={metroDraft}
+                            autoFocus
+                            onChange={(e) => setMetroDraft(e.target.value)}
+                            onBlur={() => void saveMetroEdit()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void saveMetroEdit();
+                              if (e.key === "Escape") setMetroEditing(null);
+                            }}
+                            disabled={metroSaveBusy}
+                            aria-label="Metro Einheit"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="ml-auto flex h-10 min-w-[5.5rem] items-center justify-end rounded-xl border-2 border-black bg-white px-2 text-sm font-black text-black"
+                            onClick={() => {
+                              setMetroEditing({ productId: r.productId, field: "metro_unit" });
+                              setMetroDraft(r.metro_unit ?? "");
+                            }}
+                            title="Klicken zum Bearbeiten"
+                          >
+                            {r.metro_unit?.trim() ? r.metro_unit : "–"}
                           </button>
                         )}
                       </td>
