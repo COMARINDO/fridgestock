@@ -787,20 +787,42 @@ export default function AdminOrdersPage() {
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-black text-black">Bestellübersicht</h1>
-        <p className="mt-1 text-sm text-black/65">
-          Platzerl melden Bedarf. Im Reiter <strong>Bedarf (zentral)</strong> wird daraus der
-          Bestellvorschlag für <strong>{RABENSTEIN_LAGER_NAME}</strong> berechnet (Total Bedarf −
-          Lager-Stock).
+        <p className="mt-2 text-sm font-black text-black/80">So gehst du vor:</p>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm text-black/70">
+          <li>
+            <strong className="text-black">Bedarf</strong> – Meldungen von Teich &amp; Filiale
+            ansehen und bei Bedarf anpassen.
+          </li>
+          <li>
+            <strong className="text-black">Zentrallager</strong> – Vorschlag aus Verbrauch &amp;
+            Bestand; Overrides und Metro-Felder möglich.
+          </li>
+          <li>
+            <strong className="text-black">{HOFSTETTEN_NAME}</strong> – lokaler Vorschlag &amp;
+            Overrides.
+          </li>
+          <li>
+            <strong className="text-black">{KIRCHBERG_NAME}</strong> – lokaler Vorschlag &amp;
+            Overrides.
+          </li>
+          <li>
+            <strong className="text-black">Gesamt</strong> – alles in einer Tabelle; Rabenstein aus
+            Meldungen, Hofstetten/Kirchberg aus Vorschlag.
+          </li>
+        </ol>
+        <p className="mt-3 text-xs font-black text-black/50">
+          Hinweis: Der KI-Schalter unten beeinflusst nur <strong>berechnete</strong> Vorschlagszahlen,
+          nicht die gemeldeten Bedarfe.
         </p>
       </div>
 
       {!busy && !err ? (
         <section className={`${adminReadSectionClass} mt-6`}>
-          <h2 className={adminSectionTitleClass}>Lesen</h2>
+          <h2 className={adminSectionTitleClass}>Bereiche wählen</h2>
           <p className="mt-1 text-sm font-black text-black/75">
-            Übersicht, Tabs und Tabellen – Kennzahlen ohne zentrale Schreibaktionen. In den anderen
-            Reitern: Overrides und Metro-Felder sind <strong>bearbeitbar</strong> (gelten als
-            Aktionen).
+            Unten die Reiter der Reihe nach – von Meldungen bis Gesamtprüfung. Tabellen sind
+            überwiegend <strong>Lesen</strong>; Zellen zum Bearbeiten (Overrides, Metro, Bedarf-Chips)
+            sind <strong>Aktionen</strong>.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -815,7 +837,7 @@ export default function AdminOrdersPage() {
               {useAi ? "KI Prognose aktiv" : "Klassische Berechnung"}
             </button>
             <span className="text-xs font-black text-black/50">
-              (Fallback: wenn keine KI-Daten vorhanden sind, wird klassisch gerechnet)
+              Ohne KI-Daten: gleiche Logik wie „klassisch“.
             </span>
           </div>
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
@@ -823,36 +845,41 @@ export default function AdminOrdersPage() {
             type="button"
             className={`${tabBtn} ${activeTab === "demand" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("demand")}
+            title="Schritt 1: Gemeldeter Bedarf (Teich & Filiale)"
           >
-            Bedarf (zentral)
+            1 · Bedarf
           </button>
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "central" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("central")}
+            title={`Schritt 2: Vorschlag ${RABENSTEIN_LAGER_NAME} + ${TEICH_NAME} (Verbrauch)`}
           >
-            {RABENSTEIN_LAGER_NAME} + {TEICH_NAME}
+            2 · Zentrallager
           </button>
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "hofstetten" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("hofstetten")}
+            title={`Schritt 3: ${HOFSTETTEN_NAME}`}
           >
-            {HOFSTETTEN_NAME}
+            3 · {HOFSTETTEN_NAME}
           </button>
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "kirchberg" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("kirchberg")}
+            title={`Schritt 4: ${KIRCHBERG_NAME}`}
           >
-            {KIRCHBERG_NAME}
+            4 · {KIRCHBERG_NAME}
           </button>
           <button
             type="button"
             className={`${tabBtn} ${activeTab === "gesamt" ? tabBtnActive : tabBtnIdle}`}
             onClick={() => setActiveTab("gesamt")}
+            title="Schritt 5: Summen prüfen vor der Bestellung"
           >
-            Gesamt
+            5 · Gesamt
           </button>
         </div>
         </section>
@@ -897,10 +924,10 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "demand" && rabensteinId ? (
         <>
           <section className={`${adminReadSectionClass} mt-6`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Bedarf (zentral) – Lesen</h3>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Schritt 1 · Bedarf – Lesen</h3>
             <p className="mt-1 text-sm font-black text-black/70">
               Offene Meldungen: <strong>{openRequests.length}</strong>. Chips bearbeiten oder löschen
-              sind <strong>Aktionen</strong> (siehe Bereich unten bei Bedarf).
+              sind <strong>Aktionen</strong> (Bereich „Aktionen“ unten für Runden-Abschluss).
             </p>
 
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
@@ -1062,10 +1089,11 @@ export default function AdminOrdersPage() {
           </section>
 
           <section className={`${adminActionSectionClass} mt-4`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Bedarf (zentral) – Aktionen</h3>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Schritt 1 · Bedarf – Aktionen</h3>
             <p className="mt-1 text-xs font-black text-amber-950/90">
-              Hier werden Meldungen gelöscht oder die Bestellrunde abgeschlossen. Nicht rückgängig
-              ohne Datenbank-Backup.
+              <strong>Alle Meldungen löschen</strong> entfernt offene Zeilen dauerhaft.{" "}
+              <strong>Meldungen abschließen</strong> markiert sie nur als verarbeitet (kein Versand
+              an Metro/Lieferanten – nur Status in der App).
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
@@ -1074,7 +1102,7 @@ export default function AdminOrdersPage() {
                 className={adminDangerButtonLgClass}
                 onClick={async () => {
                   const ok = window.confirm(
-                    `Alle ${openRequests.length} offenen Bedarfsmeldungen wirklich zurücksetzen? Das kann nicht rückgängig gemacht werden.`
+                    `Alle ${openRequests.length} offenen Meldungen unwiderruflich löschen?`
                   );
                   if (!ok) return;
                   setResetBusy(true);
@@ -1082,16 +1110,16 @@ export default function AdminOrdersPage() {
                   setErr(null);
                   try {
                     const removed = await deleteAllOpenOrderRequests();
-                    setPlaceMsg(`Bedarf zurückgesetzt. Entfernt: ${removed}`);
+                    setPlaceMsg(`Gelöscht: ${removed} Meldung(en).`);
                     await reload();
                   } catch (e: unknown) {
-                    setErr(errorMessage(e, "Bedarf konnte nicht zurückgesetzt werden."));
+                    setErr(errorMessage(e, "Meldungen konnten nicht gelöscht werden."));
                   } finally {
                     setResetBusy(false);
                   }
                 }}
               >
-                {resetBusy ? "Setze zurück…" : "Bedarf zurücksetzen"}
+                {resetBusy ? "Lösche…" : "Alle Meldungen löschen"}
               </button>
               <button
                 type="button"
@@ -1106,16 +1134,18 @@ export default function AdminOrdersPage() {
                     const res = await processOpenOrderRequests({
                       adminCode: code,
                     });
-                    setPlaceMsg(`Bestellung platziert. Verarbeitet: ${res.processedRows}`);
+                    setPlaceMsg(
+                      `Abgeschlossen: ${res.processedRows} Meldung(en) als verarbeitet markiert (kein Metro-Versand).`
+                    );
                     await reload();
                   } catch (e: unknown) {
-                    setErr(errorMessage(e, "Konnte Bestellung nicht platzieren."));
+                    setErr(errorMessage(e, "Meldungen konnten nicht abgeschlossen werden."));
                   } finally {
                     setPlaceBusy(false);
                   }
                 }}
               >
-                {placeBusy ? "Plaziere…" : "Place order"}
+                {placeBusy ? "Schließe ab…" : "Meldungen abschließen"}
               </button>
             </div>
           </section>
@@ -1124,7 +1154,15 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
-          <section className="mt-8 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+          <div className={`${adminReadSectionClass} mt-6`}>
+            <p className={adminSectionTitleClass}>Schritt 2 · Zentrallager</p>
+            <p className="mt-2 text-sm font-black text-black/75">
+              Berechneter Bedarf für das Lager aus Verbrauch ({TEICH_NAME} + {RABENSTEIN_FILIALE_NAME})
+              und Beständen. Klick auf die Bestellmenge: manueller Override (*). Metro-Felder
+              bearbeiten wirkt auf alle Tabs.
+            </p>
+          </div>
+          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
@@ -1352,7 +1390,14 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "hofstetten" && hofstettenId ? (
         <>
-          <section className="mt-8 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+          <div className={`${adminReadSectionClass} mt-6`}>
+            <p className={adminSectionTitleClass}>Schritt 3 · {HOFSTETTEN_NAME}</p>
+            <p className="mt-2 text-sm font-black text-black/75">
+              Lokaler Vorschlag aus Bestand und 7-Tage-Verbrauch; Spalte „Bestellen“ ist überschreibbar
+              (* = manuell).
+            </p>
+          </div>
+          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[520px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
@@ -1524,7 +1569,13 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "kirchberg" && kirchbergId ? (
         <>
-          <section className="mt-8 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+          <div className={`${adminReadSectionClass} mt-6`}>
+            <p className={adminSectionTitleClass}>Schritt 4 · {KIRCHBERG_NAME}</p>
+            <p className="mt-2 text-sm font-black text-black/75">
+              Wie Hofstetten: Vorschlag für dieses Platzerl, optional manuell anpassen.
+            </p>
+          </div>
+          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[520px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
@@ -1696,12 +1747,15 @@ export default function AdminOrdersPage() {
 
       {!busy && !err && activeTab === "gesamt" ? (
         <>
-          <p className="mt-6 text-xs font-black text-black/55">
-            Alle Produkte; Bestellung ist die Summe aus zentral + Hofstetten + Kirchberg. Zentral (
-            {RABENSTEIN_LAGER_NAME}): Bedarfsmeldung {TEICH_NAME} + {RABENSTEIN_FILIALE_NAME} −
-            Lagerbestand; bei negativem Stück-Saldo mindestens 1 Einheit, sonst Aufteilung nach Stück
-            pro Einheit (min_quantity).
-          </p>
+          <div className={`${adminReadSectionClass} mt-6`}>
+            <p className={adminSectionTitleClass}>Schritt 5 · Gesamt (Check vor der Bestellung)</p>
+            <p className="mt-2 text-sm font-black text-black/75">
+              Eine Zeile pro Produkt: Summe aus Zentrallager (Meldungen Teich + Filiale minus
+              Lagerbestand, in Einheiten nach <code className="text-xs">min_quantity</code>) plus{" "}
+              {HOFSTETTEN_NAME} plus {KIRCHBERG_NAME}. Hier prüfen, ob Metro-Nr. und Mengen stimmen –
+              die App bestellt nicht automatisch bei Metro.
+            </p>
+          </div>
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
