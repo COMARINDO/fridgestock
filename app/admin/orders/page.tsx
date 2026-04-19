@@ -917,25 +917,31 @@ function AdminOrdersPageContent() {
           <section className="mt-6 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black tabular-nums">
+                <tr className="border-b-2 border-black">
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Produkt
+                  </th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Bedarf 7d
                     <br />
                     <span className="text-[11px] font-black text-black/55">Stück</span>
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Bestellen
                     <br />
                     <span className="text-[11px] font-black text-black/55">Einheiten</span>
                   </th>
-                  <th className="p-3 text-right font-black text-black">Metro Nr</th>
-                  <th className="p-3 text-right font-black text-black">Einheit</th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Metro Nr
+                  </th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Einheit
+                  </th>
                 </tr>
               </thead>
               <tbody>
