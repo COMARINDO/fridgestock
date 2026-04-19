@@ -87,8 +87,6 @@ type CentralRowModel = {
   metro_order_number: string | null;
   metro_unit: string | null;
   stockRabenstein: number;
-  stockTeich: number;
-  stockFiliale: number;
   /** Verbrauch 7 Tage (Stück): Teich + Rabenstein-Filiale (Planungsgröße). */
   bedarf7dStück: number;
   /** Meldungen (Stück), Teich */
@@ -269,8 +267,6 @@ export default function AdminOrdersPage() {
 
     for (const p of products) {
       const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
-      const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
-      const stockFiliale = fId ? (inventoryQty[fId]?.[p.id] ?? 0) : 0;
 
       const usageTeich7 = tId
         ? Math.max(0, Math.round(usageByLoc[tId]?.[p.id] ?? 0))
@@ -309,8 +305,6 @@ export default function AdminOrdersPage() {
         demandTeich > 0 ||
         demandOther > 0 ||
         stockRab > 0 ||
-        stockTeich > 0 ||
-        stockFiliale > 0 ||
         overridden ||
         calculatedOrder > 0 ||
         displayOrder > 0;
@@ -322,8 +316,6 @@ export default function AdminOrdersPage() {
         metro_order_number: p.metro_order_number ?? null,
         metro_unit: p.metro_unit ?? null,
         stockRabenstein: stockRab,
-        stockTeich,
-        stockFiliale,
         bedarf7dStück,
         demandTeich,
         demandOther,
@@ -1009,7 +1001,7 @@ export default function AdminOrdersPage() {
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[780px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black bg-black/[0.03]">
                   <th className="p-3 font-black text-black">Produkt</th>
@@ -1034,16 +1026,6 @@ export default function AdminOrdersPage() {
                     Sonstige
                     <br />
                     <span className="text-[11px] font-black text-black/55">Meldungen</span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    {TEICH_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Bestand</span>
-                  </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_FILIALE_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
                     Bestellen
@@ -1077,9 +1059,10 @@ export default function AdminOrdersPage() {
                           {" · "}
                           {r.piecesPerOrderUnit} Stück/Einheit
                           {". "}
-                          {r.deltaStück < 0 ? (
+                          {r.deltaStück <= 0 ? (
                             <>
-                              Δ &lt; 0 → <strong className="text-black">min. 1 Einheit</strong> (feste Regel).
+                              Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
+                              Lagerbestand).
                             </>
                           ) : (
                             <>
@@ -1176,32 +1159,6 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
                         {r.demandOther}
-                      </td>
-                      <td
-                        className={[
-                          "p-3 font-black tabular-nums",
-                          r.stockTeich < 0 ? "text-red-800" : "text-black/80",
-                        ].join(" ")}
-                      >
-                        {r.stockTeich}
-                        {r.stockTeich < 0 ? (
-                          <span className="ml-2 text-[11px] font-black text-red-800/80">
-                            Backorder
-                          </span>
-                        ) : null}
-                      </td>
-                      <td
-                        className={[
-                          "p-3 font-black tabular-nums",
-                          r.stockFiliale < 0 ? "text-red-800" : "text-black/80",
-                        ].join(" ")}
-                      >
-                        {r.stockFiliale}
-                        {r.stockFiliale < 0 ? (
-                          <span className="ml-2 text-[11px] font-black text-red-800/80">
-                            Backorder
-                          </span>
-                        ) : null}
                       </td>
                       <td className="p-3">
                         {isEd ? (
