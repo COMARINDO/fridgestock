@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
+import { useOrderReservePct } from "@/lib/useOrderReservePct";
 import {
   archiveOrderForLocation,
   confirmSubmittedOrderDelivery,
@@ -25,8 +26,10 @@ import {
   upsertOrderOverride,
 } from "@/lib/db";
 import {
+  applyOrderReservePct,
   computeLocalOutletOrder,
   computeRabensteinGesamtOrderFromDemandReports,
+  ORDER_RESERVE_PCT_MAX,
   piecesPerOrderUnitFromProductFields,
 } from "@/lib/orderSuggestions";
 import {
@@ -126,6 +129,8 @@ type CentralRowModel = {
   deltaStück: number;
   /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
+  /** Vorschlag OHNE Reserve-Aufschlag (für Formel-Anzeige). */
+  calculatedOrderBaseline: number;
   calculatedOrder: number;
   displayOrder: number;
   overridden: boolean;
@@ -155,6 +160,7 @@ function AdminOrdersPageContent() {
 
   const [useAi] = useAiConsumptionToggle();
   const [showFormula, setShowFormula] = useOrderFormulaToggle();
+  const [reservePct, setReservePct] = useOrderReservePct();
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [openRequests, setOpenRequests] = useState<
@@ -333,12 +339,13 @@ function AdminOrdersPageContent() {
         metro_unit: p.metro_unit,
       });
       const deltaStück = demandTeich + demandOther - stockRab;
-      const calculatedOrder = computeRabensteinGesamtOrderFromDemandReports({
+      const calculatedOrderRaw = computeRabensteinGesamtOrderFromDemandReports({
         demandTeich,
         demandFiliale: demandOther,
         stockRabenstein: stockRab,
         piecesPerOrderUnit: piecesPerUnit,
       });
+      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
 
       const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
       const overridden = ov !== undefined;
@@ -364,6 +371,7 @@ function AdminOrdersPageContent() {
         demandOther,
         deltaStück,
         piecesPerOrderUnit: piecesPerUnit,
+        calculatedOrderBaseline: calculatedOrderRaw,
         calculatedOrder,
         displayOrder,
         overridden,
@@ -380,6 +388,7 @@ function AdminOrdersPageContent() {
     rabensteinId,
     teichId,
     filialeId,
+    reservePct,
   ]);
 
   const demandRows = useMemo(() => {
@@ -436,11 +445,12 @@ function AdminOrdersPageContent() {
         Math.round(usageByLoc[hofstettenId]?.[p.id] ?? 0)
       );
       const stock = inventoryQty[hofstettenId]?.[p.id] ?? 0;
-      const { orderQuantity: calculatedOrder } = computeLocalOutletOrder({
+      const { orderQuantity: calculatedOrderRaw } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
         daysCovered: daysCoveredByLoc[hofstettenId]?.[p.id] ?? 0,
       });
+      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
       const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
@@ -481,6 +491,7 @@ function AdminOrdersPageContent() {
     inventoryQty,
     overrideByKey,
     hofstettenId,
+    reservePct,
   ]);
 
   const kirchbergRows = useMemo(() => {
@@ -492,11 +503,12 @@ function AdminOrdersPageContent() {
         Math.round(usageByLoc[kirchbergId]?.[p.id] ?? 0)
       );
       const stock = inventoryQty[kirchbergId]?.[p.id] ?? 0;
-      const { orderQuantity: calculatedOrder } = computeLocalOutletOrder({
+      const { orderQuantity: calculatedOrderRaw } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
         daysCovered: daysCoveredByLoc[kirchbergId]?.[p.id] ?? 0,
       });
+      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
       const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
@@ -530,7 +542,15 @@ function AdminOrdersPageContent() {
     }
     list.sort((a, b) => a.name.localeCompare(b.name, "de"));
     return list;
-  }, [products, usageByLoc, daysCoveredByLoc, inventoryQty, overrideByKey, kirchbergId]);
+  }, [
+    products,
+    usageByLoc,
+    daysCoveredByLoc,
+    inventoryQty,
+    overrideByKey,
+    kirchbergId,
+    reservePct,
+  ]);
 
   const sumCentral = useMemo(
     () => centralRows.reduce((s, r) => s + r.displayOrder, 0),
@@ -888,6 +908,42 @@ function AdminOrdersPageContent() {
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className={adminBadgeNeutralClass}>{tabTitle}</span>
+            {activeTab === "central" ||
+            activeTab === "hofstetten" ||
+            activeTab === "kirchberg" ? (
+              <label
+                className={[
+                  "flex h-9 items-center gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors",
+                  reservePct > 0
+                    ? "border-emerald-600/30 bg-emerald-50 text-emerald-800"
+                    : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
+                ].join(" ")}
+                title={`Addiert zu allen Bestellvorschlägen einen prozentualen Aufschlag (0–${ORDER_RESERVE_PCT_MAX} %). Aufgerundet. Overrides bleiben unberührt.`}
+              >
+                <span className="select-none">Reserve</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={ORDER_RESERVE_PCT_MAX}
+                  step={1}
+                  value={reservePct}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    setReservePct(Number.isFinite(n) ? n : 0);
+                  }}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className={[
+                    "h-6 w-12 rounded-md border bg-white px-1.5 text-right text-[12px] font-black text-black tabular-nums focus:outline-none focus:ring-2 focus:ring-black/20",
+                    reservePct > 0
+                      ? "border-emerald-600/40"
+                      : "border-black/15",
+                  ].join(" ")}
+                  aria-label="Reserve in Prozent"
+                />
+                <span className="select-none">%</span>
+              </label>
+            ) : null}
             {activeTab === "central" ? (
               <button
                 type="button"
@@ -1243,6 +1299,12 @@ function AdminOrdersPageContent() {
                               <>
                                 Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
                                 Lagerordarella).
+                              </>
+                            ) : reservePct > 0 ? (
+                              <>
+                                ⌈{r.deltaStück}÷{r.piecesPerOrderUnit}⌉ ={" "}
+                                {r.calculatedOrderBaseline} Einheit(en) · ⌈·(1+{reservePct}%)⌉ ={" "}
+                                <strong className="text-black">{r.calculatedOrder}</strong> Einheit(en).
                               </>
                             ) : (
                               <>

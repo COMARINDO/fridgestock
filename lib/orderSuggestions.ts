@@ -17,6 +17,25 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+/**
+ * Reserve-Aufschlag auf einen Bestellvorschlag.
+ * - value: berechnete Vorschlagsmenge (Stück oder Einheiten — Aufrufer entscheidet).
+ * - pct:   Prozentsatz (0..∞). 0/negativ/NaN → unverändert zurück.
+ * Rundung: Math.ceil, weil der Zweck der Reserve ist, eher drüber als drunter zu liegen.
+ * Negative Werte werden auf 0 geklammert.
+ */
+export function applyOrderReservePct(
+  value: number,
+  pct: number | null | undefined
+): number {
+  const base = Math.max(0, Number(value) || 0);
+  const r = Math.max(0, Number(pct) || 0);
+  if (r <= 0 || base <= 0) return Math.round(base);
+  return Math.ceil(base * (1 + r / 100));
+}
+
+export const ORDER_RESERVE_PCT_MAX = 100;
+
 function computeEarlyStageOrder(input: {
   usage7d: number;
   daysCovered: number | null | undefined; // 0..7 (or more; will be clamped)
