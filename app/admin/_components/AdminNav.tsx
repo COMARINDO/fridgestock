@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAdmin } from "@/app/admin-provider";
 import { HOFSTETTEN_NAME, KIRCHBERG_NAME } from "@/lib/locationConstants";
+import { useAdminNavExtrasToggle } from "@/lib/useAdminNavExtrasToggle";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 
 const navLinkBase =
@@ -154,6 +155,7 @@ export function AdminNav() {
   const router = useRouter();
   const { exitAdmin } = useAdmin();
   const onOrders = pathname === "/admin/orders" || pathname.startsWith("/admin/orders/");
+  const [showExtras, setShowExtras] = useAdminNavExtrasToggle();
 
   return (
     <aside
@@ -169,7 +171,9 @@ export function AdminNav() {
         </div>
       </div>
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4 pt-4 sm:px-4">
-        <NavBlock title="Monitoring" items={monitoring} pathname={pathname} />
+        {showExtras ? (
+          <NavBlock title="Monitoring" items={monitoring} pathname={pathname} />
+        ) : null}
         <NavBlock
           title="Aktionen"
           items={actions}
@@ -186,8 +190,41 @@ export function AdminNav() {
             </>
           }
         />
-        <NavBlock title="Debug · Historie" items={debug} pathname={pathname} />
-        <div className="mt-auto border-t border-black/10 pt-3">
+        {showExtras ? (
+          <NavBlock title="Debug · Historie" items={debug} pathname={pathname} />
+        ) : null}
+        <div className="mt-auto flex flex-col gap-2 border-t border-black/10 pt-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showExtras}
+            onClick={() => setShowExtras((v) => !v)}
+            className={[
+              "flex h-9 w-full items-center justify-between gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors active:scale-[0.99]",
+              showExtras
+                ? "border-black/15 bg-black/[0.04] text-black"
+                : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
+            ].join(" ")}
+            title="Monitoring & Debug ein-/ausblenden"
+          >
+            <span className="truncate">Monitoring &amp; Debug</span>
+            <span
+              className={[
+                "inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
+                showExtras
+                  ? "border-emerald-700/30 bg-emerald-600"
+                  : "border-black/15 bg-black/10",
+              ].join(" ")}
+              aria-hidden
+            >
+              <span
+                className={[
+                  "ml-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                  showExtras ? "translate-x-4" : "translate-x-0",
+                ].join(" ")}
+              />
+            </span>
+          </button>
           <button
             type="button"
             className="h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"
