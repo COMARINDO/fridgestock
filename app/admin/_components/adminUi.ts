@@ -103,17 +103,23 @@ export const adminBadgeDangerClass =
 
 /* Tabellen ------------------------------------------------------------- */
 
-/** Container um eine Tabelle: weiße Karte mit feinem Rahmen. */
+/**
+ * Container um eine Tabelle: weiße Karte mit feinem Rahmen.
+ * Wichtig: KEIN `overflow-hidden`/`overflow-auto` auf desktop, sonst bricht
+ * `position: sticky` für den Tabellenkopf. Auf mobile darf horizontal
+ * gescrollt werden (`overflow-x-auto`), das beeinträchtigt vertikales
+ * Sticky nicht.
+ */
 export const adminTableShellClass =
-  "rounded-2xl border border-black/10 bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.04)] overflow-hidden " +
-  "max-md:overflow-x-auto";
+  "rounded-2xl border border-black/10 bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.04)] " +
+  "max-md:overflow-x-auto md:overflow-clip";
 
 /** Tabelle selber */
 export const adminTableClass = "w-full text-left text-sm";
 
 /** Sticky-Kopfzelle unter der TopBar (72px). */
 export const adminTableStickyHeadCellClass =
-  "sticky top-[72px] z-30 bg-zinc-50/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80 " +
+  "sticky top-[72px] z-30 bg-zinc-50 " +
   "px-3 py-2.5 text-left text-[12px] font-black text-black/65 whitespace-nowrap " +
   "border-b border-black/10";
 
