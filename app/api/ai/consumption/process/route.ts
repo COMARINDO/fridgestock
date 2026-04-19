@@ -14,10 +14,23 @@ type JobRow = {
 };
 
 function requireSecret(req: Request) {
-  const want = process.env.AI_CONSUMPTION_CRON_SECRET;
-  if (!want) throw new Error("Missing AI_CONSUMPTION_CRON_SECRET env var.");
-  const got = req.headers.get("x-ai-cron-secret") ?? "";
-  if (got !== want) throw new Error("Unauthorized");
+  // Two acceptable auth modes:
+  //   1) Custom header `x-ai-cron-secret` matches AI_CONSUMPTION_CRON_SECRET
+  //      (used for manual/local triggers).
+  //   2) Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` automatically
+  //      when `CRON_SECRET` is set as a project env var.
+  const customWant = process.env.AI_CONSUMPTION_CRON_SECRET ?? "";
+  const customGot = req.headers.get("x-ai-cron-secret") ?? "";
+  if (customWant && customGot && customGot === customWant) return;
+
+  const vercelWant = process.env.CRON_SECRET ?? "";
+  const auth = req.headers.get("authorization") ?? "";
+  if (vercelWant && auth === `Bearer ${vercelWant}`) return;
+
+  if (!customWant && !vercelWant) {
+    throw new Error("Missing AI_CONSUMPTION_CRON_SECRET / CRON_SECRET env var.");
+  }
+  throw new Error("Unauthorized");
 }
 
 async function callOpenAI(args: {
@@ -327,4 +340,12 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, error: msg }, { status: msg === "Unauthorized" ? 401 : 500 });
   }
 }
+
+// Vercel Cron triggers via GET — delegate to POST.
+export async function GET(req: Request) {
+  return POST(req);
+}
+
+// Cron jobs may need a bit of headroom when many pending rows exist.
+export const maxDuration = 60;
 

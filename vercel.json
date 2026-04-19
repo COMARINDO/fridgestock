@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/ai/consumption/process?limit=50",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
