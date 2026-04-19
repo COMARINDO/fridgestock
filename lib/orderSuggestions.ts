@@ -124,9 +124,9 @@ export function piecesPerOrderUnitFromProductFields(input: {
 }
 
 /**
- * Zentrallager Rabenstein: aus Bedarfsmeldungen Teich + übrige Meldungen (ohne Zentrallager), abzüglich Lagerbestand.
- * delta (Stück) = Bedarf Teich + Bedarf „ohne Teich/Lager“ − Bestand Rabenstein Lager.
- * − delta ≤ 0 → 0 Bestelleinheiten (kein Nachbestellen, wenn Meldungen den Bestand nicht übersteigen).
+ * Zentrallager Rabenstein: aus Bedarfsmeldungen Teich + übrige Meldungen (ohne Zentrallager), abzüglich Lagerordarella.
+ * delta (Stück) = Bedarf Teich + Bedarf „ohne Teich/Lager“ − Ordarella Rabenstein Lager.
+ * − delta ≤ 0 → 0 Bestelleinheiten (kein Nachbestellen, wenn Meldungen die Ordarella nicht übersteigen).
  * − delta > 0 → ceil(delta / Stück pro Einheit); Stück/Einheit siehe piecesPerOrderUnitFromProductFields.
  */
 export function computeRabensteinGesamtOrderFromDemandReports(input: {
@@ -149,7 +149,7 @@ export function computeRabensteinGesamtOrderFromDemandReports(input: {
   return Math.ceil(delta / pack);
 }
 
-/** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch 7d − Bestand)). */
+/** Ein Platzerl mit eigener Ordarella: max(0, round(Verbrauch 7d − Ordarella)). */
 export function computeLocalOutletOrder(input: {
   usage7d: number;
   stock: number;
@@ -164,7 +164,7 @@ export function computeLocalOutletOrder(input: {
 }
 
 /**
- * Bestellvorschlag aus 7-Tage-Verbrauch und zuletzt gezähltem Bestand (Snapshot).
+ * Bestellvorschlag aus 7-Tage-Verbrauch und zuletzt gezählter Ordarella (Snapshot).
  * order_quantity = max(0, usage_7d - estimated_stock)
  */
 

@@ -5,17 +5,22 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import {
+  archiveOrderForLocation,
+  confirmSubmittedOrderDelivery,
   deleteAllOpenOrderRequests,
   deleteOpenOrderRequest,
+  deleteSubmittedOrder,
   getWeeklyUsageWithCoverageByLocationProduct,
   listInventoryAll,
   listLocations,
   listOpenOrderRequests,
   listOrderOverrides,
   listProducts,
+  listSubmittedOrders,
   processOpenOrderRequests,
   updateOpenOrderRequestQuantity,
   updateProductMetroData,
+  updateSubmittedOrderItems,
   upsertOrderOverride,
 } from "@/lib/db";
 import {
@@ -31,12 +36,13 @@ import {
   RABENSTEIN_LAGER_NAME,
   TEICH_NAME,
 } from "@/lib/locationConstants";
-import type { Location, OrderOverrideRow, Product } from "@/lib/types";
+import type { Location, OrderOverrideRow, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
 import {
   adminActionSectionClass,
   adminBadgeNeutralClass,
+  adminBadgeWarnClass,
   adminBannerErrorClass,
   adminBannerInfoClass,
   adminBannerSuccessClass,
@@ -67,7 +73,23 @@ function orderPiecesToUnits(pieces: number, pack: number): number {
   return Math.ceil(n / pk);
 }
 
-type TabId = "demand" | "central" | "hofstetten" | "kirchberg";
+type TabId = "demand" | "central" | "hofstetten" | "kirchberg" | "delivery";
+
+function fmtTs(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
 
 type DemandBreakdownItem = {
   id: string;
@@ -99,7 +121,7 @@ type CentralRowModel = {
   demandTeich: number;
   /** Meldungen (Stück), außer Teich & Zentrallager (im UI: Rabenstein Geschäft + ggf. weitere Melder) */
   demandOther: number;
-  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. (ohne Lager) − Bestand Lager Rabenstein */
+  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. (ohne Lager) − Ordarella Lager Rabenstein */
   deltaStück: number;
   /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
@@ -154,7 +176,8 @@ function AdminOrdersPageContent() {
     tabParam === "central" ||
     tabParam === "hofstetten" ||
     tabParam === "kirchberg" ||
-    tabParam === "demand"
+    tabParam === "demand" ||
+    tabParam === "delivery"
       ? tabParam
       : "demand";
 
@@ -176,6 +199,13 @@ function AdminOrdersPageContent() {
   const [demandEditingId, setDemandEditingId] = useState<string | null>(null);
   const [demandEditDraft, setDemandEditDraft] = useState("");
   const [demandBusyId, setDemandBusyId] = useState<string | null>(null);
+
+  const [archiveBusy, setArchiveBusy] = useState<TabId | null>(null);
+  const [openDeliveries, setOpenDeliveries] = useState<SubmittedOrderRow[]>([]);
+  const [deliveryDrafts, setDeliveryDrafts] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [deliveryBusyId, setDeliveryBusyId] = useState<string | null>(null);
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -205,13 +235,14 @@ function AdminOrdersPageContent() {
 
   const reload = useCallback(async () => {
     setErr(null);
-    const [locs, prods, usageMeta, invAll, ovs, reqs] = await Promise.all([
+    const [locs, prods, usageMeta, invAll, ovs, reqs, allDeliveries] = await Promise.all([
       listLocations(),
       listProducts(),
       getWeeklyUsageWithCoverageByLocationProduct({ days: 7, useAi }),
       listInventoryAll(),
       listOrderOverrides(),
       listOpenOrderRequests(),
+      listSubmittedOrders({ limit: 200 }),
     ]);
 
     const invMap: Record<string, Record<string, number>> = {};
@@ -237,6 +268,12 @@ function AdminOrdersPageContent() {
         ),
       }))
     );
+    setOpenDeliveries(
+      (Array.isArray(allDeliveries) ? allDeliveries : []).filter(
+        (o) => !o.delivered_at
+      )
+    );
+    setDeliveryDrafts({});
   }, [useAi]);
 
   useEffect(() => {
@@ -631,6 +668,179 @@ function AdminOrdersPageContent() {
     }
   }
 
+  type ArchiveTab = "central" | "hofstetten" | "kirchberg";
+
+  async function archiveOrderForTab(tab: ArchiveTab) {
+    let locationId: string | null = null;
+    let label = "";
+    let items: Array<{ product_id: string; quantity: number }> = [];
+    let closeOpenRequests = false;
+
+    if (tab === "central") {
+      if (!rabensteinId) return;
+      locationId = rabensteinId;
+      label = RABENSTEIN_LAGER_NAME;
+      closeOpenRequests = true;
+      items = centralRows
+        .filter((r) => r.displayOrder > 0)
+        .map((r) => ({
+          product_id: r.productId,
+          quantity: Math.max(0, r.displayOrder * r.piecesPerOrderUnit),
+        }));
+    } else if (tab === "hofstetten") {
+      if (!hofstettenId) return;
+      locationId = hofstettenId;
+      label = HOFSTETTEN_NAME;
+      items = hofstettenRows
+        .filter((r) => r.displayOrder > 0)
+        .map((r) => ({
+          product_id: r.productId,
+          quantity: Math.max(0, r.displayOrder),
+        }));
+    } else {
+      if (!kirchbergId) return;
+      locationId = kirchbergId;
+      label = KIRCHBERG_NAME;
+      items = kirchbergRows
+        .filter((r) => r.displayOrder > 0)
+        .map((r) => ({
+          product_id: r.productId,
+          quantity: Math.max(0, r.displayOrder),
+        }));
+    }
+
+    items = items.filter((it) => it.quantity > 0 && it.product_id);
+    if (!locationId || items.length === 0) {
+      setErr("Keine Positionen zum Archivieren.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Bestellung für „${label}" mit ${items.length} Position(en) archivieren?` +
+        (closeOpenRequests
+          ? "\n\nOffene Bedarfsmeldungen werden gleichzeitig als verarbeitet markiert."
+          : "")
+    );
+    if (!ok) return;
+    const code = window.prompt("Admin-Code eingeben") ?? "";
+    if (!code.trim()) return;
+
+    setArchiveBusy(tab);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      const res = await archiveOrderForLocation({
+        locationId,
+        items,
+        closeOpenRequests,
+        adminCode: code,
+      });
+      setPlaceMsg(
+        `Bestellung archiviert: KW ${res.isoWeek}/${res.isoYear} · ${res.itemCount} Position(en)` +
+          (res.closedRequests > 0
+            ? ` · ${res.closedRequests} Meldung(en) abgeschlossen`
+            : "") +
+          ". Sobald die Lieferung kommt, im Tab „Lieferungen“ buchen."
+      );
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Bestellung konnte nicht archiviert werden."));
+    } finally {
+      setArchiveBusy(null);
+    }
+  }
+
+  function getDeliveryDraft(orderId: string, productId: string, fallback: number): string {
+    const map = deliveryDrafts[orderId];
+    if (map && Object.prototype.hasOwnProperty.call(map, productId)) {
+      return map[productId] ?? "";
+    }
+    return String(Math.max(0, Math.floor(fallback)));
+  }
+
+  function setDeliveryDraft(orderId: string, productId: string, value: string) {
+    setDeliveryDrafts((cur) => ({
+      ...cur,
+      [orderId]: {
+        ...(cur[orderId] ?? {}),
+        [productId]: value.replace(/[^\d]/g, ""),
+      },
+    }));
+  }
+
+  function deliveryItemsForOrder(o: SubmittedOrderRow): Array<{
+    product_id: string;
+    quantity: number;
+  }> {
+    return (o.items ?? []).map((it) => {
+      const raw = getDeliveryDraft(o.id, it.product_id, Number(it.quantity ?? 0));
+      const n = Math.max(0, Math.floor(Number(raw) || 0));
+      return { product_id: it.product_id, quantity: n };
+    });
+  }
+
+  async function bookDelivery(o: SubmittedOrderRow) {
+    const items = deliveryItemsForOrder(o);
+    const totalPositions = items.filter((it) => it.quantity > 0).length;
+    const ok = window.confirm(
+      `Lieferung für KW ${o.iso_week} (${o.iso_year}) buchen?\n\n` +
+        `Ordarella wird mit ${totalPositions} Position(en) erhöht. Mengen ohne Wert bleiben aus der Ordarella.`
+    );
+    if (!ok) return;
+    const code = window.prompt("Admin-Code eingeben") ?? "";
+    if (!code.trim()) return;
+
+    setDeliveryBusyId(o.id);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      // 1) Persist potentially edited items so the booking uses the correct quantities.
+      await updateSubmittedOrderItems({
+        orderId: o.id,
+        items,
+        adminCode: code,
+      });
+      // 2) Confirm delivery (applies items as positive deltas to inventory).
+      const res = await confirmSubmittedOrderDelivery({ id: o.id, adminCode: code });
+      setPlaceMsg(
+        `Lieferung gebucht: ${res.appliedItems} Position(en) eingebucht.`
+      );
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Lieferung konnte nicht gebucht werden."));
+    } finally {
+      setDeliveryBusyId(null);
+    }
+  }
+
+  async function deleteDelivery(o: SubmittedOrderRow) {
+    const ok = window.confirm(
+      `Bestellung KW ${o.iso_week}/${o.iso_year} unwiderruflich löschen?`
+    );
+    if (!ok) return;
+    setDeliveryBusyId(o.id);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      await deleteSubmittedOrder(o.id);
+      setPlaceMsg("Bestellung gelöscht.");
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Bestellung konnte nicht gelöscht werden."));
+    } finally {
+      setDeliveryBusyId(null);
+    }
+  }
+
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products]
+  );
+  const locNameById = useMemo(
+    () => new Map(locations.map((l) => [l.id, l.name])),
+    [locations]
+  );
+
   if (!adminHydrated) {
     return (
       <main className="w-full px-4 py-8 text-center text-black">
@@ -654,14 +864,18 @@ function AdminOrdersPageContent() {
         ? "Rabenstein · Lager"
         : activeTab === "hofstetten"
           ? `Schritt 2 · ${HOFSTETTEN_NAME}`
-          : `Schritt 3 · ${KIRCHBERG_NAME}`;
+          : activeTab === "kirchberg"
+            ? `Schritt 3 · ${KIRCHBERG_NAME}`
+            : `Schritt 4 · Lieferungen`;
 
   const tabDescription =
     activeTab === "demand"
       ? "Offene Bedarfsmeldungen aus den Platzerln. Chips bearbeiten oder löschen — abschließen unten."
       : activeTab === "central"
-        ? "Vorschlag fürs Zentrallager. Δ Stück = Meldungen − Bestand, geteilt durch Stück/Einheit."
-        : "Eigene Bestellung für dieses Platzerl. Klick auf die Menge: Override (*).";
+        ? "Vorschlag fürs Zentrallager. Bei „Bestellung archivieren“ entsteht eine offene Lieferung im Tab 4."
+        : activeTab === "hofstetten" || activeTab === "kirchberg"
+          ? "Eigene Bestellung für dieses Platzerl. „Bestellung archivieren“ legt eine offene Lieferung an."
+          : "Offene Lieferungen. Mengen ggf. anpassen (Teil-Lieferung) und buchen — Ordarella wird automatisch erhöht.";
 
   return (
     <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
@@ -723,7 +937,7 @@ function AdminOrdersPageContent() {
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Gesamt</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    {RABENSTEIN_LAGER_NAME} · Bestand
+                    {RABENSTEIN_LAGER_NAME} · Ordarella
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Vorschlag</th>
                   <th className={`${adminTableStickyHeadCellClass}`}>Metro</th>
@@ -934,7 +1148,7 @@ function AdminOrdersPageContent() {
                   }
                 }}
               >
-                {placeBusy ? "Schließe ab…" : "Meldungen abschließen"}
+                {placeBusy ? "Schließe ab…" : "Meldungen archivieren (ohne Bestellung)"}
               </button>
             </div>
           </section>
@@ -952,7 +1166,7 @@ function AdminOrdersPageContent() {
                     Bedarf 7d · Stück
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    {RABENSTEIN_LAGER_NAME} · Bestand
+                    {RABENSTEIN_LAGER_NAME} · Ordarella
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bestellen · Einheiten
@@ -981,7 +1195,7 @@ function AdminOrdersPageContent() {
                           title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
                         >
                           Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
-                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} (
+                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Ordarella {RABENSTEIN_LAGER_NAME} (
                           {r.stockRabenstein}) ={" "}
                           <span className="text-black">{r.deltaStück}</span>
                           {" · "}
@@ -990,7 +1204,7 @@ function AdminOrdersPageContent() {
                           {r.deltaStück <= 0 ? (
                             <>
                               Δ ≤ 0 → <strong className="text-black">0</strong> Einheiten (Meldungen decken
-                              Lagerbestand).
+                              Lagerordarella).
                             </>
                           ) : (
                             <>
@@ -1138,9 +1352,22 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
-            Summe Einheiten ({RABENSTEIN_LAGER_NAME}):{" "}
-            <span className="font-black text-black tabular-nums">{sumCentral}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
+            <span>
+              Summe Einheiten ({RABENSTEIN_LAGER_NAME}):{" "}
+              <span className="font-black text-black tabular-nums">{sumCentral}</span>
+            </span>
+            <button
+              type="button"
+              disabled={archiveBusy !== null || sumCentral <= 0}
+              className={adminPrimaryButtonLgClass}
+              onClick={() => void archiveOrderForTab("central")}
+              title="Bestellung als offene Lieferung archivieren und Bedarfsmeldungen abschließen"
+            >
+              {archiveBusy === "central"
+                ? "Archiviere…"
+                : "Bestellung archivieren (→ Lieferungen)"}
+            </button>
           </div>
         </>
       ) : null}
@@ -1154,7 +1381,7 @@ function AdminOrdersPageContent() {
                   <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
                   <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
-                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Ordarella</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bedarf 7d · Stück
                   </th>
@@ -1315,9 +1542,22 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
-            Summe Einheiten ({HOFSTETTEN_NAME}):{" "}
-            <span className="font-black text-black tabular-nums">{sumHof}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
+            <span>
+              Summe Einheiten ({HOFSTETTEN_NAME}):{" "}
+              <span className="font-black text-black tabular-nums">{sumHof}</span>
+            </span>
+            <button
+              type="button"
+              disabled={archiveBusy !== null || sumHof <= 0}
+              className={adminPrimaryButtonLgClass}
+              onClick={() => void archiveOrderForTab("hofstetten")}
+              title="Bestellung als offene Lieferung archivieren"
+            >
+              {archiveBusy === "hofstetten"
+                ? "Archiviere…"
+                : "Bestellung archivieren (→ Lieferungen)"}
+            </button>
           </div>
         </>
       ) : null}
@@ -1331,7 +1571,7 @@ function AdminOrdersPageContent() {
                   <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
                   <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
-                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Ordarella</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bedarf 7d · Stück
                   </th>
@@ -1492,10 +1732,155 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
-            Summe Einheiten ({KIRCHBERG_NAME}):{" "}
-            <span className="font-black text-black tabular-nums">{sumKir}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
+            <span>
+              Summe Einheiten ({KIRCHBERG_NAME}):{" "}
+              <span className="font-black text-black tabular-nums">{sumKir}</span>
+            </span>
+            <button
+              type="button"
+              disabled={archiveBusy !== null || sumKir <= 0}
+              className={adminPrimaryButtonLgClass}
+              onClick={() => void archiveOrderForTab("kirchberg")}
+              title="Bestellung als offene Lieferung archivieren"
+            >
+              {archiveBusy === "kirchberg"
+                ? "Archiviere…"
+                : "Bestellung archivieren (→ Lieferungen)"}
+            </button>
           </div>
+        </>
+      ) : null}
+
+      {!busy && !err && activeTab === "delivery" ? (
+        <>
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm font-bold text-black/65">
+            <span className={adminBadgeNeutralClass}>
+              {openDeliveries.length} offene Lieferung(en)
+            </span>
+          </div>
+
+          {openDeliveries.length === 0 ? (
+            <div className={`${adminBannerInfoClass} mt-4`}>
+              Keine offenen Lieferungen. Eine Lieferung entsteht, wenn du in einem
+              der Bestelltabs „Bestellung archivieren“ klickst.
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-col gap-4">
+              {openDeliveries.map((o) => {
+                const locName = locNameById.get(o.location_id) ?? o.location_id;
+                const items = o.items ?? [];
+                const draftSum = deliveryItemsForOrder(o).reduce(
+                  (s, it) => s + it.quantity,
+                  0
+                );
+                const isBusy = deliveryBusyId === o.id;
+                return (
+                  <section key={o.id} className={adminTableShellClass}>
+                    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-black/10 bg-zinc-50 p-4">
+                      <div className="min-w-0">
+                        <div className={adminBadgeWarnClass}>offen</div>
+                        <div className="mt-1 text-base font-black text-black">
+                          {locName} · KW {o.iso_week}/{o.iso_year}
+                        </div>
+                        <div className="mt-0.5 text-xs font-bold text-black/55">
+                          archiviert: {fmtTs(o.created_at)} · {items.length} Position(en)
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          className={adminDangerButtonLgClass}
+                          onClick={() => void deleteDelivery(o)}
+                        >
+                          {isBusy ? "…" : "Löschen"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isBusy || draftSum <= 0}
+                          className={adminPrimaryButtonLgClass}
+                          onClick={() => void bookDelivery(o)}
+                          title="Mengen anwenden und Ordarella erhöhen"
+                        >
+                          {isBusy ? "Buche…" : "Lieferung buchen"}
+                        </button>
+                      </div>
+                    </header>
+
+                    <table className={`${adminTableClass} min-w-[520px]`}>
+                      <thead>
+                        <tr>
+                          <th className={`${adminTableStickyHeadCellClass} text-left`}>
+                            Produkt
+                          </th>
+                          <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                            Bestellt · Stück
+                          </th>
+                          <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                            Geliefert · Stück
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((it) => {
+                          const p = productById.get(it.product_id) ?? null;
+                          const label = p ? formatProductName(p) : it.product_id;
+                          const draft = getDeliveryDraft(
+                            o.id,
+                            it.product_id,
+                            Number(it.quantity ?? 0)
+                          );
+                          return (
+                            <tr
+                              key={it.product_id}
+                              className="border-b border-black/10 align-top"
+                            >
+                              <td className="p-3 font-black text-black max-w-[320px]">
+                                {label}
+                              </td>
+                              <td className="p-3 text-right font-bold tabular-nums text-black/70">
+                                {Math.max(0, Math.floor(Number(it.quantity) || 0))}
+                              </td>
+                              <td className="p-3 text-right">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  value={draft}
+                                  disabled={isBusy}
+                                  onChange={(e) =>
+                                    setDeliveryDraft(o.id, it.product_id, e.target.value)
+                                  }
+                                  className="w-20 rounded-lg border border-black/15 bg-white px-2 py-1 text-right text-base font-black tabular-nums text-black focus:border-black focus:outline-none"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {items.length === 0 ? (
+                          <tr>
+                            <td
+                              className="p-4 text-sm font-bold text-black/55"
+                              colSpan={3}
+                            >
+                              Keine Positionen.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                    <div className="border-t border-black/10 bg-zinc-50 p-3 text-right text-xs font-bold text-black/60">
+                      Summe geliefert (Stück):{" "}
+                      <span className="font-black text-black tabular-nums">
+                        {draftSum}
+                      </span>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
         </>
       ) : null}
 

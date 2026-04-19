@@ -820,7 +820,7 @@ function LocationInner() {
 
     const cur = quantitiesRef.current[productId] ?? 0;
     if (cur < d) {
-      setError("Nicht genug Bestand.");
+      setError("Nicht genug Ordarella.");
       return false;
     }
 
@@ -1554,7 +1554,7 @@ function LocationInner() {
                   className="w-full h-14 text-lg"
                   onClick={() => setScanMode("set")}
                 >
-                  Bestand setzen
+                  Ordarella setzen
                 </Button>
                 <ButtonSecondary
                   className="w-full h-14 text-lg"
@@ -1737,7 +1737,7 @@ function LocationInner() {
                       {m.zusatz?.trim() ? ` (${m.zusatz.trim()})` : ""}
                     </div>
                     <div className="text-xs font-black text-black/60 tabular-nums">
-                      letzter Bestand: {m.last_quantity}
+                      letzte Ordarella: {m.last_quantity}
                     </div>
                   </li>
                 ))}
@@ -1793,8 +1793,8 @@ function LocationInner() {
             </div>
 
             <p className="mt-2 text-sm text-black/60">
-              Die letzten fünf gespeicherten Bestände (neueste zuerst). Löschen
-              entfernt den Eintrag und stellt den Bestand auf den nächstälteren
+              Die letzten fünf gespeicherten Ordarellas (neueste zuerst). Löschen
+              entfernt den Eintrag und stellt die Ordarella auf den nächstälteren
               Stand zurück.
             </p>
 
@@ -1820,7 +1820,7 @@ function LocationInner() {
                 >
                   <div className="min-w-0">
                     <div className="text-lg font-black text-black tabular-nums">
-                      Bestand: {row.quantity}
+                      Ordarella: {row.quantity}
                     </div>
                     <div className="text-sm font-black text-black/60">
                       {formatHistoryTimestamp(row.timestamp)}

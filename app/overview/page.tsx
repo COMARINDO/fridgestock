@@ -609,10 +609,10 @@ function OverviewInner() {
                         ].join(" ")}
                         title={
                           sig === "ok"
-                            ? "Genug Bestand (≥ 7-Tage-Verbrauch)"
+                            ? "Genug Ordarella (≥ 7-Tage-Verbrauch)"
                             : sig === "low"
-                              ? "Niedrig: Bestand unter 7-Tage-Verbrauch"
-                              : "Kritisch: kein Bestand bei erwartetem Verbrauch"
+                              ? "Niedrig: Ordarella unter 7-Tage-Verbrauch"
+                              : "Kritisch: kein Ordarella bei erwartetem Verbrauch"
                         }
                       />
                       <div className="min-w-0">
@@ -634,7 +634,7 @@ function OverviewInner() {
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <div
                     className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
-                    title="Bestand (alle Platzerl)"
+                    title="Ordarella (alle Platzerl)"
                   >
                     {r.quantity}
                   </div>
@@ -661,7 +661,7 @@ function OverviewInner() {
                   </div>
                 </div>
                 <div className="mt-2 text-[11px] font-black text-black/55">
-                  Bestand · 7d · Bestellung
+                  Ordarella · 7d · Bestellung
                   {orderTotal > 0 ? (
                     <span className="text-black">
                       {" "}
@@ -716,7 +716,7 @@ function OverviewInner() {
               <div className="flex flex-wrap items-center gap-2 justify-end">
                 <div
                   className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
-                  title="Bestand gesamt"
+                  title="Ordarella gesamt"
                 >
                   {detailOpen.total}
                 </div>
@@ -752,7 +752,7 @@ function OverviewInner() {
             </div>
 
             <div className="mt-2 text-[11px] font-black text-black/55">
-              Bestand · 7d · Bestellung
+              Ordarella · 7d · Bestellung
             </div>
 
             <div className="mt-4 grid gap-2">
@@ -776,7 +776,7 @@ function OverviewInner() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div
                         className="h-10 px-3 rounded-full bg-black text-white text-[14px] font-black flex items-center"
-                        title="Bestand"
+                        title="Ordarella"
                       >
                         {stock}
                       </div>

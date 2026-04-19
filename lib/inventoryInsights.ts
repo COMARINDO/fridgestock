@@ -23,7 +23,7 @@ export function classifyProductPerformance(usage7d: number): ProductPerformance 
 export function performanceLabel(p: ProductPerformance): string {
   switch (p) {
     case "dead":
-      return "Totbestand";
+      return "Totordarella";
     case "slow":
       return "Langsam";
     case "normal":

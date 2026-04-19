@@ -45,7 +45,7 @@ Damit die KI bei jeder Inventur „mitlernt“:
    - Legt Tabellen `ai_consumption_jobs` / `ai_consumption` (falls fehlt) an
      und einen Trigger auf `inventory_history`, der nach jeder
      Count-Inventur einen Job in `ai_consumption_jobs` einreiht
-     (nur wenn der Bestand tatsächlich gesunken ist).
+    (nur wenn die Ordarella tatsächlich gesunken ist).
 2. **Vercel Cron** (`vercel.json`) ruft `/api/ai/consumption/process?limit=50`
    einmal täglich um **03:00 UTC** auf.
    - Erforderliche Env-Var auf Vercel: `CRON_SECRET` (wird von Vercel

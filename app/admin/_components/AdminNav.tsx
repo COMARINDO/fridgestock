@@ -117,6 +117,15 @@ function AdminOrdersSubnav() {
           <span className="truncate">3 · {KIRCHBERG_NAME}</span>
         </Link>
       </div>
+
+      <div className="space-y-0.5">
+        <Link
+          href={subHref("delivery")}
+          className={`${subLinkBase} ${active("delivery") ? subLinkActive : subLinkIdle}`}
+        >
+          <span className="truncate">4 · Lieferungen</span>
+        </Link>
+      </div>
     </div>
   );
 }

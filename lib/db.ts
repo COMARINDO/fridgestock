@@ -1247,6 +1247,66 @@ export async function deleteSubmittedOrder(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function archiveOrderForLocation(args: {
+  locationId: string;
+  items: Array<{ product_id: string; quantity: number }>;
+  closeOpenRequests?: boolean;
+  adminCode: string;
+}): Promise<{
+  orderId: string;
+  itemCount: number;
+  closedRequests: number;
+  isoYear: number;
+  isoWeek: number;
+}> {
+  const code = args.adminCode.trim();
+  if (!code) throw new Error("Admin-Code fehlt.");
+  const data = await callAdminOrderAction<{
+    ok: boolean;
+    orderId?: unknown;
+    itemCount?: unknown;
+    closedRequests?: unknown;
+    isoYear?: unknown;
+    isoWeek?: unknown;
+    error?: unknown;
+  }>("/api/admin/orders/archive-location", {
+    adminCode: code,
+    locationId: args.locationId,
+    items: args.items,
+    closeOpenRequests: Boolean(args.closeOpenRequests),
+  });
+  return {
+    orderId: typeof data.orderId === "string" ? data.orderId : "",
+    itemCount: Math.max(0, Math.floor(Number(data.itemCount ?? 0) || 0)),
+    closedRequests: Math.max(0, Math.floor(Number(data.closedRequests ?? 0) || 0)),
+    isoYear: Math.max(0, Math.floor(Number(data.isoYear ?? 0) || 0)),
+    isoWeek: Math.max(0, Math.floor(Number(data.isoWeek ?? 0) || 0)),
+  };
+}
+
+export async function updateSubmittedOrderItems(args: {
+  orderId: string;
+  items: Array<{ product_id: string; quantity: number }>;
+  adminCode: string;
+}): Promise<{ orderId: string; itemCount: number }> {
+  const code = args.adminCode.trim();
+  if (!code) throw new Error("Admin-Code fehlt.");
+  const data = await callAdminOrderAction<{
+    ok: boolean;
+    orderId?: unknown;
+    itemCount?: unknown;
+    error?: unknown;
+  }>("/api/admin/orders/update-items", {
+    adminCode: code,
+    orderId: args.orderId,
+    items: args.items,
+  });
+  return {
+    orderId: typeof data.orderId === "string" ? data.orderId : args.orderId,
+    itemCount: Math.max(0, Math.floor(Number(data.itemCount ?? 0) || 0)),
+  };
+}
+
 export async function confirmSubmittedOrderDelivery(args: {
   id: string;
   adminCode: string;
