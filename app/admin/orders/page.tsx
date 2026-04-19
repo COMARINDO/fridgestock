@@ -20,7 +20,6 @@ import {
   upsertOrderOverride,
 } from "@/lib/db";
 import {
-  computeCentralWarehouseOrder,
   computeLocalOutletOrder,
   computeRabensteinGesamtOrderFromDemandReports,
 } from "@/lib/orderSuggestions";
@@ -78,9 +77,10 @@ type CentralRowModel = {
   stockRabenstein: number;
   stockTeich: number;
   stockFiliale: number;
-  usageTeich7d: number;
-  usageFiliale7d: number;
-  totalUsage7d: number;
+  /** Meldungen (Stück), Teich */
+  demandTeich: number;
+  /** Meldungen (Stück), alle anderen Platzerl außer Zentrallager */
+  demandOther: number;
   calculatedOrder: number;
   displayOrder: number;
   overridden: boolean;
@@ -251,35 +251,37 @@ export default function AdminOrdersPage() {
     const fId = filialeId;
 
     for (const p of products) {
-      const usageTeich = Math.max(
-        0,
-        Math.round(tId ? (usageByLoc[tId]?.[p.id] ?? 0) : 0)
-      );
-      const usageFiliale = Math.max(
-        0,
-        Math.round(fId ? (usageByLoc[fId]?.[p.id] ?? 0) : 0)
-      );
       const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
       const stockTeich = tId ? (inventoryQty[tId]?.[p.id] ?? 0) : 0;
       const stockFiliale = fId ? (inventoryQty[fId]?.[p.id] ?? 0) : 0;
 
-      const { totalUsage7d, orderQuantity: calculatedOrder } =
-        computeCentralWarehouseOrder({
-          usageTeich7d: usageTeich,
-          usageFiliale7d: usageFiliale,
-          daysCoveredTeich: tId ? (daysCoveredByLoc[tId]?.[p.id] ?? 0) : 0,
-          daysCoveredFiliale: fId ? (daysCoveredByLoc[fId]?.[p.id] ?? 0) : 0,
-          stockRabenstein: stockRab,
-          stockTeich,
-        });
+      let demandTeich = 0;
+      let demandOther = 0;
+      for (const req of openRequests) {
+        if (req.product_id !== p.id) continue;
+        const q = Math.max(0, Math.floor(Number(req.quantity) || 0));
+        if (q <= 0) continue;
+        if (req.location_id === rabensteinId) continue;
+        if (tId && req.location_id === tId) demandTeich += q;
+        else demandOther += q;
+      }
+
+      const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
+      const piecesPerUnit = mq > 0 ? mq : 1;
+      const calculatedOrder = computeRabensteinGesamtOrderFromDemandReports({
+        demandTeich,
+        demandFiliale: demandOther,
+        stockRabenstein: stockRab,
+        piecesPerOrderUnit: piecesPerUnit,
+      });
 
       const ov = overrideByKey.get(`${rabensteinId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
 
       const include =
-        usageTeich > 0 ||
-        usageFiliale > 0 ||
+        demandTeich > 0 ||
+        demandOther > 0 ||
         stockRab > 0 ||
         stockTeich > 0 ||
         stockFiliale > 0 ||
@@ -296,9 +298,8 @@ export default function AdminOrdersPage() {
         stockRabenstein: stockRab,
         stockTeich,
         stockFiliale,
-        usageTeich7d: usageTeich,
-        usageFiliale7d: usageFiliale,
-        totalUsage7d,
+        demandTeich,
+        demandOther,
         calculatedOrder,
         displayOrder,
         overridden,
@@ -308,8 +309,7 @@ export default function AdminOrdersPage() {
     return list;
   }, [
     products,
-    usageByLoc,
-    daysCoveredByLoc,
+    openRequests,
     inventoryQty,
     overrideByKey,
     rabensteinId,
@@ -468,19 +468,20 @@ export default function AdminOrdersPage() {
       const pname = (p.product_name ?? "").trim();
       const name = [brand, pname].filter(Boolean).join(" - ");
 
-      // Central (lager): Gesamt = Bedarfsmeldung Teich + Filiale − Lagerbestand Rabenstein;
+      // Central (lager): Gesamt = Bedarfsmeldung Teich + sonstige Platzerl − Lagerbestand Rabenstein;
       // dann Stück-Defizit in Bestelleinheiten (min_quantity) umrechnen; bei Defizit < 0 → 1 Einheit.
       let central = 0;
       if (rabensteinId) {
         const tId = teichId;
-        const fId = filialeId;
         let demandTeich = 0;
         let demandFiliale = 0;
         for (const req of openRequests) {
           if (req.product_id !== p.id) continue;
           const q = Math.max(0, Math.floor(Number(req.quantity) || 0));
+          if (q <= 0) continue;
+          if (req.location_id === rabensteinId) continue;
           if (tId && req.location_id === tId) demandTeich += q;
-          else if (fId && req.location_id === fId) demandFiliale += q;
+          else demandFiliale += q;
         }
         const stockRab = inventoryQty[rabensteinId]?.[p.id] ?? 0;
         const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
@@ -547,7 +548,6 @@ export default function AdminOrdersPage() {
     products,
     rabensteinId,
     teichId,
-    filialeId,
     hofstettenId,
     kirchbergId,
     usageByLoc,
@@ -1157,9 +1157,10 @@ export default function AdminOrdersPage() {
           <div className={`${adminReadSectionClass} mt-6`}>
             <p className={adminSectionTitleClass}>Schritt 2 · Zentrallager</p>
             <p className="mt-2 text-sm font-black text-black/75">
-              Berechneter Bedarf für das Lager aus Verbrauch ({TEICH_NAME} + {RABENSTEIN_FILIALE_NAME})
-              und Beständen. Klick auf die Bestellmenge: manueller Override (*). Metro-Felder
-              bearbeiten wirkt auf alle Tabs.
+              Vorschlag für das Zentrallager aus Bedarfsmeldungen ({TEICH_NAME} + sonstige Platzerl)
+              gegenüber Lagerbestand {RABENSTEIN_LAGER_NAME}; Bestellen in Metro-Einheiten
+              (min. eine Einheit bei negativem Stück-Defizit). Klick auf die Bestellmenge:
+              manueller Override (*). Metro-Felder bearbeiten wirkt auf alle Tabs.
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
@@ -1177,12 +1178,12 @@ export default function AdminOrdersPage() {
                   <th className="p-3 font-black text-black tabular-nums">
                     {TEICH_NAME}
                     <br />
-                    <span className="text-[11px] font-black text-black/55">7d</span>
+                    <span className="text-[11px] font-black text-black/55">Meldungen</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    {RABENSTEIN_FILIALE_NAME}
+                    Sonstige
                     <br />
-                    <span className="text-[11px] font-black text-black/55">7d</span>
+                    <span className="text-[11px] font-black text-black/55">Meldungen</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
                     {TEICH_NAME}
@@ -1295,10 +1296,10 @@ export default function AdminOrdersPage() {
                         ) : null}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
-                        {r.usageTeich7d}
+                        {r.demandTeich}
                       </td>
                       <td className="p-3 font-black tabular-nums text-black">
-                        {r.usageFiliale7d}
+                        {r.demandOther}
                       </td>
                       <td
                         className={[
