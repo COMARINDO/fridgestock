@@ -111,15 +111,15 @@ export const adminTableShellClass =
 /** Tabelle selber */
 export const adminTableClass = "w-full text-left text-sm";
 
-/** Sticky-Kopfzelle unter der TopBar (72px). Hintergrund pflegen wir am tr/th. */
+/** Sticky-Kopfzelle unter der TopBar (72px). */
 export const adminTableStickyHeadCellClass =
   "sticky top-[72px] z-30 bg-zinc-50/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80 " +
-  "p-3 text-[11px] font-black uppercase tracking-[0.08em] text-black/60 " +
+  "px-3 py-2.5 text-left text-[12px] font-black text-black/65 whitespace-nowrap " +
   "border-b border-black/10";
 
 /** Reguläre (nicht sticky) Kopfzelle */
 export const adminTableHeadCellClass =
-  "p-3 text-[11px] font-black uppercase tracking-[0.08em] text-black/60 " +
+  "px-3 py-2.5 text-left text-[12px] font-black text-black/65 whitespace-nowrap " +
   "bg-zinc-50 border-b border-black/10";
 
 /** Body-Zeile */
