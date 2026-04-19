@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAdmin } from "@/app/admin-provider";
 import { HOFSTETTEN_NAME, KIRCHBERG_NAME } from "@/lib/locationConstants";
@@ -198,14 +199,28 @@ export function AdminNav() {
       className="sticky top-[72px] z-30 flex h-[calc(100vh-72px)] w-56 shrink-0 flex-col border-r border-black/10 bg-[var(--background)] sm:w-60"
       aria-label="Admin-Navigation"
     >
-      <div className="px-4 pt-4">
-        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/35">
-          Admin
+      <Link
+        href="/admin"
+        className="mx-3 mt-3 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-black/[0.04] sm:mx-4"
+        title="Admin · Übersicht"
+      >
+        <Image
+          src="/logo.png"
+          alt="Ordarella"
+          width={80}
+          height={80}
+          priority
+          className="h-10 w-10 shrink-0 rounded-lg object-contain shadow-[0_4px_10px_-6px_rgba(236,72,153,0.5)]"
+        />
+        <div className="min-w-0 leading-tight">
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-black/35">
+            Admin
+          </div>
+          <div className="text-[12px] font-black text-black/55">
+            Bestellsystem
+          </div>
         </div>
-        <div className="mt-0.5 text-base font-black tracking-tight text-black">
-          Ordarella
-        </div>
-      </div>
+      </Link>
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4 pt-4 sm:px-4">
         {showExtras ? (
           <NavBlock title="Monitoring" items={monitoring} pathname={pathname} />

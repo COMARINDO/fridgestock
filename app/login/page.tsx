@@ -175,9 +175,10 @@ export default function LoginPage() {
           <Image
             src="/logo.png"
             alt="Ordarella"
-            width={110}
-            height={110}
-            className="h-[100px] w-[100px] object-contain"
+            width={160}
+            height={160}
+            priority
+            className="h-[140px] w-[140px] rounded-3xl object-contain shadow-[0_8px_24px_-12px_rgba(236,72,153,0.45)]"
           />
         </div>
       </div>
