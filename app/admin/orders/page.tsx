@@ -27,6 +27,7 @@ import {
   HOFSTETTEN_NAME,
   KIRCHBERG_NAME,
   RABENSTEIN_FILIALE_NAME,
+  RABENSTEIN_GESCHAEFT_NAME,
   RABENSTEIN_LAGER_NAME,
   TEICH_NAME,
 } from "@/lib/locationConstants";
@@ -87,9 +88,9 @@ type CentralRowModel = {
   bedarf7dStück: number;
   /** Meldungen (Stück), Teich */
   demandTeich: number;
-  /** Meldungen (Stück), alle anderen Platzerl außer Zentrallager */
+  /** Meldungen (Stück), außer Teich & Zentrallager (im UI: Rabenstein Geschäft + ggf. weitere Melder) */
   demandOther: number;
-  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. sonstige − Bestand Lager Rabenstein */
+  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. (ohne Lager) − Bestand Lager Rabenstein */
   deltaStück: number;
   /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
@@ -1001,7 +1002,7 @@ export default function AdminOrdersPage() {
             <p className={adminSectionTitleClass}>Rabenstein · Lager</p>
             <p className="mt-2 text-sm font-black text-black/75">
               <strong>Bedarf 7d (Stück):</strong> Summe Verbrauch 7 Tage an {TEICH_NAME} +{" "}
-              {RABENSTEIN_FILIALE_NAME} (nur Orientierung, unabhängig von der Bestellmenge).{" "}
+              {RABENSTEIN_GESCHAEFT_NAME} (nur Orientierung, unabhängig von der Bestellmenge).{" "}
               <strong>Bestellen (Einheiten):</strong> aus Meldungen vs. Bestand {RABENSTEIN_LAGER_NAME}
               — unter jedem Produkt steht die <strong>exakte Rechnung</strong> (Δ Stück, Stück/Einheit,
               Regel). Klick auf die Bestellmenge: Override (*). Metro-Felder gelten app-weit.
@@ -1030,7 +1031,7 @@ export default function AdminOrdersPage() {
                     <span className="text-[11px] font-black text-black/55">Meldungen</span>
                   </th>
                   <th className="p-3 font-black text-black tabular-nums">
-                    Sonstige
+                    {RABENSTEIN_GESCHAEFT_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Meldungen</span>
                   </th>
@@ -1060,8 +1061,9 @@ export default function AdminOrdersPage() {
                           className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
                           title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
                         >
-                          Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + sonstige Meld. (
-                          {r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} ({r.stockRabenstein}) ={" "}
+                          Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
+                          {RABENSTEIN_GESCHAEFT_NAME} ({r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} (
+                          {r.stockRabenstein}) ={" "}
                           <span className="text-black">{r.deltaStück}</span>
                           {" · "}
                           {r.piecesPerOrderUnit} Stück/Einheit

@@ -124,8 +124,8 @@ export function piecesPerOrderUnitFromProductFields(input: {
 }
 
 /**
- * Zentrallager Rabenstein: aus Bedarfsmeldungen Teich + sonstige Platzerl, abzüglich Lagerbestand.
- * delta (Stück) = Bedarf Teich + Bedarf sonstige − Bestand Rabenstein Lager.
+ * Zentrallager Rabenstein: aus Bedarfsmeldungen Teich + übrige Meldungen (ohne Zentrallager), abzüglich Lagerbestand.
+ * delta (Stück) = Bedarf Teich + Bedarf „ohne Teich/Lager“ − Bestand Rabenstein Lager.
  * − delta ≤ 0 → 0 Bestelleinheiten (kein Nachbestellen, wenn Meldungen den Bestand nicht übersteigen).
  * − delta > 0 → ceil(delta / Stück pro Einheit); Stück/Einheit siehe piecesPerOrderUnitFromProductFields.
  */
