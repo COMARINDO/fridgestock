@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
-import { Button, Input } from "@/app/_components/ui";
+import { Input } from "@/app/_components/ui";
 import {
   listInventoryHistoryAdmin,
   listLocations,
@@ -13,7 +13,26 @@ import {
 } from "@/lib/db";
 import type { Location } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
-import { adminDangerButtonLgClass, adminDangerButtonSmClass } from "@/app/admin/_components/adminUi";
+import {
+  adminBadgeNeutralClass,
+  adminBannerErrorClass,
+  adminBannerInfoClass,
+  adminBannerSuccessClass,
+  adminCardClass,
+  adminDangerButtonClass,
+  adminDangerButtonSmClass,
+  adminPrimaryButtonClass,
+  adminPrimaryButtonLgClass,
+  adminSecondaryButtonClass,
+  adminSecondaryButtonLgClass,
+  adminSelectClass,
+  adminSectionTitleClass,
+  adminTableClass,
+  adminTableRowClass,
+  adminTableShellClass,
+  adminTableStickyHeadCellClass,
+} from "@/app/admin/_components/adminUi";
+import { AdminPageHeader } from "@/app/admin/_components/AdminPageHeader";
 
 type ModeFilter = "any" | "count" | "add" | "transfer" | "waste" | "loss";
 
@@ -151,98 +170,23 @@ export default function AdminBookingsPage() {
   }
 
   return (
-    <main className="w-full px-4 py-4 pb-28 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-black text-black">Buchungen (History)</h1>
-        <p className="mt-1 text-sm text-black/65">
-          Übersicht aus <code>inventory_history</code>. Umbuchen korrigiert nur History.{" "}
-          <span className="font-black text-red-900/90">
-            Löschen und Umbuchen sind irreversibel bzw. riskant.
-          </span>
-        </p>
-      </div>
-
-      {err ? (
-        <div className="mt-4 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div>
-      ) : null}
-
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="rounded-3xl border-2 border-black bg-white p-4">
-          <div className="text-xs font-black text-black/60">Von</div>
-          <Input
-            type="datetime-local"
-            value={fromLocal}
-            onChange={(e) => setFromLocal(e.target.value)}
-            className="mt-2 h-12 text-[15px] font-black"
-          />
-        </div>
-        <div className="rounded-3xl border-2 border-black bg-white p-4">
-          <div className="text-xs font-black text-black/60">Bis</div>
-          <Input
-            type="datetime-local"
-            value={toLocal}
-            onChange={(e) => setToLocal(e.target.value)}
-            className="mt-2 h-12 text-[15px] font-black"
-          />
-        </div>
-        <div className="rounded-3xl border-2 border-black bg-white p-4">
-          <div className="text-xs font-black text-black/60">Ort</div>
-          <select
-            className="mt-2 h-12 w-full rounded-2xl border-2 border-black bg-white px-3 text-[15px] font-black"
-            value={locationId}
-            onChange={(e) => setLocationId(e.target.value)}
-          >
-            <option value="">Alle</option>
-            {locs.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="rounded-3xl border-2 border-black bg-white p-4">
-          <div className="text-xs font-black text-black/60">Modus</div>
-          <select
-            className="mt-2 h-12 w-full rounded-2xl border-2 border-black bg-white px-3 text-[15px] font-black"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as ModeFilter)}
-          >
-            <option value="any">Alle</option>
-            <option value="count">Inventur</option>
-            <option value="add">Buchen</option>
-            <option value="transfer">Transfer</option>
-            <option value="waste">Verderb</option>
-            <option value="loss">Verlust</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-black text-black/60">Limit</div>
-          <Input
-            value={limit}
-            onChange={(e) => setLimit(e.target.value.replace(/[^\d]/g, ""))}
-            inputMode="numeric"
-            className="h-11 w-28 text-center font-black"
-          />
-        </div>
-        <div className="flex gap-2">
-          <Button className="h-12 w-auto px-4 py-0 text-[15px]" onClick={() => void load()}>
-            {busy ? "Lade…" : "Neu laden"}
-          </Button>
-          <div className="h-12 px-3 flex items-center rounded-2xl border-2 border-black bg-white text-[14px] font-black text-black/70">
-            Zeilen: {summary.total}
-            {summary.waste || summary.loss ? (
-              <>
-                {" "}
-                (Verderb: {summary.waste}, Verlust: {summary.loss})
-              </>
-            ) : null}
-          </div>
+    <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
+      <AdminPageHeader
+        eyebrow="Debug · Historie"
+        title="Buchungen"
+        description={
+          <>
+            Übersicht aus <code className="font-mono text-[12px]">inventory_history</code>.
+            Umbuchen korrigiert nur die History.{" "}
+            <span className="font-black text-red-900/90">
+              Löschen und Umbuchen sind irreversibel bzw. riskant.
+            </span>
+          </>
+        }
+        actions={
           <button
             type="button"
-            className={`h-12 px-4 ${adminDangerButtonLgClass}`}
+            className={adminDangerButtonClass}
             onClick={() => {
               setMoveOpen(true);
               setMoveErr(null);
@@ -254,43 +198,122 @@ export default function AdminBookingsPage() {
           >
             Umbuchen…
           </button>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="mt-5 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-        <table className="w-full min-w-[880px] text-left text-sm">
+      {err ? <div className={`${adminBannerErrorClass} mt-5`}>{err}</div> : null}
+
+      <section className={`${adminCardClass} mt-5`}>
+        <p className={adminSectionTitleClass}>Filter</p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Von">
+            <Input
+              type="datetime-local"
+              value={fromLocal}
+              onChange={(e) => setFromLocal(e.target.value)}
+              className="h-11 rounded-xl border border-black/15 bg-white px-3 text-[15px] font-bold"
+            />
+          </Field>
+          <Field label="Bis">
+            <Input
+              type="datetime-local"
+              value={toLocal}
+              onChange={(e) => setToLocal(e.target.value)}
+              className="h-11 rounded-xl border border-black/15 bg-white px-3 text-[15px] font-bold"
+            />
+          </Field>
+          <Field label="Ort">
+            <select
+              className={adminSelectClass}
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+            >
+              <option value="">Alle</option>
+              {locs.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Modus">
+            <select
+              className={adminSelectClass}
+              value={mode}
+              onChange={(e) => setMode(e.target.value as ModeFilter)}
+            >
+              <option value="any">Alle</option>
+              <option value="count">Inventur</option>
+              <option value="add">Buchen</option>
+              <option value="transfer">Transfer</option>
+              <option value="waste">Verderb</option>
+              <option value="loss">Verlust</option>
+            </select>
+          </Field>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <Field label="Limit" inline>
+            <Input
+              value={limit}
+              onChange={(e) => setLimit(e.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              className="h-10 w-24 rounded-xl border border-black/15 bg-white text-center font-black"
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={adminBadgeNeutralClass}>
+              {summary.total} Zeilen
+              {summary.waste || summary.loss
+                ? ` · Verderb: ${summary.waste} · Verlust: ${summary.loss}`
+                : ""}
+            </span>
+            <button
+              type="button"
+              className={adminPrimaryButtonClass}
+              onClick={() => void load()}
+              disabled={busy}
+            >
+              {busy ? "Lade…" : "Neu laden"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className={`${adminTableShellClass} mt-5`}>
+        <table className={`${adminTableClass} min-w-[880px]`}>
           <thead>
-            <tr className="border-b-2 border-black bg-black/[0.03]">
-              <th className="p-3 font-black text-black">Zeit</th>
-              <th className="p-3 font-black text-black">Ort</th>
-              <th className="p-3 font-black text-black">Produkt</th>
-              <th className="p-3 font-black text-black tabular-nums">Menge</th>
-              <th className="p-3 font-black text-black">Modus</th>
-              <th className="p-3 font-black text-black text-right">Aktion</th>
+            <tr>
+              <th className={`${adminTableStickyHeadCellClass} text-left`}>Zeit</th>
+              <th className={`${adminTableStickyHeadCellClass} text-left`}>Ort</th>
+              <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
+              <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Menge</th>
+              <th className={`${adminTableStickyHeadCellClass} text-left`}>Modus</th>
+              <th className={`${adminTableStickyHeadCellClass} text-right`}>Aktion</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="border-b border-black/10 align-middle">
-                <td className="p-3 font-black text-black tabular-nums">
+              <tr key={r.id} className={adminTableRowClass}>
+                <td className="p-3 font-bold text-black tabular-nums whitespace-nowrap">
                   {new Date(r.timestamp).toLocaleString("de-AT")}
                 </td>
-                <td className="p-3 font-black text-black">
+                <td className="p-3 font-bold text-black">
                   {r.location_name ?? locNameById.get(r.location_id) ?? r.location_id}
                 </td>
-                <td className="p-3 font-black text-black max-w-[360px] truncate">
+                <td className="p-3 font-bold text-black max-w-[360px] truncate">
                   {r.product_label ?? r.product_id}
                 </td>
-                <td className="p-3 font-black text-black tabular-nums">{r.quantity}</td>
+                <td className="p-3 font-black tabular-nums text-black">{r.quantity}</td>
                 <td className="p-3">
-                  <span className="inline-flex px-2 py-1 rounded-full border-2 border-black text-[12px] font-black">
+                  <span className={adminBadgeNeutralClass}>
                     {r.mode ?? (r.is_transfer ? "transfer" : "—")}
                   </span>
                 </td>
                 <td className="p-3 text-right">
                   <button
                     type="button"
-                    className={`${adminDangerButtonSmClass} disabled:opacity-50`}
+                    className={adminDangerButtonSmClass}
                     disabled={deleteBusyId === r.id}
                     onClick={() => {
                       void (async () => {
@@ -329,42 +352,42 @@ export default function AdminBookingsPage() {
             ))}
             {rows.length === 0 && !busy ? (
               <tr>
-                <td className="p-4 text-sm font-black text-black/60" colSpan={6}>
+                <td className="p-4 text-sm font-bold text-black/55" colSpan={6}>
                   Keine Buchungen.
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
-      </div>
+      </section>
 
       {moveOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40">
+          <div className="w-full rounded-t-3xl border-t border-black/10 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs text-black">Umbuchen</div>
-                <div className="text-2xl font-black leading-tight text-black">
+                <div className={adminBadgeNeutralClass}>Umbuchen</div>
+                <div className="mt-1 text-2xl font-black leading-tight text-black">
                   History-Zeilen verschieben
                 </div>
-                <div className="mt-1 text-sm font-black text-black/60">
-                  Betrifft nur <code>inventory_history</code>, nicht <code>inventory</code>.
+                <div className="mt-1 text-sm font-bold text-black/60">
+                  Betrifft nur <code className="font-mono text-[12px]">inventory_history</code>,
+                  nicht <code className="font-mono text-[12px]">inventory</code>.
                 </div>
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                className={adminSecondaryButtonClass}
                 onClick={() => setMoveOpen(false)}
               >
                 Schließen
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div>
-                <div className="text-sm font-black text-black">Von Ort</div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Von Ort">
                 <select
-                  className="mt-2 h-12 w-full rounded-2xl border-2 border-black bg-white px-3 text-[15px] font-black"
+                  className={adminSelectClass}
                   value={moveFromId}
                   onChange={(e) => setMoveFromId(e.target.value)}
                 >
@@ -375,11 +398,10 @@ export default function AdminBookingsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <div className="text-sm font-black text-black">Nach Ort</div>
+              </Field>
+              <Field label="Nach Ort">
                 <select
-                  className="mt-2 h-12 w-full rounded-2xl border-2 border-black bg-white px-3 text-[15px] font-black"
+                  className={adminSelectClass}
                   value={moveToId}
                   onChange={(e) => setMoveToId(e.target.value)}
                 >
@@ -390,11 +412,10 @@ export default function AdminBookingsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <div className="text-sm font-black text-black">Modus</div>
+              </Field>
+              <Field label="Modus">
                 <select
-                  className="mt-2 h-12 w-full rounded-2xl border-2 border-black bg-white px-3 text-[15px] font-black"
+                  className={adminSelectClass}
                   value={moveMode}
                   onChange={(e) => setMoveMode(e.target.value as ModeFilter)}
                 >
@@ -405,12 +426,12 @@ export default function AdminBookingsPage() {
                   <option value="waste">Verderb</option>
                   <option value="loss">Verlust</option>
                 </select>
-              </div>
+              </Field>
               <div className="flex items-end">
-                <div className="w-full grid grid-cols-2 gap-2">
+                <div className="grid w-full grid-cols-2 gap-2">
                   <button
                     type="button"
-                    className="h-12 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99] disabled:opacity-50"
+                    className={adminSecondaryButtonLgClass}
                     disabled={movePreviewBusy || !moveFromId}
                     onClick={() => {
                       void (async () => {
@@ -435,8 +456,9 @@ export default function AdminBookingsPage() {
                   >
                     {movePreviewBusy ? "…" : "Vorschau"}
                   </button>
-                  <Button
-                    className="h-12"
+                  <button
+                    type="button"
+                    className={adminPrimaryButtonLgClass}
                     disabled={moveBusy || !moveFromId || !moveToId}
                     onClick={() => {
                       void (async () => {
@@ -463,29 +485,48 @@ export default function AdminBookingsPage() {
                     }}
                   >
                     {moveBusy ? "Umbucht…" : "Umbuchen"}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
 
             {movePreview != null ? (
-              <div className="mt-3 rounded-3xl border-2 border-black bg-white p-4 text-sm font-black text-black">
+              <div className={`${adminBannerInfoClass} mt-3`}>
                 Vorschau: <span className="tabular-nums">{movePreview}</span> Zeilen würden umgebucht.
               </div>
             ) : null}
 
-            {moveErr ? (
-              <div className="mt-3 rounded-3xl bg-red-50 p-4 text-red-800">{moveErr}</div>
-            ) : null}
-            {moveOk ? (
-              <div className="mt-3 rounded-3xl bg-emerald-50 p-4 text-emerald-900 font-black">
-                {moveOk}
-              </div>
-            ) : null}
+            {moveErr ? <div className={`${adminBannerErrorClass} mt-3`}>{moveErr}</div> : null}
+            {moveOk ? <div className={`${adminBannerSuccessClass} mt-3`}>{moveOk}</div> : null}
           </div>
         </div>
       ) : null}
     </main>
+  );
+}
+
+function Field({
+  label,
+  inline,
+  children,
+}: {
+  label: string;
+  inline?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label
+      className={
+        inline
+          ? "flex items-center gap-2"
+          : "block"
+      }
+    >
+      <span className="text-[11px] font-black uppercase tracking-[0.08em] text-black/55">
+        {label}
+      </span>
+      <div className={inline ? "" : "mt-1.5"}>{children}</div>
+    </label>
   );
 }
 

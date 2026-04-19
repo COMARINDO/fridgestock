@@ -36,10 +36,19 @@ import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
 import {
   adminActionSectionClass,
+  adminBadgeNeutralClass,
+  adminBannerErrorClass,
+  adminBannerInfoClass,
+  adminBannerSuccessClass,
+  adminBannerWarnClass,
   adminDangerButtonLgClass,
-  adminReadSectionClass,
+  adminPrimaryButtonLgClass,
   adminSectionTitleClass,
+  adminTableClass,
+  adminTableShellClass,
+  adminTableStickyHeadCellClass,
 } from "@/app/admin/_components/adminUi";
+import { AdminPageHeader } from "@/app/admin/_components/AdminPageHeader";
 
 function resolveLocationIdByName(
   locations: Location[],
@@ -222,7 +231,10 @@ function AdminOrdersPageContent() {
         id: String(r.id ?? ""),
         location_id: r.location_id,
         product_id: r.product_id,
-        quantity: Math.max(0, Math.floor(Number((r as any).quantity) || 0)),
+        quantity: Math.max(
+          0,
+          Math.floor(Number((r as { quantity?: unknown }).quantity) || 0)
+        ),
       }))
     );
   }, [useAi]);
@@ -635,74 +647,86 @@ function AdminOrdersPageContent() {
     );
   }
 
+  const tabTitle =
+    activeTab === "demand"
+      ? "Rabenstein · Bedarf"
+      : activeTab === "central"
+        ? "Rabenstein · Lager"
+        : activeTab === "hofstetten"
+          ? `Schritt 2 · ${HOFSTETTEN_NAME}`
+          : `Schritt 3 · ${KIRCHBERG_NAME}`;
+
+  const tabDescription =
+    activeTab === "demand"
+      ? "Offene Bedarfsmeldungen aus den Platzerln. Chips bearbeiten oder löschen — abschließen unten."
+      : activeTab === "central"
+        ? "Vorschlag fürs Zentrallager. Δ Stück = Meldungen − Bestand, geteilt durch Stück/Einheit."
+        : "Eigene Bestellung für dieses Platzerl. Klick auf die Menge: Override (*).";
+
   return (
-    <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
+    <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
+      <AdminPageHeader
+        eyebrow="Aktionen"
+        title="Bestellungen"
+        description={tabDescription}
+        actions={
+          <span className={adminBadgeNeutralClass}>{tabTitle}</span>
+        }
+      />
+
       {!rabensteinId && !busy && !err ? (
-        <div className="mt-6 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
+        <div className={`${adminBannerWarnClass} mt-5`}>
           Platzerl „{RABENSTEIN_LAGER_NAME}“ nicht gefunden. Bitte Namen in den Orten prüfen.
         </div>
       ) : null}
 
       {!teichId && !busy && !err && rabensteinId && activeTab === "central" ? (
-        <div className="mt-4 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
+        <div className={`${adminBannerWarnClass} mt-4`}>
           Platzerl „{TEICH_NAME}“ nicht gefunden — Teich-Verbrauch wird als 0 gezählt.
         </div>
       ) : null}
 
       {!hofstettenId && !busy && !err && activeTab === "hofstetten" ? (
-        <div className="mt-4 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
+        <div className={`${adminBannerWarnClass} mt-4`}>
           Platzerl „{HOFSTETTEN_NAME}“ nicht gefunden.
         </div>
       ) : null}
 
       {!kirchbergId && !busy && !err && activeTab === "kirchberg" ? (
-        <div className="mt-4 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
+        <div className={`${adminBannerWarnClass} mt-4`}>
           Platzerl „{KIRCHBERG_NAME}“ nicht gefunden.
         </div>
       ) : null}
 
       {busy ? (
-        <div className="mt-8 text-black font-black">Lade…</div>
+        <div className={`${adminBannerInfoClass} mt-6`}>Lade…</div>
       ) : err ? (
-        <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div>
+        <div className={`${adminBannerErrorClass} mt-5`}>{err}</div>
       ) : null}
 
       {placeMsg && !busy && !err ? (
-        <div className="mt-6 rounded-3xl border-2 border-emerald-800/30 bg-emerald-50 p-4 text-emerald-950 text-sm font-black">
-          {placeMsg}
-        </div>
+        <div className={`${adminBannerSuccessClass} mt-5`}>{placeMsg}</div>
       ) : null}
 
       {!busy && !err && activeTab === "demand" && rabensteinId ? (
         <>
-          <section className={`${adminReadSectionClass} mt-6`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Rabenstein · Bedarf – Lesen</h3>
-            <p className="mt-1 text-sm font-black text-black/70">
-              Offene Meldungen: <strong>{openRequests.length}</strong>. Chips bearbeiten oder löschen
-              sind <strong>Aktionen</strong> (Bereich „Aktionen“ unten für Runden-Abschluss).
-            </p>
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm font-bold text-black/65">
+            <span className={adminBadgeNeutralClass}>{openRequests.length} offene Meldung(en)</span>
+          </div>
 
-          <section className="mt-3 max-md:overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[720px] text-left text-sm">
+          <section className={`${adminTableShellClass} mt-3`}>
+            <table className={`${adminTableClass} min-w-[720px]`}>
               <thead>
-                <tr className="border-b-2 border-black">
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                <tr>
+                  <th className={`${adminTableStickyHeadCellClass} text-left`}>
                     Produkt / Bedarf je Platzerl
                   </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Gesamt
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Gesamt</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    {RABENSTEIN_LAGER_NAME} · Bestand
                   </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    {RABENSTEIN_LAGER_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Bestand</span>
-                  </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Vorschlag
-                  </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Metro
-                  </th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Vorschlag</th>
+                  <th className={`${adminTableStickyHeadCellClass}`}>Metro</th>
                 </tr>
               </thead>
               <tbody>
@@ -843,18 +867,23 @@ function AdminOrdersPageContent() {
             </table>
           </section>
 
-          <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe (Vorschlag): {sumSuggestedDemand}
+          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
+            Summe Vorschlag:{" "}
+            <span className="font-black text-black tabular-nums">{sumSuggestedDemand}</span>
           </div>
-          </section>
 
-          <section className={`${adminActionSectionClass} mt-4`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Rabenstein · Bedarf – Aktionen</h3>
-            <p className="mt-1 text-xs font-black text-amber-950/90">
-              <strong>Alle Meldungen löschen</strong> entfernt offene Zeilen dauerhaft.{" "}
-              <strong>Meldungen abschließen</strong> markiert sie nur als verarbeitet (kein Versand
-              an Metro/Lieferanten – nur Status in der App).
-            </p>
+          <section className={`${adminActionSectionClass} mt-5`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className={adminSectionTitleClass}>Aktionen · Meldungen</h3>
+                <p className="mt-1 text-sm font-bold text-black/65 max-w-prose">
+                  <strong className="font-black text-black">Alle löschen</strong> entfernt
+                  offene Zeilen dauerhaft.{" "}
+                  <strong className="font-black text-black">Abschließen</strong> markiert
+                  sie nur als verarbeitet — kein Versand an Metro.
+                </p>
+              </div>
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -884,7 +913,7 @@ function AdminOrdersPageContent() {
               <button
                 type="button"
                 disabled={placeBusy || resetBusy || openRequests.length === 0}
-                className="h-12 rounded-2xl border-2 border-black bg-black px-4 text-sm font-black text-white active:scale-[0.99] disabled:opacity-50"
+                className={adminPrimaryButtonLgClass}
                 onClick={async () => {
                   const code = window.prompt("Admin-Code eingeben") ?? "";
                   if (!code.trim()) return;
@@ -914,34 +943,22 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
-          <section className="mt-6 max-md:overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[640px] text-left text-sm">
+          <section className={`${adminTableShellClass} mt-5`}>
+            <table className={`${adminTableClass} min-w-[640px]`}>
               <thead>
-                <tr className="border-b-2 border-black">
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Produkt
+                <tr>
+                  <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bedarf 7d · Stück
                   </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Bedarf 7d
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    {RABENSTEIN_LAGER_NAME} · Bestand
                   </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    {RABENSTEIN_LAGER_NAME}
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Bestand</span>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bestellen · Einheiten
                   </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Bestellen
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
-                  </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Metro Nr
-                  </th>
-                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
-                    Einheit
-                  </th>
+                  <th className={`${adminTableStickyHeadCellClass} text-right`}>Metro Nr</th>
+                  <th className={`${adminTableStickyHeadCellClass} text-right`}>Einheit</th>
                 </tr>
               </thead>
               <tbody>
@@ -1121,40 +1138,28 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe Einheiten ({RABENSTEIN_LAGER_NAME}): {sumCentral}
+          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
+            Summe Einheiten ({RABENSTEIN_LAGER_NAME}):{" "}
+            <span className="font-black text-black tabular-nums">{sumCentral}</span>
           </div>
         </>
       ) : null}
 
       {!busy && !err && activeTab === "hofstetten" && hofstettenId ? (
         <>
-          <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 2 · {HOFSTETTEN_NAME}</p>
-            <p className="mt-2 text-sm font-black text-black/75">
-              Eigene Bestellung für dieses Platzerl: <strong>Bedarf 7d (Stück)</strong> aus dem
-              erfassten Verbrauch; <strong>Bestellen (Einheiten)</strong> = Nachbestell-Bedarf in
-              Stück, aufgerundet auf Metro-Einheiten (<code className="text-xs">min_quantity</code>
-              ). Klick auf die Menge: Override in Einheiten (*).
-            </p>
-          </div>
-          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[560px] text-left text-sm">
+          <section className={`${adminTableShellClass} mt-5`}>
+            <table className={`${adminTableClass} min-w-[560px]`}>
               <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black">Metro Nr</th>
-                  <th className="p-3 font-black text-black">Einheit</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestand</th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    Bedarf 7d
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                <tr>
+                  <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
+                  <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
+                  <th className={adminTableStickyHeadCellClass}>Einheit</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bedarf 7d · Stück
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    Bestellen
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bestellen · Einheiten
                   </th>
                 </tr>
               </thead>
@@ -1310,38 +1315,28 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe Einheiten ({HOFSTETTEN_NAME}): {sumHof}
+          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
+            Summe Einheiten ({HOFSTETTEN_NAME}):{" "}
+            <span className="font-black text-black tabular-nums">{sumHof}</span>
           </div>
         </>
       ) : null}
 
       {!busy && !err && activeTab === "kirchberg" && kirchbergId ? (
         <>
-          <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 3 · {KIRCHBERG_NAME}</p>
-            <p className="mt-2 text-sm font-black text-black/75">
-              Wie Hofstetten: eigene Bestellung; <strong>Bedarf 7d (Stück)</strong> und{" "}
-              <strong>Bestellen (Einheiten)</strong> wie im Schritt davor beschrieben.
-            </p>
-          </div>
-          <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[560px] text-left text-sm">
+          <section className={`${adminTableShellClass} mt-5`}>
+            <table className={`${adminTableClass} min-w-[560px]`}>
               <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black">Metro Nr</th>
-                  <th className="p-3 font-black text-black">Einheit</th>
-                  <th className="p-3 font-black text-black tabular-nums">Bestand</th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    Bedarf 7d
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Stück</span>
+                <tr>
+                  <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
+                  <th className={adminTableStickyHeadCellClass}>Metro Nr</th>
+                  <th className={adminTableStickyHeadCellClass}>Einheit</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bedarf 7d · Stück
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">
-                    Bestellen
-                    <br />
-                    <span className="text-[11px] font-black text-black/55">Einheiten</span>
+                  <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                    Bestellen · Einheiten
                   </th>
                 </tr>
               </thead>
@@ -1497,8 +1492,9 @@ function AdminOrdersPageContent() {
               <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
             ) : null}
           </section>
-          <div className="mt-4 flex justify-end text-sm font-black text-black">
-            Summe Einheiten ({KIRCHBERG_NAME}): {sumKir}
+          <div className="mt-3 flex items-center justify-end gap-2 text-sm font-bold text-black/70">
+            Summe Einheiten ({KIRCHBERG_NAME}):{" "}
+            <span className="font-black text-black tabular-nums">{sumKir}</span>
           </div>
         </>
       ) : null}

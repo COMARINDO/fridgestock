@@ -13,7 +13,22 @@ import {
 import type { Location, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
-import { adminDangerButtonLgClass } from "@/app/admin/_components/adminUi";
+import {
+  adminBadgeNeutralClass,
+  adminBadgeSuccessClass,
+  adminBadgeWarnClass,
+  adminBannerErrorClass,
+  adminBannerInfoClass,
+  adminBannerSuccessClass,
+  adminDangerButtonLgClass,
+  adminPrimaryButtonLgClass,
+  adminSecondaryButtonClass,
+  adminTableClass,
+  adminTableRowClass,
+  adminTableShellClass,
+  adminTableStickyHeadCellClass,
+} from "@/app/admin/_components/adminUi";
+import { AdminPageHeader } from "@/app/admin/_components/AdminPageHeader";
 
 function fmtTs(iso: string): string {
   try {
@@ -76,7 +91,10 @@ export default function AdminSubmittedOrdersPage() {
   }, [adminHydrated, isAdmin, reload]);
 
   const locNameById = useMemo(() => new Map(locs.map((l) => [l.id, l.name])), [locs]);
-  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products]
+  );
 
   if (!adminHydrated) {
     return (
@@ -95,61 +113,68 @@ export default function AdminSubmittedOrdersPage() {
   }
 
   return (
-    <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-black">Abgeschickte Bestellungen</h1>
-          <p className="mt-1 text-sm text-black/65">Historie nach Kalenderwoche (Lesen).</p>
-        </div>
-        <button
-          type="button"
-          className="h-11 px-4 rounded-2xl border-2 border-black bg-white text-sm font-black text-black active:scale-[0.99]"
-          onClick={() => void reload()}
-          disabled={busy}
-        >
-          Reload
-        </button>
-      </div>
+    <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
+      <AdminPageHeader
+        eyebrow="Debug · Historie"
+        title="Abgeschickte Bestellungen"
+        description="Bestellungen pro Kalenderwoche. Lieferung bestätigen oder Eintrag löschen."
+        actions={
+          <button
+            type="button"
+            className={adminSecondaryButtonClass}
+            onClick={() => void reload()}
+            disabled={busy}
+          >
+            Neu laden
+          </button>
+        }
+      />
 
-      {busy ? <div className="mt-8 text-black font-black">Lade…</div> : null}
-      {err ? <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div> : null}
+      {err ? <div className={`${adminBannerErrorClass} mt-5`}>{err}</div> : null}
+      {busy ? <div className={`${adminBannerInfoClass} mt-5`}>Lade…</div> : null}
 
       {!busy && !err ? (
-        <section className="mt-6 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-          <table className="w-full min-w-[760px] text-left text-sm">
+        <section className={`${adminTableShellClass} mt-5`}>
+          <table className={`${adminTableClass} min-w-[760px]`}>
             <thead>
-              <tr className="border-b-2 border-black bg-black/[0.03]">
-                <th className="p-3 font-black text-black">Titel</th>
-                <th className="p-3 font-black text-black">Platzerl</th>
-                <th className="p-3 font-black text-black tabular-nums">Positionen</th>
-                <th className="p-3 font-black text-black">Zeitpunkt</th>
-                <th className="p-3 font-black text-black" />
+              <tr>
+                <th className={`${adminTableStickyHeadCellClass} text-left`}>Titel</th>
+                <th className={`${adminTableStickyHeadCellClass} text-left`}>Platzerl</th>
+                <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
+                  Positionen
+                </th>
+                <th className={`${adminTableStickyHeadCellClass} text-left`}>Zeitpunkt</th>
+                <th className={`${adminTableStickyHeadCellClass} text-right`} />
               </tr>
             </thead>
             <tbody>
               {orders.map((o) => (
-                <tr key={o.id} className="border-b border-black/10 align-middle">
-                  <td className="p-3 font-black text-black">
-                    Bestellung – KW {o.iso_week}
-                    {o.delivered_at ? (
-                      <span className="ml-2 text-[11px] font-black text-emerald-800">
-                        geliefert
+                <tr key={o.id} className={adminTableRowClass}>
+                  <td className="p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-black text-black">
+                        Bestellung KW {o.iso_week}
                       </span>
-                    ) : (
-                      <span className="ml-2 text-[11px] font-black text-amber-800">
-                        offen
-                      </span>
-                    )}
+                      {o.delivered_at ? (
+                        <span className={adminBadgeSuccessClass}>geliefert</span>
+                      ) : (
+                        <span className={adminBadgeWarnClass}>offen</span>
+                      )}
+                    </div>
                   </td>
-                  <td className="p-3 font-black text-black/70">
+                  <td className="p-3 font-bold text-black/70">
                     {locNameById.get(o.location_id) ?? o.location_id}
                   </td>
-                  <td className="p-3 font-black tabular-nums">{o.items?.length ?? 0}</td>
-                  <td className="p-3 font-black text-black/70">{fmtTs(o.created_at)}</td>
-                  <td className="p-3">
+                  <td className="p-3 font-black tabular-nums text-black">
+                    {o.items?.length ?? 0}
+                  </td>
+                  <td className="p-3 font-bold text-black/70 tabular-nums">
+                    {fmtTs(o.created_at)}
+                  </td>
+                  <td className="p-3 text-right">
                     <button
                       type="button"
-                      className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
+                      className={adminSecondaryButtonClass}
                       onClick={() => setOpen(o)}
                     >
                       Ansehen
@@ -157,31 +182,36 @@ export default function AdminSubmittedOrdersPage() {
                   </td>
                 </tr>
               ))}
+              {orders.length === 0 ? (
+                <tr>
+                  <td className="p-4 text-sm font-bold text-black/55" colSpan={5}>
+                    Noch keine Bestellungen.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
-          {orders.length === 0 ? (
-            <p className="p-4 text-sm text-black/60 font-black">Noch keine Bestellungen.</p>
-          ) : null}
         </section>
       ) : null}
 
       {open ? (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
-          <div className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 border-t-2 border-black">
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40">
+          <div className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl border-t border-black/10 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs text-black">Bestellung</div>
-                <div className="text-2xl font-black leading-tight truncate text-black">
+                <div className={adminBadgeNeutralClass}>Bestellung</div>
+                <div className="mt-1 text-2xl font-black leading-tight text-black truncate">
                   KW {open.iso_week} ({open.iso_year})
                 </div>
-                <div className="mt-1 text-sm font-black text-black/60">
-                  {locNameById.get(open.location_id) ?? open.location_id} · {fmtTs(open.created_at)}
+                <div className="mt-1 text-sm font-bold text-black/60">
+                  {locNameById.get(open.location_id) ?? open.location_id} ·{" "}
+                  {fmtTs(open.created_at)}
                   {open.delivered_at ? ` · geliefert: ${fmtTs(open.delivered_at)}` : ""}
                 </div>
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99] shrink-0"
+                className={adminSecondaryButtonClass}
                 onClick={() => setOpen(null)}
               >
                 Schließen
@@ -189,11 +219,11 @@ export default function AdminSubmittedOrdersPage() {
             </div>
 
             {!open.delivered_at ? (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   disabled={modalBusy}
-                  className="h-12 px-4 rounded-2xl border-2 border-black bg-black text-white text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                  className={adminPrimaryButtonLgClass}
                   onClick={() => {
                     void (async () => {
                       const code = window.prompt("Admin-Code eingeben") ?? "";
@@ -201,11 +231,16 @@ export default function AdminSubmittedOrdersPage() {
                       setModalBusy(true);
                       setErr(null);
                       try {
-                        await confirmSubmittedOrderDelivery({ id: open.id, adminCode: code });
+                        await confirmSubmittedOrderDelivery({
+                          id: open.id,
+                          adminCode: code,
+                        });
                         setOpen(null);
                         await reload();
                       } catch (e: unknown) {
-                        setErr(errorMessage(e, "Lieferung konnte nicht bestätigt werden."));
+                        setErr(
+                          errorMessage(e, "Lieferung konnte nicht bestätigt werden.")
+                        );
                       } finally {
                         setModalBusy(false);
                       }
@@ -217,7 +252,7 @@ export default function AdminSubmittedOrdersPage() {
                 <button
                   type="button"
                   disabled={modalBusy}
-                  className={`h-12 px-4 ${adminDangerButtonLgClass} disabled:opacity-50`}
+                  className={adminDangerButtonLgClass}
                   onClick={() => {
                     void (async () => {
                       const ok = window.confirm("Bestellung wirklich löschen?");
@@ -229,7 +264,9 @@ export default function AdminSubmittedOrdersPage() {
                         setOpen(null);
                         await reload();
                       } catch (e: unknown) {
-                        setErr(errorMessage(e, "Bestellung konnte nicht gelöscht werden."));
+                        setErr(
+                          errorMessage(e, "Bestellung konnte nicht gelöscht werden.")
+                        );
                       } finally {
                         setModalBusy(false);
                       }
@@ -240,23 +277,25 @@ export default function AdminSubmittedOrdersPage() {
                 </button>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border-2 border-emerald-800/30 bg-emerald-50 px-3 py-3 text-emerald-950 text-sm font-black">
+              <div className={`${adminBannerSuccessClass} mt-4`}>
                 Lieferung bereits bestätigt.
               </div>
             )}
 
-            <ul className="mt-4 space-y-2">
+            <ul className="mt-4 flex flex-col gap-2">
               {(open.items ?? []).map((it) => {
                 const p = productById.get(it.product_id) ?? null;
                 const label = p ? formatProductName(p) : it.product_id;
                 return (
                   <li
                     key={it.product_id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border-2 border-black bg-white px-3 py-3"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-white px-3 py-3"
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-black text-black truncate">{label}</div>
-                      <div className="text-[11px] font-black text-black/55">Produkt-ID: {it.product_id}</div>
+                      <div className="text-[11px] font-bold text-black/55">
+                        Produkt-ID: {it.product_id}
+                      </div>
                     </div>
                     <div className="shrink-0 text-lg font-black tabular-nums text-black">
                       {it.quantity}
@@ -271,4 +310,3 @@ export default function AdminSubmittedOrdersPage() {
     </main>
   );
 }
-

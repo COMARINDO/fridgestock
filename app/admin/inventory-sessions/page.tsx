@@ -16,8 +16,19 @@ import type {
   Location,
 } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
-import { Button, ButtonSecondary } from "@/app/_components/ui";
 import { formatProductName } from "@/lib/formatProductName";
+import {
+  adminBadgeNeutralClass,
+  adminBannerErrorClass,
+  adminBannerInfoClass,
+  adminBannerWarnClass,
+  adminCardClass,
+  adminCardHeadlineClass,
+  adminMutedTextClass,
+  adminSecondaryButtonClass,
+  adminSectionTitleClass,
+} from "@/app/admin/_components/adminUi";
+import { AdminPageHeader } from "@/app/admin/_components/AdminPageHeader";
 
 function fmtTs(iso: string): string {
   try {
@@ -34,12 +45,6 @@ function fmtTs(iso: string): string {
     return iso;
   }
 }
-
-type ProductLike = {
-  brand?: string | null;
-  product_name?: string | null;
-  zusatz?: string | null;
-};
 
 export default function AdminInventorySessionsPage() {
   const router = useRouter();
@@ -68,7 +73,9 @@ export default function AdminInventorySessionsPage() {
     setBusy(true);
     try {
       const locations = await listLocations();
-      const main = locations.filter((l) => !l.parent_id).sort((a, b) => a.name.localeCompare(b.name, "de"));
+      const main = locations
+        .filter((l) => !l.parent_id)
+        .sort((a, b) => a.name.localeCompare(b.name, "de"));
       setLocs(main);
       const first = main[0]?.id ?? "";
       setActiveLocId((cur) => cur || first);
@@ -140,19 +147,16 @@ export default function AdminInventorySessionsPage() {
     void reloadDetails();
   }, [activeSessionNo, reloadDetails]);
 
-  const activeLoc = useMemo(() => locs.find((l) => l.id === activeLocId) ?? null, [locs, activeLocId]);
+  const activeLoc = useMemo(
+    () => locs.find((l) => l.id === activeLocId) ?? null,
+    [locs, activeLocId]
+  );
   const activeSession = useMemo(
     () => sessions.find((s) => s.session_no === activeSessionNo) ?? null,
     [sessions, activeSessionNo]
   );
 
-  async function setMissingToZero(productId: string) {
-    void productId;
-  }
-
-  async function setAllMissingToZero() {
-    // Removed: bulk destructive actions.
-  }
+  const visibleMissing = missing.filter((m) => !ignoredMissing[m.product_id]);
 
   if (!adminHydrated) {
     return (
@@ -171,28 +175,29 @@ export default function AdminInventorySessionsPage() {
   }
 
   return (
-    <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-black text-black">Inventur-Sessions</h1>
-        <p className="mt-1 text-sm text-black/65">
-          Session-Erkennung: <strong>5 Stunden Pause</strong> starten neue Inventur.
-        </p>
-      </div>
+    <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
+      <AdminPageHeader
+        eyebrow="Monitoring"
+        title="Inventur-Sessions"
+        description="Eine neue Session beginnt nach 5 Stunden Pause. Nicht gezählte Artikel zeigen, was sich seit der letzten Inventur nicht geändert hat."
+      />
 
-      {busy ? <div className="mt-8 text-black font-black">Lade…</div> : null}
-      {err ? <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div> : null}
+      {err ? <div className={`${adminBannerErrorClass} mt-5`}>{err}</div> : null}
+      {busy ? <div className={`${adminBannerInfoClass} mt-5`}>Lade…</div> : null}
 
       {!busy ? (
-        <div className="mt-6 rounded-3xl border-2 border-black bg-white p-4">
-          <div className="text-sm font-black text-black">Platzerl</div>
+        <section className={`${adminCardClass} mt-5`}>
+          <p className={adminSectionTitleClass}>Platzerl auswählen</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {locs.map((l) => (
               <button
                 key={l.id}
                 type="button"
                 className={[
-                  "h-10 px-3 rounded-2xl border-2 text-sm font-black transition-colors active:scale-[0.99]",
-                  activeLocId === l.id ? "border-black bg-black text-white" : "border-black bg-white text-black",
+                  "h-9 rounded-xl border px-3 text-sm font-black transition-colors active:scale-[0.99]",
+                  activeLocId === l.id
+                    ? "border-black bg-black text-white"
+                    : "border-black/15 bg-white text-black hover:bg-black/[0.04]",
                 ].join(" ")}
                 onClick={() => setActiveLocId(l.id)}
               >
@@ -200,160 +205,184 @@ export default function AdminInventorySessionsPage() {
               </button>
             ))}
           </div>
-        </div>
+        </section>
       ) : null}
 
       {!busy ? (
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <section className="rounded-3xl border-2 border-black bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-black text-black">Sessions</div>
-                <div className="text-xs font-black text-black/50">
-                  {activeLoc ? activeLoc.name : "—"}
-                </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <section className={`${adminCardClass} flex flex-col`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={adminSectionTitleClass}>Sessions</p>
+                <h2 className={`${adminCardHeadlineClass} mt-0.5 truncate`}>
+                  {activeLoc?.name ?? "—"}
+                </h2>
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
+                className={adminSecondaryButtonClass}
                 onClick={() => void reloadSessions()}
                 disabled={detailBusy}
               >
-                {detailBusy ? "…" : "Reload"}
+                {detailBusy ? "…" : "Neu laden"}
               </button>
             </div>
 
             {sessions.length === 0 ? (
-              <div className="mt-4 text-sm font-black text-black/60">Noch keine Sessions.</div>
+              <div className={`${adminBannerInfoClass} mt-4`}>Noch keine Sessions.</div>
             ) : (
-              <div className="mt-4 space-y-2">
-                {sessions.map((s) => (
-                  <button
-                    key={s.session_no}
-                    type="button"
-                    className={[
-                      "w-full text-left rounded-2xl border-2 px-3 py-3 active:scale-[0.99]",
-                      activeSessionNo === s.session_no ? "border-black bg-black text-white" : "border-black bg-white text-black",
-                    ].join(" ")}
-                    onClick={() => setActiveSessionNo(s.session_no)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-black truncate">
-                          Session #{s.session_no}
+              <ul className="mt-4 flex flex-col gap-2">
+                {sessions.map((s) => {
+                  const isActive = activeSessionNo === s.session_no;
+                  return (
+                    <li key={s.session_no}>
+                      <button
+                        type="button"
+                        className={[
+                          "w-full rounded-xl border px-3 py-3 text-left transition-colors",
+                          isActive
+                            ? "border-black bg-black text-white"
+                            : "border-black/10 bg-white text-black hover:bg-black/[0.03]",
+                        ].join(" ")}
+                        onClick={() => setActiveSessionNo(s.session_no)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-black truncate">
+                              Session #{s.session_no}
+                            </div>
+                            <div
+                              className={
+                                isActive
+                                  ? "mt-0.5 text-[11px] font-bold text-white/75"
+                                  : "mt-0.5 text-[11px] font-bold text-black/55"
+                              }
+                            >
+                              {fmtTs(s.started_at)} – {fmtTs(s.ended_at)}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-xs font-black tabular-nums">
+                              {s.distinct_products} Produkte
+                            </div>
+                            <div
+                              className={
+                                isActive
+                                  ? "text-[11px] font-bold tabular-nums text-white/75"
+                                  : "text-[11px] font-bold tabular-nums text-black/55"
+                              }
+                            >
+                              {s.count_rows} Counts
+                            </div>
+                          </div>
                         </div>
-                        <div className={activeSessionNo === s.session_no ? "text-xs font-black text-white/70" : "text-xs font-black text-black/60"}>
-                          {fmtTs(s.started_at)} – {fmtTs(s.ended_at)}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-xs font-black tabular-nums">
-                          {s.distinct_products} Produkte
-                        </div>
-                        <div className={activeSessionNo === s.session_no ? "text-[11px] font-black text-white/70 tabular-nums" : "text-[11px] font-black text-black/60 tabular-nums"}>
-                          {s.count_rows} Counts
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
 
-          <section className="rounded-3xl border-2 border-black bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-black text-black">Details</div>
-                <div className="text-xs font-black text-black/50">
+          <section className={`${adminCardClass} flex flex-col`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={adminSectionTitleClass}>Details</p>
+                <h2 className={`${adminCardHeadlineClass} mt-0.5 truncate`}>
                   {activeSession ? `Session #${activeSession.session_no}` : "—"}
-                </div>
+                </h2>
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
+                className={adminSecondaryButtonClass}
                 onClick={() => void reloadDetails()}
                 disabled={detailBusy || activeSessionNo == null}
               >
-                {detailBusy ? "…" : "Reload"}
+                {detailBusy ? "…" : "Neu laden"}
               </button>
             </div>
 
-            {detailBusy ? <div className="mt-4 text-black font-black">Lade…</div> : null}
+            {detailBusy ? (
+              <div className={`${adminBannerInfoClass} mt-4`}>Lade…</div>
+            ) : null}
 
             {!detailBusy && activeSessionNo != null ? (
               <>
-                <div className="mt-4 rounded-2xl border-2 border-black/10 bg-black/[0.02] p-3">
-                  <div className="text-xs font-black text-black/60">Gezählt in Session</div>
-                  <div className="text-lg font-black text-black tabular-nums">{snapshot.length}</div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Stat label="Gezählt in Session" value={snapshot.length} />
+                  <Stat
+                    label="Nicht gezählt"
+                    value={visibleMissing.length}
+                    accent={visibleMissing.length > 0 ? "warn" : "neutral"}
+                  />
                 </div>
 
-                <div className="mt-3 rounded-2xl border-2 border-amber-800/30 bg-amber-50 p-3">
-                  <div className="text-xs font-black text-amber-900/70">⚠️ Nicht gezählt (vs vorige Inventur)</div>
-                  <div className="text-lg font-black text-amber-950 tabular-nums">
-                    {missing.filter((m) => !ignoredMissing[m.product_id]).length}
-                  </div>
-                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <ButtonSecondary
-                      className="h-11 text-sm"
-                      disabled={detailBusy}
-                      onClick={() => setIgnoredMissing({})}
-                    >
-                      Ignorieren zurücksetzen
-                    </ButtonSecondary>
-                  </div>
-                </div>
+                {visibleMissing.length > 0 ? (
+                  <>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                      <p className={adminMutedTextClass}>
+                        Diese Produkte hatten zuletzt Bestand &gt; 0 und wurden in dieser
+                        Session nicht erfasst.
+                      </p>
+                      <button
+                        type="button"
+                        className={adminSecondaryButtonClass}
+                        disabled={detailBusy}
+                        onClick={() => setIgnoredMissing({})}
+                      >
+                        Ignorieren zurücksetzen
+                      </button>
+                    </div>
 
-                {missing.filter((m) => !ignoredMissing[m.product_id]).length > 0 ? (
-                  <ul className="mt-3 space-y-2">
-                    {missing
-                      .filter((m) => !ignoredMissing[m.product_id])
-                      .map((m) => {
-                        const pseudo: ProductLike = {
-                          brand: m.brand,
-                          product_name: m.product_name,
-                          zusatz: m.zusatz,
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {visibleMissing.map((m) => {
+                        const pseudo = {
+                          brand: m.brand ?? "",
+                          product_name: m.product_name ?? "",
+                          zusatz: m.zusatz ?? "",
                         };
                         return (
                           <li
                             key={m.product_id}
-                            className="rounded-2xl border-2 border-amber-900/20 bg-white px-3 py-3"
+                            className="flex items-start justify-between gap-3 rounded-xl border border-amber-700/15 bg-amber-50 px-3 py-3"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-sm font-black text-black truncate">
-                                  {formatProductName(pseudo as any)}
-                                </div>
-                                <div className="text-xs font-black text-black/60 tabular-nums">
-                                  letzter Bestand: {m.last_quantity}
-                                  {m.last_count_at ? ` · ${fmtTs(m.last_count_at)}` : ""}
-                                </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-black text-black truncate">
+                                {formatProductName(pseudo)}
                               </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="h-10 px-3 rounded-2xl border-2 border-black bg-white text-xs font-black text-black active:scale-[0.99]"
-                                  onClick={() => setIgnoredMissing((cur) => ({ ...cur, [m.product_id]: true }))}
-                                >
-                                  Ignorieren
-                                </button>
+                              <div className="text-[11px] font-bold tabular-nums text-black/60">
+                                letzter Bestand: {m.last_quantity}
+                                {m.last_count_at ? ` · ${fmtTs(m.last_count_at)}` : ""}
                               </div>
                             </div>
+                            <button
+                              type="button"
+                              className={adminSecondaryButtonClass}
+                              onClick={() =>
+                                setIgnoredMissing((cur) => ({
+                                  ...cur,
+                                  [m.product_id]: true,
+                                }))
+                              }
+                            >
+                              Ignorieren
+                            </button>
                           </li>
                         );
                       })}
-                  </ul>
+                    </ul>
+                  </>
                 ) : (
-                  <div className="mt-3 text-sm font-black text-black/60">
+                  <div className={`${adminBannerInfoClass} mt-4`}>
                     Keine fehlenden Produkte (oder alles ignoriert).
                   </div>
                 )}
               </>
-            ) : (
-              <div className="mt-4 text-sm font-black text-black/60">
-                Session auswählen…
+            ) : !detailBusy ? (
+              <div className={`${adminBannerWarnClass} mt-4`}>
+                Session links auswählen.
               </div>
-            )}
+            ) : null}
           </section>
         </div>
       ) : null}
@@ -361,3 +390,25 @@ export default function AdminInventorySessionsPage() {
   );
 }
 
+function Stat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number | string;
+  accent?: "warn" | "neutral";
+}) {
+  const cls =
+    accent === "warn"
+      ? "border-amber-700/20 bg-amber-50"
+      : "border-black/10 bg-zinc-50";
+  return (
+    <div className={`rounded-xl border ${cls} px-3 py-3`}>
+      <div className={adminBadgeNeutralClass + " mb-2"}>{label}</div>
+      <div className="text-2xl font-black tabular-nums leading-none text-black">
+        {value}
+      </div>
+    </div>
+  );
+}

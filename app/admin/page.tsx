@@ -5,10 +5,19 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import {
-  adminActionSectionClass,
-  adminReadSectionClass,
+  adminBannerErrorClass,
+  adminBannerInfoClass,
+  adminCardClass,
+  adminCardHeadlineClass,
+  adminMutedTextClass,
+  adminSecondaryButtonClass,
   adminSectionTitleClass,
+  adminTableClass,
+  adminTableHeadCellClass,
+  adminTableRowClass,
+  adminTableShellClass,
 } from "@/app/admin/_components/adminUi";
+import { AdminPageHeader } from "@/app/admin/_components/AdminPageHeader";
 import { getGlobalOverviewByProduct } from "@/lib/db";
 import type { Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
@@ -44,6 +53,41 @@ export default function AdminPage() {
 
   return <AdminDashboard />;
 }
+
+type QuickLink = {
+  href: string;
+  title: string;
+  hint: string;
+};
+
+const monitoringLinks: QuickLink[] = [
+  {
+    href: "/admin/inventory-sessions",
+    title: "Inventur-Sessions",
+    hint: "Snapshots & nicht gezählte Artikel pro Platzerl.",
+  },
+];
+
+const actionLinks: QuickLink[] = [
+  {
+    href: "/admin/orders?tab=demand",
+    title: "Bestellungen",
+    hint: "Bedarf, Lager, Hofstetten und Kirchberg.",
+  },
+];
+
+const debugLinks: QuickLink[] = [
+  {
+    href: "/admin/bookings",
+    title: "Buchungen",
+    hint: "History aus inventory_history – inkl. Umbuchen.",
+  },
+  {
+    href: "/admin/submitted-orders",
+    title: "Abgeschickte Bestellungen",
+    hint: "Bestellungen je KW – Lieferung bestätigen oder löschen.",
+  },
+];
 
 function AdminDashboard() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -99,110 +143,135 @@ function AdminDashboard() {
     }
   }
 
-  const linkClass =
-    "block rounded-2xl border-2 border-black bg-white px-4 py-3 text-sm font-black text-black transition-colors hover:bg-black/[0.04] active:scale-[0.99]";
+  const totalPieces = rows.reduce((acc, r) => acc + (Number(r.quantity) || 0), 0);
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 pb-28 pt-4">
-      <h1 className="text-2xl font-black text-black">Admin – Übersicht</h1>
-      <p className="mt-1 text-sm text-black/65">
-        Wähle einen Bereich über die Navigation oben oder die Kurzlinks unten.
-      </p>
+    <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-6">
+      <AdminPageHeader
+        eyebrow="Übersicht"
+        title="Bstand · Admin"
+        description="Schneller Zugriff auf Bestände, Inventur, Bestellungen und Historie."
+        actions={
+          <button
+            type="button"
+            disabled={backupBusy}
+            className={adminSecondaryButtonClass}
+            onClick={() => void sendBackup()}
+          >
+            {backupBusy ? "Backup…" : "Backup senden"}
+          </button>
+        }
+      />
 
-      <div className="mt-6 grid gap-4 md:grid-cols-1">
-        <section className={adminReadSectionClass}>
-          <h2 className={adminSectionTitleClass}>Monitoring</h2>
-          <p className="mt-1 text-sm font-black text-black/70">
-            Lesen: Bestände, Inventur-Fortschritt.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Link href="/admin" className={linkClass}>
-              Übersicht (diese Seite)
-            </Link>
-            <Link href="/admin/inventory-sessions" className={linkClass}>
-              Inventur-Sessions
-            </Link>
+      {err ? <div className={`${adminBannerErrorClass} mt-5`}>{err}</div> : null}
+
+      <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <QuickLinkCard
+          eyebrow="Monitoring"
+          title="Bestände & Inventur"
+          links={monitoringLinks}
+        />
+        <QuickLinkCard
+          eyebrow="Aktionen"
+          title="Bestellprozess"
+          links={actionLinks}
+          accent="amber"
+        />
+        <QuickLinkCard
+          eyebrow="Debug · Historie"
+          title="Buchungen & Bestellungen"
+          links={debugLinks}
+        />
+      </section>
+
+      <section className={`${adminCardClass} mt-6`}>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className={adminSectionTitleClass}>Globale Bestände</p>
+            <h2 className={adminCardHeadlineClass}>
+              {rows.length} Produkte ·{" "}
+              <span className="tabular-nums">{totalPieces}</span> Stück
+            </h2>
+            <p className={`mt-1 ${adminMutedTextClass}`}>
+              Summe Stück über alle Platzerl (nur Lesen).
+            </p>
           </div>
-        </section>
+        </div>
 
-        <section className={adminActionSectionClass}>
-          <h2 className={adminSectionTitleClass}>Aktionen</h2>
-          <p className="mt-1 text-sm font-black text-black/70">
-            Schreiben: Bestellungen, Bedarf, später ggf. Transfers.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <Link href="/admin/orders" className={`${linkClass} sm:inline-block sm:min-w-[200px]`}>
-              Bestellungen
-            </Link>
-            <span
-              className="inline-flex items-center justify-center rounded-2xl border border-dashed border-black/30 px-4 py-3 text-sm font-black text-black/45"
-              title="Noch keine eigene Seite"
-            >
-              Transfers (geplant)
-            </span>
-            <button
-              type="button"
-              disabled={backupBusy}
-              className="h-12 rounded-2xl border-2 border-black bg-white px-4 text-sm font-black text-black active:scale-[0.99] disabled:opacity-50 sm:ml-auto"
-              onClick={() => void sendBackup()}
-            >
-              {backupBusy ? "Backup…" : "Backup senden"}
-            </button>
-          </div>
-        </section>
-
-        <section className="rounded-3xl border-2 border-black/20 bg-white p-4 sm:p-5">
-          <h2 className={adminSectionTitleClass}>Debug / Historie</h2>
-          <p className="mt-1 text-sm font-black text-black/70">
-            Buchungsprotokoll und abgeschickte KW-Bestellungen.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Link href="/admin/bookings" className={linkClass}>
-              Buchungen (History)
-            </Link>
-            <Link href="/admin/submitted-orders" className={linkClass}>
-              Abgeschickte Bestellungen
-            </Link>
-          </div>
-        </section>
-      </div>
-
-      {busy ? (
-        <div className="mt-8 text-black font-black">Lade…</div>
-      ) : err ? (
-        <div className="mt-6 rounded-3xl bg-red-50 p-4 text-red-800">{err}</div>
-      ) : null}
-
-      {!busy && !err ? (
-        <div className="mt-8">
-          <h2 className="text-sm font-black uppercase tracking-wide text-black/70">
-            Globale Bestände
-          </h2>
-          <p className="mt-1 text-xs font-black text-black/55">
-            Summe Stück über alle Platzerl (Lesen).
-          </p>
-          <div className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
-            <table className="w-full min-w-[360px] text-left text-sm">
+        {busy ? (
+          <div className={`${adminBannerInfoClass} mt-4`}>Lade…</div>
+        ) : (
+          <div className={`${adminTableShellClass} mt-4`}>
+            <table className={`${adminTableClass} min-w-[360px]`}>
               <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt</th>
-                  <th className="p-3 font-black text-black tabular-nums">Stk</th>
+                <tr>
+                  <th className={`${adminTableHeadCellClass} text-left`}>Produkt</th>
+                  <th className={`${adminTableHeadCellClass} text-right tabular-nums`}>
+                    Stück
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-black/10 align-top">
-                    <td className="p-3 font-black text-black max-w-[200px]">
-                      {formatProductName(r)}
+                  <tr key={r.id} className={adminTableRowClass}>
+                    <td className="p-3 font-bold text-black">{formatProductName(r)}</td>
+                    <td className="p-3 text-right font-black tabular-nums text-black">
+                      {r.quantity}
                     </td>
-                    <td className="p-3 font-black tabular-nums">{r.quantity}</td>
                   </tr>
                 ))}
+                {rows.length === 0 ? (
+                  <tr>
+                    <td className="p-4 text-sm font-bold text-black/55" colSpan={2}>
+                      Keine Daten.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
-        </div>
-      ) : null}
+        )}
+      </section>
     </main>
+  );
+}
+
+function QuickLinkCard({
+  eyebrow,
+  title,
+  links,
+  accent,
+}: {
+  eyebrow: string;
+  title: string;
+  links: QuickLink[];
+  accent?: "amber";
+}) {
+  const accentBorder = accent === "amber" ? "border-l-[3px] border-l-amber-500/70" : "";
+  return (
+    <section className={`${adminCardClass} ${accentBorder} flex flex-col`}>
+      <p className={adminSectionTitleClass}>{eyebrow}</p>
+      <h2 className={`${adminCardHeadlineClass} mt-1`}>{title}</h2>
+      <div className="mt-3 flex flex-1 flex-col gap-2">
+        {links.map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className="group flex items-start justify-between gap-3 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03]"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-black text-black">{l.title}</div>
+              <div className="mt-0.5 text-[12px] font-bold text-black/55">{l.hint}</div>
+            </div>
+            <span
+              aria-hidden
+              className="shrink-0 rounded-md text-base text-black/30 transition-colors group-hover:text-black/60"
+            >
+              →
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
