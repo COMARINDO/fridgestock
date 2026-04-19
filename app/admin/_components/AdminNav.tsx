@@ -8,6 +8,10 @@ import { useAdmin } from "@/app/admin-provider";
 import { HOFSTETTEN_NAME, KIRCHBERG_NAME } from "@/lib/locationConstants";
 import { useAdminNavExtrasToggle } from "@/lib/useAdminNavExtrasToggle";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
+import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
+import { useOrderReserveEnabled } from "@/lib/useOrderReserveEnabled";
+import { useOrderReservePct } from "@/lib/useOrderReservePct";
+import { ORDER_RESERVE_PCT_MAX } from "@/lib/orderSuggestions";
 
 const navLinkBase =
   "group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-black " +
@@ -193,6 +197,9 @@ export function AdminNav() {
   const onOrders = pathname === "/admin/orders" || pathname.startsWith("/admin/orders/");
   const [showExtras, setShowExtras] = useAdminNavExtrasToggle();
   const [useAi, setUseAi] = useAiConsumptionToggle();
+  const [showFormula, setShowFormula] = useOrderFormulaToggle();
+  const [reserveEnabled, setReserveEnabled] = useOrderReserveEnabled();
+  const [reservePct, setReservePct] = useOrderReservePct();
 
   return (
     <aside
@@ -251,6 +258,48 @@ export function AdminNav() {
             onChange={() => setUseAi((v) => !v)}
             title="KI-Prognose an/aus"
           />
+          <PillSwitch
+            label="Formel"
+            checked={showFormula}
+            onChange={() => setShowFormula(!showFormula)}
+            title="Formel-Zeile unter Produkten ein-/ausblenden"
+          />
+          <PillSwitch
+            label="Reserve"
+            checked={reserveEnabled}
+            onChange={() => {
+              const next = !reserveEnabled;
+              setReserveEnabled(next);
+              if (next && reservePct <= 0) {
+                setReservePct(10);
+              }
+            }}
+            title="Reserve-Aufschlag auf Bestellvorschläge an/aus"
+          />
+          {reserveEnabled ? (
+            <label
+              className="-mt-1 flex h-9 items-center gap-2 rounded-xl border border-emerald-600/25 bg-emerald-50 px-3 text-[12px] font-black text-emerald-800"
+              title={`Prozentsatz, der zum Stück-Bedarf addiert wird (0–${ORDER_RESERVE_PCT_MAX} %).`}
+            >
+              <span className="select-none">+</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={ORDER_RESERVE_PCT_MAX}
+                step={1}
+                value={reservePct}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setReservePct(Number.isFinite(n) ? n : 0);
+                }}
+                onFocus={(e) => e.currentTarget.select()}
+                className="h-6 w-14 rounded-md border border-emerald-600/40 bg-white px-1.5 text-right text-[12px] font-black text-black tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-600/30"
+                aria-label="Reserve in Prozent"
+              />
+              <span className="select-none">% auf Stück-Bedarf</span>
+            </label>
+          ) : null}
           <PillSwitch
             label="Monitoring & Debug"
             checked={showExtras}

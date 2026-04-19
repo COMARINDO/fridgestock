@@ -1,0 +1,46 @@
+import { useEffect, useState } from "react";
+
+const STORAGE_KEY = "admin.orders.reserveEnabled.v1";
+const EVENT_NAME = "admin.orders.reserveEnabled";
+
+function readFromStorage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Master-Switch für die Reserve-Funktion.
+ * Wenn false, wird der gespeicherte Reserve-Prozentsatz im UI/Berechnung als 0 behandelt
+ * — der Wert selbst bleibt aber in localStorage erhalten, damit beim erneuten Aktivieren
+ * der zuletzt gewählte Prozentsatz wieder vorhanden ist.
+ */
+export function useOrderReserveEnabled(): [boolean, (next: boolean) => void] {
+  const [enabled, setEnabled] = useState<boolean>(() => readFromStorage());
+
+  useEffect(() => {
+    const onAny = () => setEnabled(readFromStorage());
+    window.addEventListener("storage", onAny);
+    window.addEventListener(EVENT_NAME, onAny);
+    return () => {
+      window.removeEventListener("storage", onAny);
+      window.removeEventListener(EVENT_NAME, onAny);
+    };
+  }, []);
+
+  const set = (next: boolean) => {
+    const val = Boolean(next);
+    setEnabled(val);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, val ? "true" : "false");
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new Event(EVENT_NAME));
+  };
+
+  return [enabled, set];
+}

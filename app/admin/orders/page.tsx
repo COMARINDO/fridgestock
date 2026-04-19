@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
+import { useOrderReserveEnabled } from "@/lib/useOrderReserveEnabled";
 import { useOrderReservePct } from "@/lib/useOrderReservePct";
 import {
   archiveOrderForLocation,
@@ -29,7 +30,6 @@ import {
   applyOrderReservePct,
   computeLocalOutletOrder,
   computeRabensteinGesamtOrderFromDemandReports,
-  ORDER_RESERVE_PCT_MAX,
   piecesPerOrderUnitFromProductFields,
 } from "@/lib/orderSuggestions";
 import {
@@ -169,8 +169,12 @@ function AdminOrdersPageContent() {
   const { isAdmin, adminHydrated } = useAdmin();
 
   const [useAi] = useAiConsumptionToggle();
-  const [showFormula, setShowFormula] = useOrderFormulaToggle();
-  const [reservePct, setReservePct] = useOrderReservePct();
+  const [showFormula] = useOrderFormulaToggle();
+  const [reserveEnabled] = useOrderReserveEnabled();
+  const [reservePctRaw] = useOrderReservePct();
+  // Reserve nur dann effektiv, wenn der Switch in der AdminNav aktiv ist —
+  // sonst überall unsichtbar (Banner, Indikatoren, Berechnung als 0).
+  const reservePct = reserveEnabled ? reservePctRaw : 0;
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [openRequests, setOpenRequests] = useState<
@@ -938,75 +942,6 @@ function AdminOrdersPageContent() {
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className={adminBadgeNeutralClass}>{tabTitle}</span>
-            {activeTab === "central" ||
-            activeTab === "hofstetten" ||
-            activeTab === "kirchberg" ? (
-              <label
-                className={[
-                  "flex h-9 items-center gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors",
-                  reservePct > 0
-                    ? "border-emerald-600/30 bg-emerald-50 text-emerald-800"
-                    : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
-                ].join(" ")}
-                title={`Addiert zu allen Bestellvorschlägen einen prozentualen Aufschlag (0–${ORDER_RESERVE_PCT_MAX} %). Aufgerundet. Overrides bleiben unberührt.`}
-              >
-                <span className="select-none">Reserve</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={ORDER_RESERVE_PCT_MAX}
-                  step={1}
-                  value={reservePct}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    setReservePct(Number.isFinite(n) ? n : 0);
-                  }}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className={[
-                    "h-6 w-12 rounded-md border bg-white px-1.5 text-right text-[12px] font-black text-black tabular-nums focus:outline-none focus:ring-2 focus:ring-black/20",
-                    reservePct > 0
-                      ? "border-emerald-600/40"
-                      : "border-black/15",
-                  ].join(" ")}
-                  aria-label="Reserve in Prozent"
-                />
-                <span className="select-none">%</span>
-              </label>
-            ) : null}
-            {activeTab === "central" ? (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showFormula}
-                onClick={() => setShowFormula(!showFormula)}
-                title="Formel-Zeile unter Produkten ein-/ausblenden"
-                className={[
-                  "flex h-9 items-center justify-between gap-2 rounded-xl border px-3 text-[12px] font-black transition-colors active:scale-[0.99]",
-                  showFormula
-                    ? "border-black/15 bg-black/[0.04] text-black"
-                    : "border-black/10 bg-white text-black/65 hover:text-black hover:bg-black/[0.03]",
-                ].join(" ")}
-              >
-                <span className="truncate">Formel</span>
-                <span
-                  className={[
-                    "inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors",
-                    showFormula
-                      ? "border-emerald-700/30 bg-emerald-600"
-                      : "border-black/15 bg-black/10",
-                  ].join(" ")}
-                  aria-hidden
-                >
-                  <span
-                    className={[
-                      "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                      showFormula ? "translate-x-4" : "translate-x-0.5",
-                    ].join(" ")}
-                  />
-                </span>
-              </button>
-            ) : null}
           </div>
         }
       />
