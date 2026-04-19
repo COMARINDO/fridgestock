@@ -445,20 +445,28 @@ function AdminOrdersPageContent() {
         Math.round(usageByLoc[hofstettenId]?.[p.id] ?? 0)
       );
       const stock = inventoryQty[hofstettenId]?.[p.id] ?? 0;
-      const { orderQuantity: calculatedOrderRaw } = computeLocalOutletOrder({
+      const { orderQuantity: calculatedOrderBaseline } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
         daysCovered: daysCoveredByLoc[hofstettenId]?.[p.id] ?? 0,
       });
-      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
-      const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
-      const overridden = ov !== undefined;
-      const displayOrder = overridden ? ov!.quantity : calculatedOrder;
       const pack = piecesPerOrderUnitFromProductFields({
         min_quantity: p.min_quantity,
         metro_unit: p.metro_unit,
       });
-      const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
+      // Reserve greift auf Einheiten (das ist die sichtbare Größe + Metro-Bestellmenge).
+      const calculatedUnitsBaseline = orderPiecesToUnits(calculatedOrderBaseline, pack);
+      const calculatedUnits = applyOrderReservePct(calculatedUnitsBaseline, reservePct);
+      // Stück bleiben konsistent zu den Einheiten:
+      //   * Reserve = 0 → unveränderter Stück-Baseline-Wert.
+      //   * Reserve > 0 → Einheiten × pack (falls Reserve auf volle Gebinde aufgestockt hat).
+      const calculatedOrder =
+        reservePct > 0 && calculatedUnits > calculatedUnitsBaseline
+          ? calculatedUnits * pack
+          : calculatedOrderBaseline;
+      const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
+      const overridden = ov !== undefined;
+      const displayOrder = overridden ? ov!.quantity : calculatedOrder;
       const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
         usage > 0 ||
@@ -503,20 +511,24 @@ function AdminOrdersPageContent() {
         Math.round(usageByLoc[kirchbergId]?.[p.id] ?? 0)
       );
       const stock = inventoryQty[kirchbergId]?.[p.id] ?? 0;
-      const { orderQuantity: calculatedOrderRaw } = computeLocalOutletOrder({
+      const { orderQuantity: calculatedOrderBaseline } = computeLocalOutletOrder({
         usage7d: usage,
         stock,
         daysCovered: daysCoveredByLoc[kirchbergId]?.[p.id] ?? 0,
       });
-      const calculatedOrder = applyOrderReservePct(calculatedOrderRaw, reservePct);
-      const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
-      const overridden = ov !== undefined;
-      const displayOrder = overridden ? ov!.quantity : calculatedOrder;
       const pack = piecesPerOrderUnitFromProductFields({
         min_quantity: p.min_quantity,
         metro_unit: p.metro_unit,
       });
-      const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
+      const calculatedUnitsBaseline = orderPiecesToUnits(calculatedOrderBaseline, pack);
+      const calculatedUnits = applyOrderReservePct(calculatedUnitsBaseline, reservePct);
+      const calculatedOrder =
+        reservePct > 0 && calculatedUnits > calculatedUnitsBaseline
+          ? calculatedUnits * pack
+          : calculatedOrderBaseline;
+      const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
+      const overridden = ov !== undefined;
+      const displayOrder = overridden ? ov!.quantity : calculatedOrder;
       const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
         usage > 0 ||
