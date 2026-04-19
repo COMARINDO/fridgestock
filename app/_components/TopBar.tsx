@@ -18,6 +18,7 @@ export function TopBar() {
   const hasSession = Boolean(location?.location_id) || isAdmin;
   const bareLoginScreen = pathname === "/login" && (!sessionReady || !hasSession);
   const isLocationScreen = pathname.startsWith("/location/");
+  const isAdminRoute = pathname.startsWith("/admin");
 
   const [scanMode, setScanMode] = useState<"set" | "add">("set");
 
@@ -187,8 +188,22 @@ export function TopBar() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
-      <div className="w-full px-4 py-3 min-h-[56px] flex items-center">
-        {bareLoginScreen ? null : (
+      <div className="w-full px-4 py-3 min-h-[56px] flex items-center justify-start">
+        {bareLoginScreen ? null : isAdminRoute ? (
+          <div className="flex w-full min-w-0 items-center justify-start gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void logoutWithOptionalGuard();
+              }}
+              className={btnOff}
+              title="Abmelden"
+              aria-label="Abmelden"
+            >
+              ⏻
+            </button>
+          </div>
+        ) : (
           <div className="flex w-full items-center justify-between gap-2">
             <div className="flex min-w-0 justify-start gap-2">
               <button

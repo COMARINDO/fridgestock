@@ -37,11 +37,11 @@ export function AdminNav() {
 
   return (
     <nav
-      className="sticky top-[72px] z-30 border-b-2 border-black bg-[var(--background)]/95 backdrop-blur-sm"
+      className="sticky top-[72px] z-30 border-b-2 border-black bg-[var(--background)]/95 backdrop-blur-sm text-left"
       aria-label="Admin-Navigation"
     >
-      <div className="mx-auto flex max-w-5xl flex-col gap-3 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start sm:gap-6">
+      <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-black/45 sm:text-xs">
               Monitoring
@@ -96,18 +96,18 @@ export function AdminNav() {
               ))}
             </div>
           </div>
-        </div>
-        <div className="flex shrink-0 justify-end border-t border-black/10 pt-2 sm:border-t-0 sm:pt-0">
-          <button
-            type="button"
-            className="h-9 rounded-2xl border-2 border-black bg-white px-3 text-xs font-black text-black active:scale-[0.99] sm:h-10 sm:px-4 sm:text-sm"
-            onClick={() => {
-              exitAdmin();
-              router.replace("/login");
-            }}
-          >
-            Admin beenden
-          </button>
+          <div className="self-start border-t border-black/10 pt-2 sm:border-t-0 sm:pt-0">
+            <button
+              type="button"
+              className="h-9 rounded-2xl border-2 border-black bg-white px-3 text-xs font-black text-black active:scale-[0.99] sm:h-10 sm:px-4 sm:text-sm"
+              onClick={() => {
+                exitAdmin();
+                router.replace("/login");
+              }}
+            >
+              Admin beenden
+            </button>
+          </div>
         </div>
       </div>
     </nav>
