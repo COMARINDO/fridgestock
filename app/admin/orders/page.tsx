@@ -682,25 +682,25 @@ function AdminOrdersPageContent() {
               sind <strong>Aktionen</strong> (Bereich „Aktionen“ unten für Runden-Abschluss).
             </p>
 
-          <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+          <section className="mt-3 max-md:overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black">
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Produkt / Bedarf je Platzerl
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Gesamt
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Vorschlag
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Metro
                   </th>
                 </tr>
@@ -914,32 +914,32 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
-          <section className="mt-6 overflow-x-auto rounded-3xl border-2 border-black bg-white">
+          <section className="mt-6 max-md:overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b-2 border-black">
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Produkt
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Bedarf 7d
                     <br />
                     <span className="text-[11px] font-black text-black/55">Stück</span>
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Bestellen
                     <br />
                     <span className="text-[11px] font-black text-black/55">Einheiten</span>
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Metro Nr
                   </th>
-                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                  <th className="sticky top-[72px] z-40 bg-zinc-50 p-3 text-right font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     Einheit
                   </th>
                 </tr>
