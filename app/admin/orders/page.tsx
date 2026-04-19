@@ -149,6 +149,8 @@ type LocalOutletRowModel = {
   displayOrder: number;
   piecesPerOrderUnit: number;
   calculatedUnits: number;
+  /** Einheiten-Vorschlag OHNE Reserve-Aufschlag (für Indikator). */
+  calculatedUnitsBaseline: number;
   displayUnits: number;
   overridden: boolean;
 };
@@ -486,6 +488,7 @@ function AdminOrdersPageContent() {
         displayOrder,
         piecesPerOrderUnit: pack,
         calculatedUnits,
+        calculatedUnitsBaseline,
         displayUnits,
         overridden,
       });
@@ -548,6 +551,7 @@ function AdminOrdersPageContent() {
         displayOrder,
         piecesPerOrderUnit: pack,
         calculatedUnits,
+        calculatedUnitsBaseline,
         displayUnits,
         overridden,
       });
@@ -993,6 +997,21 @@ function AdminOrdersPageContent() {
         }
       />
 
+      {reservePct > 0 &&
+      (activeTab === "central" ||
+        activeTab === "hofstetten" ||
+        activeTab === "kirchberg") ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-600/20 bg-emerald-50 px-3 py-2 text-[12px] font-black text-emerald-800">
+          <span className="inline-flex h-5 items-center rounded-md bg-emerald-600 px-1.5 text-white">
+            +{reservePct} %
+          </span>
+          <span>
+            Reserve aktiv · auf alle Bestellvorschläge aufgeschlagen (aufgerundet auf volle
+            Einheiten). Overrides bleiben unberührt.
+          </span>
+        </div>
+      ) : null}
+
       {!rabensteinId && !busy && !err ? (
         <div className={`${adminBannerWarnClass} mt-5`}>
           Platzerl „{RABENSTEIN_LAGER_NAME}“ nicht gefunden. Bitte Namen in den Orten prüfen.
@@ -1291,10 +1310,17 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
+                  const reserveBump =
+                    reservePct > 0 && r.calculatedOrder > r.calculatedOrderBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[240px]">
                         <div className="truncate">{r.name}</div>
+                        {!showFormula && reserveBump && !r.overridden ? (
+                          <div className="mt-0.5 text-[11px] font-black text-emerald-800">
+                            +{reservePct} % Reserve · {r.calculatedOrderBaseline} → {r.calculatedOrder} E.
+                          </div>
+                        ) : null}
                         {showFormula ? (
                           <div
                             className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
@@ -1328,7 +1354,11 @@ function AdminOrdersPageContent() {
                         ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800 mt-1">
-                            Manuell: {r.displayOrder} E. (Vorschlag: {r.calculatedOrder} E.)
+                            Manuell: {r.displayOrder} E. (Vorschlag: {r.calculatedOrder} E.
+                            {reserveBump
+                              ? ` · +${reservePct} % Reserve aus ${r.calculatedOrderBaseline}`
+                              : ""}
+                            )
                           </div>
                         ) : null}
                       </td>
@@ -1514,13 +1544,24 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
+                  const reserveBump =
+                    reservePct > 0 && r.calculatedUnits > r.calculatedUnitsBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[200px]">
                         <div className="truncate">{r.name}</div>
+                        {reserveBump && !r.overridden ? (
+                          <div className="mt-0.5 text-[11px] font-black text-emerald-800">
+                            +{reservePct} % Reserve · {r.calculatedUnitsBaseline} → {r.calculatedUnits} E.
+                          </div>
+                        ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedUnits} E.)
+                            Manuell (Vorschlag: {r.calculatedUnits} E.
+                            {reserveBump
+                              ? ` · +${reservePct} % Reserve aus ${r.calculatedUnitsBaseline}`
+                              : ""}
+                            )
                           </div>
                         ) : null}
                       </td>
@@ -1704,13 +1745,24 @@ function AdminOrdersPageContent() {
                   const editMetroUnit =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_unit";
+                  const reserveBump =
+                    reservePct > 0 && r.calculatedUnits > r.calculatedUnitsBaseline;
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
                       <td className="p-3 font-black text-black max-w-[200px]">
                         <div className="truncate">{r.name}</div>
+                        {reserveBump && !r.overridden ? (
+                          <div className="mt-0.5 text-[11px] font-black text-emerald-800">
+                            +{reservePct} % Reserve · {r.calculatedUnitsBaseline} → {r.calculatedUnits} E.
+                          </div>
+                        ) : null}
                         {r.overridden ? (
                           <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedUnits} E.)
+                            Manuell (Vorschlag: {r.calculatedUnits} E.
+                            {reserveBump
+                              ? ` · +${reservePct} % Reserve aus ${r.calculatedUnitsBaseline}`
+                              : ""}
+                            )
                           </div>
                         ) : null}
                       </td>
