@@ -95,6 +95,10 @@ type CentralRowModel = {
   demandTeich: number;
   /** Meldungen (Stück), alle anderen Platzerl außer Zentrallager */
   demandOther: number;
+  /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. sonstige − Bestand Lager Rabenstein */
+  deltaStück: number;
+  /** Stück pro Metro-Einheit (Produkt min_quantity, sonst 1) */
+  piecesPerOrderUnit: number;
   calculatedOrder: number;
   displayOrder: number;
   overridden: boolean;
@@ -289,6 +293,7 @@ export default function AdminOrdersPage() {
 
       const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
       const piecesPerUnit = mq > 0 ? mq : 1;
+      const deltaStück = demandTeich + demandOther - stockRab;
       const calculatedOrder = computeRabensteinGesamtOrderFromDemandReports({
         demandTeich,
         demandFiliale: demandOther,
@@ -322,6 +327,8 @@ export default function AdminOrdersPage() {
         bedarf7dStück,
         demandTeich,
         demandOther,
+        deltaStück,
+        piecesPerOrderUnit: piecesPerUnit,
         calculatedOrder,
         displayOrder,
         overridden,
@@ -995,10 +1002,10 @@ export default function AdminOrdersPage() {
             <p className={adminSectionTitleClass}>Rabenstein · Lager</p>
             <p className="mt-2 text-sm font-black text-black/75">
               <strong>Bedarf 7d (Stück):</strong> Summe Verbrauch 7 Tage an {TEICH_NAME} +{" "}
-              {RABENSTEIN_FILIALE_NAME} (Orientierung). <strong>Bestellen (Einheiten):</strong> aus
-              Meldungen gegenüber Lagerbestand {RABENSTEIN_LAGER_NAME}, gerundet auf Metro-Einheiten (
-              <code className="text-xs">min_quantity</code>; mindestens 1 Einheit bei negativem
-              Stück-Defizit). Klick auf die Bestellmenge: Override (*). Metro-Felder gelten app-weit.
+              {RABENSTEIN_FILIALE_NAME} (nur Orientierung, unabhängig von der Bestellmenge).{" "}
+              <strong>Bestellen (Einheiten):</strong> aus Meldungen vs. Bestand {RABENSTEIN_LAGER_NAME}
+              — unter jedem Produkt steht die <strong>exakte Rechnung</strong> (Δ Stück, Stück/Einheit,
+              Regel). Klick auf die Bestellmenge: Override (*). Metro-Felder gelten app-weit.
             </p>
           </div>
           <section className="mt-4 overflow-x-auto rounded-3xl border-2 border-black bg-white">
@@ -1058,11 +1065,32 @@ export default function AdminOrdersPage() {
                     metroEditing?.field === "metro_unit";
                   return (
                     <tr key={r.productId} className="border-b border-black/10 align-middle">
-                      <td className="p-3 font-black text-black max-w-[200px]">
+                      <td className="p-3 font-black text-black max-w-[240px]">
                         <div className="truncate">{r.name}</div>
+                        <div
+                          className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
+                          title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
+                        >
+                          Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + sonstige Meld. (
+                          {r.demandOther}) − Bestand {RABENSTEIN_LAGER_NAME} ({r.stockRabenstein}) ={" "}
+                          <span className="text-black">{r.deltaStück}</span>
+                          {" · "}
+                          {r.piecesPerOrderUnit} Stück/Einheit
+                          {". "}
+                          {r.deltaStück < 0 ? (
+                            <>
+                              Δ &lt; 0 → <strong className="text-black">min. 1 Einheit</strong> (feste Regel).
+                            </>
+                          ) : (
+                            <>
+                              ⌈{r.deltaStück}÷{r.piecesPerOrderUnit}⌉ ={" "}
+                              <strong className="text-black">{r.calculatedOrder}</strong> Einheit(en).
+                            </>
+                          )}
+                        </div>
                         {r.overridden ? (
-                          <div className="text-[11px] font-black text-amber-800">
-                            Manuell (Vorschlag: {r.calculatedOrder} E.)
+                          <div className="text-[11px] font-black text-amber-800 mt-1">
+                            Manuell: {r.displayOrder} E. (Vorschlag: {r.calculatedOrder} E.)
                           </div>
                         ) : null}
                       </td>
