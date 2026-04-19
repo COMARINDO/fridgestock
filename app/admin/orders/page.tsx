@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
-import { getAiToggle } from "@/lib/getAiToggle";
+import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import {
   deleteAllOpenOrderRequests,
   deleteOpenOrderRequest,
@@ -116,11 +116,12 @@ type LocalOutletRowModel = {
   overridden: boolean;
 };
 
-export default function AdminOrdersPage() {
+function AdminOrdersPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAdmin, adminHydrated } = useAdmin();
 
-  const [useAi, setUseAi] = useState(false);
+  const [useAi] = useAiConsumptionToggle();
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [openRequests, setOpenRequests] = useState<
@@ -138,7 +139,15 @@ export default function AdminOrdersPage() {
   const [overrides, setOverrides] = useState<OrderOverrideRow[]>([]);
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("demand");
+
+  const tabParam = searchParams.get("tab");
+  const activeTab: TabId =
+    tabParam === "central" ||
+    tabParam === "hofstetten" ||
+    tabParam === "kirchberg" ||
+    tabParam === "demand"
+      ? tabParam
+      : "demand";
 
   const [editing, setEditing] = useState<{
     locationId: string;
@@ -184,22 +193,6 @@ export default function AdminOrdersPage() {
     if (!adminHydrated) return;
     if (!isAdmin) router.replace("/login");
   }, [adminHydrated, isAdmin, router]);
-
-  useEffect(() => {
-    try {
-      setUseAi(getAiToggle());
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("useAiConsumption.v1", useAi ? "true" : "false");
-    } catch {
-      // ignore
-    }
-  }, [useAi]);
 
   const reload = useCallback(async () => {
     setErr(null);
@@ -626,16 +619,6 @@ export default function AdminOrdersPage() {
     }
   }
 
-  const tabBtn =
-    "h-11 px-3 sm:px-4 rounded-2xl border-2 text-sm font-black whitespace-nowrap shrink-0 transition-colors";
-  const tabBtnActive = "border-black bg-black text-white";
-  const tabBtnIdle = "border-black bg-white text-black active:scale-[0.99]";
-  const rabensteinSubBase =
-    "h-11 px-3 sm:px-4 text-sm font-black whitespace-nowrap shrink-0 transition-colors";
-  const rabensteinSubActive = "bg-black text-white";
-  const rabensteinSubIdle = "bg-white text-black active:scale-[0.99]";
-  const rabensteinTabActive = activeTab === "demand" || activeTab === "central";
-
   if (!adminHydrated) {
     return (
       <main className="w-full px-4 py-8 text-center text-black">
@@ -654,81 +637,6 @@ export default function AdminOrdersPage() {
 
   return (
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      {!busy && !err ? (
-        <section className={`${adminReadSectionClass} mt-6`}>
-          <h2 className={adminSectionTitleClass}>Bereiche wählen</h2>
-          <p className="mt-1 text-sm font-black text-black/75">
-            Reiter: <strong>Rabenstein</strong> (Bedarf und Lager), dann{" "}
-            <strong>{HOFSTETTEN_NAME}</strong> und <strong>{KIRCHBERG_NAME}</strong> – jeweils
-            eigene Bestellung. Tabellen sind überwiegend <strong>Lesen</strong>; Zellen zum Bearbeiten
-            (Overrides, Metro, Bedarf-Chips) sind <strong>Aktionen</strong>.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={[
-                "h-10 px-3 rounded-2xl border-2 text-sm font-black transition-colors active:scale-[0.99]",
-                useAi ? "border-emerald-800 bg-emerald-700 text-white" : "border-black bg-white text-black",
-              ].join(" ")}
-              onClick={() => setUseAi((v) => !v)}
-              title="KI-Prognose an/aus"
-            >
-              {useAi ? "KI Prognose aktiv" : "Klassische Berechnung"}
-            </button>
-            <span className="text-xs font-black text-black/50">
-              Ohne KI-Daten: gleiche Logik wie „klassisch“.
-            </span>
-          </div>
-          <div className="mt-4 flex flex-wrap items-stretch gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            <div
-              className={[
-                "inline-flex rounded-2xl border-2 overflow-hidden shrink-0",
-                rabensteinTabActive ? "border-black" : "border-black/35",
-              ].join(" ")}
-              title="Rabenstein: Bedarfsmeldungen und Zentrallager"
-            >
-              <span className="flex items-center px-2 sm:px-3 text-xs sm:text-sm font-black bg-black/[0.06] text-black border-r-2 border-black">
-                1 · Rabenstein
-              </span>
-              <button
-                type="button"
-                className={`${rabensteinSubBase} ${
-                  activeTab === "demand" ? rabensteinSubActive : rabensteinSubIdle
-                }`}
-                onClick={() => setActiveTab("demand")}
-              >
-                Bedarf
-              </button>
-              <button
-                type="button"
-                className={`${rabensteinSubBase} border-l-2 border-black ${
-                  activeTab === "central" ? rabensteinSubActive : rabensteinSubIdle
-                }`}
-                onClick={() => setActiveTab("central")}
-              >
-                Lager
-              </button>
-            </div>
-            <button
-              type="button"
-              className={`${tabBtn} ${activeTab === "hofstetten" ? tabBtnActive : tabBtnIdle}`}
-              onClick={() => setActiveTab("hofstetten")}
-              title={`Schritt 2: ${HOFSTETTEN_NAME}`}
-            >
-              2 · {HOFSTETTEN_NAME}
-            </button>
-            <button
-              type="button"
-              className={`${tabBtn} ${activeTab === "kirchberg" ? tabBtnActive : tabBtnIdle}`}
-              onClick={() => setActiveTab("kirchberg")}
-              title={`Schritt 3: ${KIRCHBERG_NAME}`}
-            >
-              3 · {KIRCHBERG_NAME}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       {!rabensteinId && !busy && !err ? (
         <div className="mt-6 rounded-3xl bg-amber-50 border-2 border-amber-800/30 p-4 text-amber-950 text-sm font-black">
           Platzerl „{RABENSTEIN_LAGER_NAME}“ nicht gefunden. Bitte Namen in den Orten prüfen.
@@ -777,16 +685,24 @@ export default function AdminOrdersPage() {
           <section className="mt-3 overflow-x-auto rounded-3xl border-2 border-black bg-white">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
-                <tr className="border-b-2 border-black bg-black/[0.03]">
-                  <th className="p-3 font-black text-black">Produkt / Bedarf je Platzerl</th>
-                  <th className="p-3 font-black text-black tabular-nums">Gesamt</th>
-                  <th className="p-3 font-black text-black tabular-nums">
+                <tr className="border-b-2 border-black">
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Produkt / Bedarf je Platzerl
+                  </th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Gesamt
+                  </th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
                     {RABENSTEIN_LAGER_NAME}
                     <br />
                     <span className="text-[11px] font-black text-black/55">Bestand</span>
                   </th>
-                  <th className="p-3 font-black text-black tabular-nums">Vorschlag</th>
-                  <th className="p-3 font-black text-black">Metro</th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black tabular-nums shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Vorschlag
+                  </th>
+                  <th className="sticky top-[72px] z-20 bg-zinc-50 p-3 font-black text-black shadow-[0_1px_0_0_rgba(0,0,0,0.12)]">
+                    Metro
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1582,5 +1498,19 @@ export default function AdminOrdersPage() {
       ) : null}
 
     </main>
+  );
+}
+
+export default function AdminOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="w-full px-4 py-8 text-center text-black">
+          <p className="font-black">Laden…</p>
+        </main>
+      }
+    >
+      <AdminOrdersPageContent />
+    </Suspense>
   );
 }
