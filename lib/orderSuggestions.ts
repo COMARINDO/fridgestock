@@ -106,10 +106,28 @@ export function computeCentralWarehouseOrder(input: {
 }
 
 /**
+ * Stück pro Metro-Bestelleinheit (Gebinde): zuerst products.min_quantity, sonst reine Zahl in metro_unit.
+ * In der Admin-Bestellmaske ist die Spalte „Einheit“ metro_unit; ohne min_quantity wurde früher 1 angenommen.
+ */
+export function piecesPerOrderUnitFromProductFields(input: {
+  min_quantity?: number | null;
+  metro_unit?: string | null;
+}): number {
+  const mq = Math.floor(Number(input.min_quantity ?? 0) || 0);
+  if (mq > 0) return mq;
+  const u = (input.metro_unit ?? "").trim();
+  if (/^\d+$/.test(u)) {
+    const n = parseInt(u, 10);
+    if (n > 0) return n;
+  }
+  return 1;
+}
+
+/**
  * Zentrallager Rabenstein: aus Bedarfsmeldungen Teich + sonstige Platzerl, abzüglich Lagerbestand.
  * delta (Stück) = Bedarf Teich + Bedarf sonstige − Bestand Rabenstein Lager.
  * − delta ≤ 0 → 0 Bestelleinheiten (kein Nachbestellen, wenn Meldungen den Bestand nicht übersteigen).
- * − delta > 0 → ceil(delta / Stück pro Einheit); Einheit = max(1, min_quantity).
+ * − delta > 0 → ceil(delta / Stück pro Einheit); Stück/Einheit siehe piecesPerOrderUnitFromProductFields.
  */
 export function computeRabensteinGesamtOrderFromDemandReports(input: {
   demandTeich: number;

@@ -21,6 +21,7 @@ import {
 import {
   computeLocalOutletOrder,
   computeRabensteinGesamtOrderFromDemandReports,
+  piecesPerOrderUnitFromProductFields,
 } from "@/lib/orderSuggestions";
 import {
   HOFSTETTEN_NAME,
@@ -46,11 +47,6 @@ function resolveLocationIdByName(
   const n = name.trim().toLowerCase();
   const hit = locations.find((l) => l.name.trim().toLowerCase() === n);
   return hit?.id ?? null;
-}
-
-function piecesPerOrderUnitFromProduct(p: Pick<Product, "min_quantity">): number {
-  const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
-  return mq > 0 ? mq : 1;
 }
 
 /** Stück-Bedarf in Metro-Einheiten (Aufrunden; 0 Stück → 0 Einheiten). */
@@ -95,7 +91,7 @@ type CentralRowModel = {
   demandOther: number;
   /** Stück-Delta für Bestelllogik: Meld. Teich + Meld. sonstige − Bestand Lager Rabenstein */
   deltaStück: number;
-  /** Stück pro Metro-Einheit (Produkt min_quantity, sonst 1) */
+  /** Stück pro Metro-Einheit (min_quantity, sonst reine Zahl in metro_unit, sonst 1) */
   piecesPerOrderUnit: number;
   calculatedOrder: number;
   displayOrder: number;
@@ -287,8 +283,10 @@ export default function AdminOrdersPage() {
         else demandOther += q;
       }
 
-      const mq = Math.floor(Number(p.min_quantity ?? 0) || 0);
-      const piecesPerUnit = mq > 0 ? mq : 1;
+      const piecesPerUnit = piecesPerOrderUnitFromProductFields({
+        min_quantity: p.min_quantity,
+        metro_unit: p.metro_unit,
+      });
       const deltaStück = demandTeich + demandOther - stockRab;
       const calculatedOrder = computeRabensteinGesamtOrderFromDemandReports({
         demandTeich,
@@ -401,7 +399,10 @@ export default function AdminOrdersPage() {
       const ov = overrideByKey.get(`${hofstettenId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
-      const pack = piecesPerOrderUnitFromProduct(p);
+      const pack = piecesPerOrderUnitFromProductFields({
+        min_quantity: p.min_quantity,
+        metro_unit: p.metro_unit,
+      });
       const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
       const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
@@ -454,7 +455,10 @@ export default function AdminOrdersPage() {
       const ov = overrideByKey.get(`${kirchbergId}:${p.id}`);
       const overridden = ov !== undefined;
       const displayOrder = overridden ? ov!.quantity : calculatedOrder;
-      const pack = piecesPerOrderUnitFromProduct(p);
+      const pack = piecesPerOrderUnitFromProductFields({
+        min_quantity: p.min_quantity,
+        metro_unit: p.metro_unit,
+      });
       const calculatedUnits = orderPiecesToUnits(calculatedOrder, pack);
       const displayUnits = orderPiecesToUnits(displayOrder, pack);
       const include =
@@ -504,7 +508,10 @@ export default function AdminOrdersPage() {
     if (!editing) return;
     const n = Math.max(0, Math.floor(Number(editDraft.replace(/[^\d]/g, "")) || 0));
     const product = products.find((p) => p.id === editing.productId);
-    const pack = piecesPerOrderUnitFromProduct(product ?? {});
+    const pack = piecesPerOrderUnitFromProductFields({
+      min_quantity: product?.min_quantity,
+      metro_unit: product?.metro_unit,
+    });
     const isCentral = Boolean(rabensteinId && editing.locationId === rabensteinId);
     const quantity = isCentral ? n : n * pack;
     setSaveBusy(true);
