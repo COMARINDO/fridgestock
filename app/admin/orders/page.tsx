@@ -766,6 +766,11 @@ export default function AdminOrdersPage() {
     "h-11 px-3 sm:px-4 rounded-2xl border-2 text-sm font-black whitespace-nowrap shrink-0 transition-colors";
   const tabBtnActive = "border-black bg-black text-white";
   const tabBtnIdle = "border-black bg-white text-black active:scale-[0.99]";
+  const rabensteinSubBase =
+    "h-11 px-3 sm:px-4 text-sm font-black whitespace-nowrap shrink-0 transition-colors";
+  const rabensteinSubActive = "bg-black text-white";
+  const rabensteinSubIdle = "bg-white text-black active:scale-[0.99]";
+  const rabensteinTabActive = activeTab === "demand" || activeTab === "central";
 
   if (!adminHydrated) {
     return (
@@ -785,44 +790,13 @@ export default function AdminOrdersPage() {
 
   return (
     <main className="w-full px-4 py-4 pb-28 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-black text-black">Bestellübersicht</h1>
-        <p className="mt-2 text-sm font-black text-black/80">So gehst du vor:</p>
-        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm text-black/70">
-          <li>
-            <strong className="text-black">Bedarf</strong> – Meldungen von Teich &amp; Filiale
-            ansehen und bei Bedarf anpassen.
-          </li>
-          <li>
-            <strong className="text-black">Zentrallager</strong> – Vorschlag aus Verbrauch &amp;
-            Bestand; Overrides und Metro-Felder möglich.
-          </li>
-          <li>
-            <strong className="text-black">{HOFSTETTEN_NAME}</strong> – lokaler Vorschlag &amp;
-            Overrides.
-          </li>
-          <li>
-            <strong className="text-black">{KIRCHBERG_NAME}</strong> – lokaler Vorschlag &amp;
-            Overrides.
-          </li>
-          <li>
-            <strong className="text-black">Gesamt</strong> – alles in einer Tabelle; Rabenstein aus
-            Meldungen, Hofstetten/Kirchberg aus Vorschlag.
-          </li>
-        </ol>
-        <p className="mt-3 text-xs font-black text-black/50">
-          Hinweis: Der KI-Schalter unten beeinflusst nur <strong>berechnete</strong> Vorschlagszahlen,
-          nicht die gemeldeten Bedarfe.
-        </p>
-      </div>
-
       {!busy && !err ? (
         <section className={`${adminReadSectionClass} mt-6`}>
           <h2 className={adminSectionTitleClass}>Bereiche wählen</h2>
           <p className="mt-1 text-sm font-black text-black/75">
-            Unten die Reiter der Reihe nach – von Meldungen bis Gesamtprüfung. Tabellen sind
-            überwiegend <strong>Lesen</strong>; Zellen zum Bearbeiten (Overrides, Metro, Bedarf-Chips)
-            sind <strong>Aktionen</strong>.
+            Reiter: zuerst <strong>Rabenstein</strong> (Bedarf und Lager), dann die Außenplatzerl,
+            zuletzt die <strong>Übersicht</strong>. Tabellen sind überwiegend <strong>Lesen</strong>;
+            Zellen zum Bearbeiten (Overrides, Metro, Bedarf-Chips) sind <strong>Aktionen</strong>.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -840,48 +814,61 @@ export default function AdminOrdersPage() {
               Ohne KI-Daten: gleiche Logik wie „klassisch“.
             </span>
           </div>
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          <button
-            type="button"
-            className={`${tabBtn} ${activeTab === "demand" ? tabBtnActive : tabBtnIdle}`}
-            onClick={() => setActiveTab("demand")}
-            title="Schritt 1: Gemeldeter Bedarf (Teich & Filiale)"
-          >
-            1 · Bedarf
-          </button>
-          <button
-            type="button"
-            className={`${tabBtn} ${activeTab === "central" ? tabBtnActive : tabBtnIdle}`}
-            onClick={() => setActiveTab("central")}
-            title={`Schritt 2: Vorschlag ${RABENSTEIN_LAGER_NAME} + ${TEICH_NAME} (Verbrauch)`}
-          >
-            2 · Zentrallager
-          </button>
-          <button
-            type="button"
-            className={`${tabBtn} ${activeTab === "hofstetten" ? tabBtnActive : tabBtnIdle}`}
-            onClick={() => setActiveTab("hofstetten")}
-            title={`Schritt 3: ${HOFSTETTEN_NAME}`}
-          >
-            3 · {HOFSTETTEN_NAME}
-          </button>
-          <button
-            type="button"
-            className={`${tabBtn} ${activeTab === "kirchberg" ? tabBtnActive : tabBtnIdle}`}
-            onClick={() => setActiveTab("kirchberg")}
-            title={`Schritt 4: ${KIRCHBERG_NAME}`}
-          >
-            4 · {KIRCHBERG_NAME}
-          </button>
-          <button
-            type="button"
-            className={`${tabBtn} ${activeTab === "gesamt" ? tabBtnActive : tabBtnIdle}`}
-            onClick={() => setActiveTab("gesamt")}
-            title="Schritt 5: Summen prüfen vor der Bestellung"
-          >
-            5 · Gesamt
-          </button>
-        </div>
+          <div className="mt-4 flex flex-wrap items-stretch gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            <div
+              className={[
+                "inline-flex rounded-2xl border-2 overflow-hidden shrink-0",
+                rabensteinTabActive ? "border-black" : "border-black/35",
+              ].join(" ")}
+              title="Rabenstein: Bedarfsmeldungen und Zentrallager"
+            >
+              <span className="flex items-center px-2 sm:px-3 text-xs sm:text-sm font-black bg-black/[0.06] text-black border-r-2 border-black">
+                1 · Rabenstein
+              </span>
+              <button
+                type="button"
+                className={`${rabensteinSubBase} ${
+                  activeTab === "demand" ? rabensteinSubActive : rabensteinSubIdle
+                }`}
+                onClick={() => setActiveTab("demand")}
+              >
+                Bedarf
+              </button>
+              <button
+                type="button"
+                className={`${rabensteinSubBase} border-l-2 border-black ${
+                  activeTab === "central" ? rabensteinSubActive : rabensteinSubIdle
+                }`}
+                onClick={() => setActiveTab("central")}
+              >
+                Lager
+              </button>
+            </div>
+            <button
+              type="button"
+              className={`${tabBtn} ${activeTab === "hofstetten" ? tabBtnActive : tabBtnIdle}`}
+              onClick={() => setActiveTab("hofstetten")}
+              title={`Schritt 2: ${HOFSTETTEN_NAME}`}
+            >
+              2 · {HOFSTETTEN_NAME}
+            </button>
+            <button
+              type="button"
+              className={`${tabBtn} ${activeTab === "kirchberg" ? tabBtnActive : tabBtnIdle}`}
+              onClick={() => setActiveTab("kirchberg")}
+              title={`Schritt 3: ${KIRCHBERG_NAME}`}
+            >
+              3 · {KIRCHBERG_NAME}
+            </button>
+            <button
+              type="button"
+              className={`${tabBtn} ${activeTab === "gesamt" ? tabBtnActive : tabBtnIdle}`}
+              onClick={() => setActiveTab("gesamt")}
+              title="Schritt 4: Übersicht – Summen vor der Bestellung"
+            >
+              4 · Übersicht
+            </button>
+          </div>
         </section>
       ) : null}
 
@@ -924,7 +911,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "demand" && rabensteinId ? (
         <>
           <section className={`${adminReadSectionClass} mt-6`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Schritt 1 · Bedarf – Lesen</h3>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Rabenstein · Bedarf – Lesen</h3>
             <p className="mt-1 text-sm font-black text-black/70">
               Offene Meldungen: <strong>{openRequests.length}</strong>. Chips bearbeiten oder löschen
               sind <strong>Aktionen</strong> (Bereich „Aktionen“ unten für Runden-Abschluss).
@@ -1089,7 +1076,7 @@ export default function AdminOrdersPage() {
           </section>
 
           <section className={`${adminActionSectionClass} mt-4`}>
-            <h3 className={`${adminSectionTitleClass} normal-case`}>Schritt 1 · Bedarf – Aktionen</h3>
+            <h3 className={`${adminSectionTitleClass} normal-case`}>Rabenstein · Bedarf – Aktionen</h3>
             <p className="mt-1 text-xs font-black text-amber-950/90">
               <strong>Alle Meldungen löschen</strong> entfernt offene Zeilen dauerhaft.{" "}
               <strong>Meldungen abschließen</strong> markiert sie nur als verarbeitet (kein Versand
@@ -1155,7 +1142,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
           <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 2 · Zentrallager</p>
+            <p className={adminSectionTitleClass}>Rabenstein · Lager</p>
             <p className="mt-2 text-sm font-black text-black/75">
               Vorschlag für das Zentrallager aus Bedarfsmeldungen ({TEICH_NAME} + sonstige Platzerl)
               gegenüber Lagerbestand {RABENSTEIN_LAGER_NAME}; Bestellen in Metro-Einheiten
@@ -1392,7 +1379,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "hofstetten" && hofstettenId ? (
         <>
           <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 3 · {HOFSTETTEN_NAME}</p>
+            <p className={adminSectionTitleClass}>Schritt 2 · {HOFSTETTEN_NAME}</p>
             <p className="mt-2 text-sm font-black text-black/75">
               Lokaler Vorschlag aus Bestand und 7-Tage-Verbrauch; Spalte „Bestellen“ ist überschreibbar
               (* = manuell).
@@ -1571,7 +1558,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "kirchberg" && kirchbergId ? (
         <>
           <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 4 · {KIRCHBERG_NAME}</p>
+            <p className={adminSectionTitleClass}>Schritt 3 · {KIRCHBERG_NAME}</p>
             <p className="mt-2 text-sm font-black text-black/75">
               Wie Hofstetten: Vorschlag für dieses Platzerl, optional manuell anpassen.
             </p>
@@ -1749,7 +1736,7 @@ export default function AdminOrdersPage() {
       {!busy && !err && activeTab === "gesamt" ? (
         <>
           <div className={`${adminReadSectionClass} mt-6`}>
-            <p className={adminSectionTitleClass}>Schritt 5 · Gesamt (Check vor der Bestellung)</p>
+            <p className={adminSectionTitleClass}>Schritt 4 · Übersicht (Check vor der Bestellung)</p>
             <p className="mt-2 text-sm font-black text-black/75">
               Eine Zeile pro Produkt: Summe aus Zentrallager (Meldungen Teich + Filiale minus
               Lagerbestand, in Einheiten nach <code className="text-xs">min_quantity</code>) plus{" "}
@@ -1927,7 +1914,7 @@ export default function AdminOrdersPage() {
             <span>
               Σ {KIRCHBERG_NAME}: {sumKir}
             </span>
-            <span className="border-l-2 border-black/20 pl-4">Gesamt: {sumGesamt}</span>
+            <span className="border-l-2 border-black/20 pl-4">Übersicht: {sumGesamt}</span>
           </div>
         </>
       ) : null}
