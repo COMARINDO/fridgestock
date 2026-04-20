@@ -297,17 +297,25 @@ async function runUntilComplete(args: {
   bot_message: string;
   is_clarification: boolean;
 } | null> {
+  // Capture propose_update deterministically from tool calls.
+  let proposed: ProposeUpdatePayload | null = null;
+
   // Poll loop with tool handling
   for (let i = 0; i < 30; i++) {
     const run = await getRun(args.threadId, args.runId, args.signal);
     if (!run) return null;
 
     if (run.status === "completed") {
-      // Find the latest propose_update tool call result: we store it in tool output
+      // Prefer tool-call captured output (reliable). Fallback to parsing assistant message.
+      if (proposed) {
+        return {
+          extracted: proposed.extracted,
+          bot_message: proposed.bot_message,
+          is_clarification: proposed.is_clarification,
+        };
+      }
       const latest = await getLatestAssistantMessage(args.threadId, args.signal);
-      // If assistant didn't call tool, we can't safely extract -> fallback null
       if (!latest) return null;
-      // We expect the assistant to embed JSON for propose_update in the text as a fallback.
       const parsed = tryParseJson(latest);
       if (!isProposeUpdatePayload(parsed)) return null;
       return {
@@ -341,8 +349,11 @@ async function runUntilComplete(args: {
             output: JSON.stringify({ locations: args.locations }),
           });
         } else if (name === "propose_update") {
-          // The assistant provides arguments; we just ack them as output so the run can continue.
-          outputs.push({ tool_call_id: tc.id, output: tc.function?.arguments ?? "{}" });
+          const rawArgs = tc.function?.arguments ?? "{}";
+          // The assistant provides arguments; we capture them and ack so the run can continue.
+          const parsed = tryParseJson(rawArgs);
+          if (isProposeUpdatePayload(parsed)) proposed = parsed;
+          outputs.push({ tool_call_id: tc.id, output: rawArgs });
         } else {
           outputs.push({ tool_call_id: tc.id, output: "{}" });
         }
