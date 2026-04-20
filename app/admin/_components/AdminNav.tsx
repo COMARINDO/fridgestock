@@ -37,6 +37,7 @@ const monitoring: NavItem[] = [
 
 const actions: NavItem[] = [
   { href: "/admin/orders?tab=demand", label: "Bestellungen" },
+  { href: "/admin/customer-orders", label: "Kundenbestellungen" },
 ];
 
 const debug: NavItem[] = [

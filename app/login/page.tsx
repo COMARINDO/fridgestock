@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { Input, Button } from "@/app/_components/ui";
 import { listLocations } from "@/lib/db";
 import { useAuth } from "@/app/providers";
@@ -169,6 +170,18 @@ export default function LoginPage() {
           >
             Login
           </Button>
+        </div>
+
+        <div className="mt-6">
+          <Link
+            href="/order"
+            className="block w-full rounded-3xl border-2 border-black bg-[#f2d2b6] px-5 py-5 text-center text-[18px] font-extrabold text-black shadow-sm hover:bg-[#eec79e] active:scale-[0.99]"
+          >
+            Bestellung aufgeben
+          </Link>
+          <p className="mt-2 text-center text-[13px] text-black/55">
+            Schnell und ohne Login: Produkt, Menge, Abholzeit – fertig.
+          </p>
         </div>
 
         <div className="mt-10 flex justify-center pb-6">
