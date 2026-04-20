@@ -68,7 +68,7 @@ function LocationOrderInner() {
         const stock = Math.floor(Number(p.quantity ?? 0) || 0);
         const daysCovered = Number(covered[p.id] ?? 0) || 0;
         const { orderQuantity } = computeLocalOutletOrder({ usage7d: u7, stock, daysCovered });
-        if (orderQuantity > 0) nextDraft[p.id] = String(orderQuantity);
+        nextDraft[p.id] = orderQuantity > 0 ? String(orderQuantity) : "0";
       }
       setDraftByProduct(nextDraft);
     } catch (e: unknown) {
@@ -108,10 +108,7 @@ function LocationOrderInner() {
         stock,
         daysCovered,
       });
-      const draft = draftByProduct[p.id] ?? (suggested > 0 ? String(suggested) : "");
-      const draftN = Math.max(0, Math.floor(Number(draft.replace(/[^\d]/g, "")) || 0));
-      const include = suggested > 0 || draftN > 0;
-      if (!include) continue;
+      const draft = draftByProduct[p.id] ?? (suggested > 0 ? String(suggested) : "0");
       out.push({
         productId: p.id,
         name: formatProductName(p),
