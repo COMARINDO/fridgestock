@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
-import { listLocations } from "@/lib/db";
+import { listLoginLocations } from "@/lib/db";
 import { BACKSTUBE_CODE, BACKSTUBE_LOCATION_NAME } from "@/lib/backstubeCode";
 import { parsePickupDay } from "@/lib/parsePickupDay";
 
@@ -89,7 +89,7 @@ export default function BackstubePage() {
     if (!authHydrated) return;
     void (async () => {
       try {
-        const all = await listLocations();
+        const all = await listLoginLocations();
         const back = all.find((l) => l.name === BACKSTUBE_LOCATION_NAME);
         setAllowedId(back?.id ?? null);
         if (!back) {

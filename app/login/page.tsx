@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Input, Button } from "@/app/_components/ui";
-import { listLocations } from "@/lib/db";
+import { listLoginLocations } from "@/lib/db";
 import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
 import { errorMessage } from "@/lib/error";
@@ -70,7 +70,7 @@ export default function LoginPage() {
   useEffect(() => {
     (async () => {
       try {
-        const all = await listLocations();
+        const all = await listLoginLocations();
         setLocations(all);
       } catch (e: unknown) {
         setError(errorMessage(e, "Konnte Platzerl nicht laden."));

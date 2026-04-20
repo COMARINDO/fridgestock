@@ -42,6 +42,11 @@ const MAIN_LOCATION_NAMES = new Set([
   "Kirchberg",
 ]);
 
+const LOGIN_LOCATION_NAMES = new Set<string>([
+  ...MAIN_LOCATION_NAMES,
+  "Backstube",
+]);
+
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await from("locations")
     .select("id,name,parent_id,type,warehouse_location_id")
@@ -49,6 +54,20 @@ export async function listLocations(): Promise<Location[]> {
   if (error) throw error;
   // App uses only the 4 main Platzerl. Hide legacy sub-locations (Lager/Kühlschrank).
   return ((data ?? []) as Location[]).filter((l) => MAIN_LOCATION_NAMES.has(l.name));
+}
+
+/**
+ * Wie listLocations(), gibt aber auch die Backstube-Location zurueck.
+ * Wird auf der Login-Seite und in der /backstube-Sicht verwendet, damit
+ * die Backstube nicht versehentlich in normalen Filial-/Inventur-UIs
+ * auftaucht (die nutzen weiterhin listLocations()).
+ */
+export async function listLoginLocations(): Promise<Location[]> {
+  const { data, error } = await from("locations")
+    .select("id,name,parent_id,type,warehouse_location_id")
+    .order("name");
+  if (error) throw error;
+  return ((data ?? []) as Location[]).filter((l) => LOGIN_LOCATION_NAMES.has(l.name));
 }
 
 /** Bakery module: uses the same 4 platzerl; backstube is handled separately (admin). */
