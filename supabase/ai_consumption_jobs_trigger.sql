@@ -37,6 +37,13 @@ create index if not exists ai_consumption_jobs_status_created_idx
 create index if not exists ai_consumption_jobs_loc_prod_idx
   on public.ai_consumption_jobs (location_id, product_id, created_at desc);
 
+-- Ensure idempotency per inventory_history row. This prevents inventory counts
+-- from failing when the trigger is retried or the migration was applied multiple
+-- times in different environments.
+create unique index if not exists ai_consumption_jobs_inventory_history_id_uniq
+  on public.ai_consumption_jobs (inventory_history_id)
+  where inventory_history_id is not null;
+
 create table if not exists public.ai_consumption (
   id uuid primary key default gen_random_uuid(),
   location_id uuid not null references public.locations(id) on delete cascade,
@@ -94,32 +101,39 @@ begin
     0
   );
 
-  insert into public.ai_consumption_jobs (
-    inventory_history_id,
-    location_id,
-    product_id,
-    previous_quantity,
-    current_quantity,
-    days_between,
-    raw_input,
-    status
-  ) values (
-    NEW.id,
-    NEW.location_id,
-    NEW.product_id,
-    v_prev_qty,
-    NEW.quantity,
-    v_days,
-    jsonb_build_object(
-      'previous_quantity', v_prev_qty,
-      'current_quantity',  NEW.quantity,
-      'days_between',      v_days,
-      'previous_timestamp', v_prev_ts,
-      'current_timestamp',  NEW.timestamp,
-      'inventory_history_id', NEW.id
-    ),
-    'pending'
-  );
+  begin
+    insert into public.ai_consumption_jobs (
+      inventory_history_id,
+      location_id,
+      product_id,
+      previous_quantity,
+      current_quantity,
+      days_between,
+      raw_input,
+      status
+    ) values (
+      NEW.id,
+      NEW.location_id,
+      NEW.product_id,
+      v_prev_qty,
+      NEW.quantity,
+      v_days,
+      jsonb_build_object(
+        'previous_quantity', v_prev_qty,
+        'current_quantity',  NEW.quantity,
+        'days_between',      v_days,
+        'previous_timestamp', v_prev_ts,
+        'current_timestamp',  NEW.timestamp,
+        'inventory_history_id', NEW.id
+      ),
+      'pending'
+    )
+    on conflict (inventory_history_id) do nothing;
+  exception
+    when unique_violation then
+      -- Never break the inventory insert because a job already exists.
+      null;
+  end;
 
   return NEW;
 end;
