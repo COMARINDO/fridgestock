@@ -5,13 +5,11 @@
 -- die alle eingehenden Kundenbestellungen nach Abholtag sortiert anzeigt.
 --
 -- Ausfuehren: Supabase SQL Editor.
+--
+-- Hinweis: `locations.type` hat einen check-constraint, der nur die bereits
+-- existierenden Werte (z.B. 'outlet', 'warehouse') zulaesst. Da Backstube
+-- ueber den Namen erkannt wird, lassen wir den `type` einfach leer.
 
-insert into public.locations (name, type)
-values ('Backstube', 'backstube')
+insert into public.locations (name)
+values ('Backstube')
 on conflict do nothing;
-
--- Falls die Location schon mit anderem Type existiert, sicherstellen, dass
--- der Name exakt 'Backstube' ist und ein definierter type gesetzt ist.
-update public.locations
-   set type = coalesce(type, 'backstube')
- where name = 'Backstube';
