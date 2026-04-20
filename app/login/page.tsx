@@ -10,6 +10,7 @@ import { useAuth } from "@/app/providers";
 import { useAdmin } from "@/app/admin-provider";
 import { errorMessage } from "@/lib/error";
 import type { Location } from "@/lib/types";
+import { BACKSTUBE_CODE, BACKSTUBE_LOCATION_NAME } from "@/lib/backstubeCode";
 import {
   clearCodeRateLimitOnSuccess,
   formatLockRemaining,
@@ -24,6 +25,7 @@ const accessMap: Record<string, string> = {
   "3203": "Rabenstein",
   "32031": "Rabenstein Lager",
   "3204": "Kirchberg",
+  [BACKSTUBE_CODE]: BACKSTUBE_LOCATION_NAME,
 };
 
 export default function LoginPage() {
@@ -57,8 +59,13 @@ export default function LoginPage() {
   useEffect(() => {
     const id = location?.location_id;
     if (!id) return;
+    const loc = locations.find((l) => l.id === id);
+    if (loc?.name === BACKSTUBE_LOCATION_NAME) {
+      router.replace("/backstube");
+      return;
+    }
     router.replace(`/location/${id}`);
-  }, [location?.location_id, router]);
+  }, [location?.location_id, router, locations]);
 
   useEffect(() => {
     (async () => {
@@ -119,7 +126,11 @@ export default function LoginPage() {
         navigator.vibrate?.(40);
       } catch {}
       setLocation({ location_id: target.id });
-      router.replace(`/location/${target.id}`);
+      if (target.name === BACKSTUBE_LOCATION_NAME) {
+        router.replace("/backstube");
+      } else {
+        router.replace(`/location/${target.id}`);
+      }
     } catch (e: unknown) {
       setError(errorMessage(e, "Login fehlgeschlagen."));
     }
@@ -132,12 +143,12 @@ export default function LoginPage() {
           <Input
             value={code}
             onChange={(e) => {
-              const next = e.target.value.replace(/[^\d]/g, "");
+              const next = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
               setCode(next);
             }}
             placeholder="Code eingeben"
-            inputMode="numeric"
-            type="tel"
+            inputMode="text"
+            type="text"
             autoComplete="one-time-code"
             autoFocus
             disabled={codeLimit.locked}
