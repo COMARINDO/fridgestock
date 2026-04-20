@@ -27,6 +27,8 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
     - `CUSTOMER_CHAT_ASSISTANT_ID` (Option A): Wenn gesetzt, nutzt /order OpenAI **Assistants v2**
       (Threads/Runs + Tool-Calls) für flexiblere Gespräche. Ohne diese Env-Var nutzt der Chat
       weiterhin die leichtere Chat-Completions-Variante (gpt-4o-mini) als Fallback.
+    - `BAKERY_HOMEPAGE_URL` (optional): offizielle Homepage, die der Chat bei Fragen ausgibt
+    - `BAKERY_FACEBOOK_URL` (optional): offizielle Facebook-Seite, die der Chat bei Fragen ausgibt
     - `OPENAI_MODEL` optional (Default `gpt-4o-mini`)
 
 - **3) Starten**

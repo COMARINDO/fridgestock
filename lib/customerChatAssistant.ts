@@ -63,6 +63,15 @@ function toolDefinitions() {
     {
       type: "function",
       function: {
+        name: "get_shop_info",
+        description:
+          "Return official shop links (homepage + Facebook) for customer questions.",
+        parameters: { type: "object", additionalProperties: false, properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "get_products",
         description: "Return the current product list for grounding.",
         parameters: { type: "object", additionalProperties: false, properties: {} },
@@ -123,6 +132,9 @@ function systemInstructions(currentState: ChatState): string {
   stateLines.push("Du bist ein Bestell-Chatbot (Deutsch, Du-Form, knapp, ohne Emojis).");
   stateLines.push("Ziel: Bestell-Daten erfassen und Rueckfragen beantworten.");
   stateLines.push("Du darfst KEINE IDs erfinden. location_id nur aus get_locations.");
+  stateLines.push(
+    "Bei Fragen nach Links (Homepage/Facebook) nutze get_shop_info und gib nur diese Links aus."
+  );
   stateLines.push("Nutze get_products/get_locations nur wenn noetig.");
   stateLines.push("");
   stateLines.push("Pflichtfelder in Reihenfolge: product, quantity, name, phone, pickup_time, location.");
@@ -238,6 +250,15 @@ export async function assistantsConverse(args: {
   }
 }
 
+function getShopInfo(): { homepage_url: string | null; facebook_url: string | null } {
+  const homepage = (process.env.BAKERY_HOMEPAGE_URL ?? "").trim();
+  const facebook = (process.env.BAKERY_FACEBOOK_URL ?? "").trim();
+  return {
+    homepage_url: homepage || null,
+    facebook_url: facebook || null,
+  };
+}
+
 async function createThread(signal: AbortSignal): Promise<string> {
   const r = await openai("/threads", { method: "POST", body: JSON.stringify({}), signal });
   if (!r.ok) throw new Error("Failed to create thread");
@@ -302,7 +323,12 @@ async function runUntilComplete(args: {
       for (const tc of toolCalls) {
         const name = tc.function?.name;
         if (!name) continue;
-        if (name === "get_products") {
+        if (name === "get_shop_info") {
+          outputs.push({
+            tool_call_id: tc.id,
+            output: JSON.stringify(getShopInfo()),
+          });
+        } else if (name === "get_products") {
           outputs.push({
             tool_call_id: tc.id,
             output: JSON.stringify({
