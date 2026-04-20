@@ -28,6 +28,22 @@ const MAIN_LOCATION_NAMES = new Set([
   "Kirchberg",
 ]);
 
+function shouldUseAssistant(userMessage: string): boolean {
+  const m = (userMessage ?? "").trim().toLowerCase();
+  if (!m) return false;
+  // Use Assistants for real questions / informational intent (slower but smarter).
+  if (m.includes("?")) return true;
+  // Common phrasing for questions without a question mark.
+  if (
+    /\b(habt ihr|haben sie|hast du|gibts|gibt es|wie lang|wie viel|wann|wo|adresse|oeffnung|öffnungs|preis|kosten|verfuegbar|verfügbar)\b/.test(
+      m
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // Simple in-memory caches to avoid DB roundtrips on every chat turn.
 // On serverless, this persists per warm instance (good enough).
 type Cache<T> = { value: T; fetchedAt: number };
@@ -146,7 +162,7 @@ export async function POST(request: Request) {
   const state = { ...incomingState };
 
   // Assistants (Option A) takes precedence if configured.
-  if (assistantConverseEnabled()) {
+  if (assistantConverseEnabled() && shouldUseAssistant(message)) {
     const assistantHistory: ConverseHistoryMessage[] = history.map((h) => ({
       role: h.role === "assistant" ? "assistant" : "user",
       content: h.content,
