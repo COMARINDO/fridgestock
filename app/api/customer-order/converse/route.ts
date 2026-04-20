@@ -28,6 +28,14 @@ const MAIN_LOCATION_NAMES = new Set([
   "Kirchberg",
 ]);
 
+// Simple in-memory caches to avoid DB roundtrips on every chat turn.
+// On serverless, this persists per warm instance (good enough).
+type Cache<T> = { value: T; fetchedAt: number };
+let locationsCache: Cache<LocationInfo[]> | null = null;
+let productsCache: Cache<ProductInfo[]> | null = null;
+const LOC_TTL_MS = 60_000; // locations rarely change
+const PROD_TTL_MS = 5 * 60_000; // products change, but not every second
+
 type Msg = { role: "user" | "assistant"; content: string };
 
 type Body = {
@@ -80,34 +88,46 @@ export async function POST(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
 
-    const { data: locRows, error: locErr } = await supabase
-      .from("locations")
-      .select("id,name");
-    if (locErr) throw locErr;
-    locations = (locRows ?? [])
-      .filter((l: { name: string }) => MAIN_LOCATION_NAMES.has(l.name))
-      .map((l: { id: string; name: string }) => ({ id: l.id, name: l.name }));
+    const now = Date.now();
+    if (locationsCache && now - locationsCache.fetchedAt < LOC_TTL_MS) {
+      locations = locationsCache.value;
+    } else {
+      const { data: locRows, error: locErr } = await supabase
+        .from("locations")
+        .select("id,name");
+      if (locErr) throw locErr;
+      locations = (locRows ?? [])
+        .filter((l: { name: string }) => MAIN_LOCATION_NAMES.has(l.name))
+        .map((l: { id: string; name: string }) => ({ id: l.id, name: l.name }));
+      locationsCache = { value: locations, fetchedAt: now };
+    }
 
-    if (aiBrainEnabled()) {
-      const { data: prodRows } = await supabase
-        .from("products")
-        .select("id, brand, product_name, zusatz")
-        .order("brand")
-        .limit(300);
-      products = (prodRows ?? []).map(
-        (p: {
-          id: string;
-          brand: string | null;
-          product_name: string | null;
-          zusatz: string | null;
-        }) => ({
-          id: p.id,
-          display_name: [p.brand, p.product_name, p.zusatz]
-            .map((s) => (s ?? "").trim())
-            .filter(Boolean)
-            .join(" - "),
-        })
-      );
+    // Products are needed for AI brain and for Assistants tool grounding.
+    if (aiBrainEnabled() || assistantConverseEnabled()) {
+      if (productsCache && now - productsCache.fetchedAt < PROD_TTL_MS) {
+        products = productsCache.value;
+      } else {
+        const { data: prodRows } = await supabase
+          .from("products")
+          .select("id, brand, product_name, zusatz")
+          .order("brand")
+          .limit(300);
+        products = (prodRows ?? []).map(
+          (p: {
+            id: string;
+            brand: string | null;
+            product_name: string | null;
+            zusatz: string | null;
+          }) => ({
+            id: p.id,
+            display_name: [p.brand, p.product_name, p.zusatz]
+              .map((s) => (s ?? "").trim())
+              .filter(Boolean)
+              .join(" - "),
+          })
+        );
+        productsCache = { value: products, fetchedAt: now };
+      }
     }
 
     if (incomingState.location_id) {

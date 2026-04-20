@@ -331,7 +331,8 @@ async function runUntilComplete(args: {
     }
 
     // queued / in_progress
-    await sleep(450);
+    // Polling delay: keep low to reduce perceived latency, but not too low to avoid API spam.
+    await sleep(250);
   }
   return null;
 }
