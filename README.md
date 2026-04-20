@@ -23,6 +23,11 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
       Default `1402`. Landet im Browser-Bundle — also kein Geheimnis, aber rotierbar.)
     - `RESEND_API_KEY` + `BACKUP_EMAIL` für Email-Backups
     - Supabase Storage Bucket `backups` (privat) für tägliche Backup-CSV-Uploads
+    - `CUSTOMER_CHAT_AI=1` aktiviert den smarten Kunden-Chat (/order)
+    - `CUSTOMER_CHAT_ASSISTANT_ID` (Option A): Wenn gesetzt, nutzt /order OpenAI **Assistants v2**
+      (Threads/Runs + Tool-Calls) für flexiblere Gespräche. Ohne diese Env-Var nutzt der Chat
+      weiterhin die leichtere Chat-Completions-Variante (gpt-4o-mini) als Fallback.
+    - `OPENAI_MODEL` optional (Default `gpt-4o-mini`)
 
 - **3) Starten**
 

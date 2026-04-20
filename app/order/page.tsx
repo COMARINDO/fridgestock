@@ -53,6 +53,13 @@ function placeholderFor(stage: Stage): string {
 
 export default function CustomerOrderPage() {
   const [state, setState] = useState<OrderState>({});
+  const [threadId, setThreadId] = useState<string>(() => {
+    try {
+      return localStorage.getItem("customer-order-thread-id") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [stage, setStage] = useState<Stage>("product");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -110,10 +117,11 @@ export default function CustomerOrderPage() {
       const res = await fetch("/api/customer-order/converse", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ state, history, message }),
+        body: JSON.stringify({ thread_id: threadId || undefined, state, history, message }),
       });
       const data = (await res.json()) as {
         ok: boolean;
+        thread_id?: string;
         state?: OrderState;
         bot_message?: string;
         next_field?: Field | "summary" | "complete";
@@ -122,6 +130,12 @@ export default function CustomerOrderPage() {
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Fehler bei der Anfrage.");
+      }
+      if (data.thread_id && data.thread_id !== threadId) {
+        setThreadId(data.thread_id);
+        try {
+          localStorage.setItem("customer-order-thread-id", data.thread_id);
+        } catch {}
       }
       if (data.state) setState(data.state);
       if (data.bot_message) {
@@ -211,6 +225,10 @@ export default function CustomerOrderPage() {
     setInput("");
     setError(null);
     setResultId(null);
+    setThreadId("");
+    try {
+      localStorage.removeItem("customer-order-thread-id");
+    } catch {}
     initialized.current = false;
     setTimeout(() => {
       initialized.current = true;

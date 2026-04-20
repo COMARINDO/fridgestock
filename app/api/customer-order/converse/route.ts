@@ -13,6 +13,11 @@ import {
   type ProductInfo,
 } from "@/lib/customerChatBrain";
 import { getStaticPrompt, type ChatStep } from "@/lib/customerChatTexts";
+import {
+  assistantsConverse,
+  assistantConverseEnabled,
+  type ConverseHistoryMessage,
+} from "@/lib/customerChatAssistant";
 
 export const runtime = "nodejs";
 
@@ -26,6 +31,7 @@ const MAIN_LOCATION_NAMES = new Set([
 type Msg = { role: "user" | "assistant"; content: string };
 
 type Body = {
+  thread_id?: string;
   state?: ChatState;
   message?: string;
   history?: Msg[];
@@ -33,6 +39,7 @@ type Body = {
 
 type ConverseResponse = {
   ok: true;
+  thread_id?: string;
   state: ChatState;
   bot_message: string;
   next_field: ChatField | "summary" | "complete";
@@ -66,6 +73,7 @@ export async function POST(request: Request) {
   const incomingState = sanitizeState(body.state ?? {});
   const message = (body.message ?? "").toString().slice(0, 500);
   const history = sanitizeHistory(body.history ?? []);
+  const threadId = typeof body.thread_id === "string" ? body.thread_id.trim() : "";
 
   let locations: LocationInfo[] = [];
   let products: ProductInfo[] = [];
@@ -116,6 +124,37 @@ export async function POST(request: Request) {
   }
 
   const state = { ...incomingState };
+
+  // Assistants (Option A) takes precedence if configured.
+  if (assistantConverseEnabled()) {
+    const assistantHistory: ConverseHistoryMessage[] = history.map((h) => ({
+      role: h.role === "assistant" ? "assistant" : "user",
+      content: h.content,
+    }));
+    const a = await assistantsConverse({
+      thread_id: threadId || null,
+      state,
+      history: assistantHistory,
+      user_message: message,
+      products,
+      locations,
+    });
+    if (a) {
+      const merged = mergeState(state, a.extracted);
+      const nextField = nextFieldFromState(merged);
+      const result: ConverseResponse = {
+        ok: true,
+        thread_id: a.thread_id,
+        state: merged,
+        bot_message: a.bot_message,
+        next_field: nextField,
+        needs_location_picker: nextField === "location",
+        ai_used: true,
+      };
+      return NextResponse.json(result);
+    }
+    // If assistants fails, fall back to brain/static below.
+  }
 
   const brain = aiBrainEnabled()
     ? await runBrain({
