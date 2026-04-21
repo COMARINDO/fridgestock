@@ -8,6 +8,7 @@ import { useAdmin } from "@/app/admin-provider";
 import { HOFSTETTEN_NAME, KIRCHBERG_NAME } from "@/lib/locationConstants";
 import { useAdminNavExtrasToggle } from "@/lib/useAdminNavExtrasToggle";
 import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
+import { useArticleTrackingToggle } from "@/lib/useArticleTrackingToggle";
 import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
 import { useOrderReserveEnabled } from "@/lib/useOrderReserveEnabled";
 import { useOrderReservePct } from "@/lib/useOrderReservePct";
@@ -35,6 +36,11 @@ const monitoring: NavItem[] = [
   { href: "/admin/inventory-sessions", label: "Inventur-Sessions" },
   { href: "/admin/shrinkage", label: "Schwund · Lager" },
 ];
+
+const articleTrackingItem: NavItem = {
+  href: "/admin/article-tracking",
+  label: "Artikel-Tracking",
+};
 
 const actions: NavItem[] = [
   { href: "/admin/orders?tab=demand", label: "Bestellungen" },
@@ -199,6 +205,7 @@ export function AdminNav() {
   const onOrders = pathname === "/admin/orders" || pathname.startsWith("/admin/orders/");
   const [showExtras, setShowExtras] = useAdminNavExtrasToggle();
   const [useAi, setUseAi] = useAiConsumptionToggle();
+  const [articleTracking, setArticleTracking] = useArticleTrackingToggle();
   const [showFormula, setShowFormula] = useOrderFormulaToggle();
   const [reserveEnabled, setReserveEnabled] = useOrderReserveEnabled();
   const [reservePct, setReservePct] = useOrderReservePct();
@@ -232,7 +239,13 @@ export function AdminNav() {
       </Link>
       <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4 pt-4 sm:px-4">
         {showExtras ? (
-          <NavBlock title="Monitoring" items={monitoring} pathname={pathname} />
+          <NavBlock
+            title="Monitoring"
+            items={
+              articleTracking ? [...monitoring, articleTrackingItem] : monitoring
+            }
+            pathname={pathname}
+          />
         ) : null}
         <NavBlock
           title="Aktionen"
@@ -302,6 +315,15 @@ export function AdminNav() {
               <span className="select-none">% auf Stück-Bedarf</span>
             </label>
           ) : null}
+          <PillSwitch
+            label="Artikel-Tracking"
+            checked={articleTracking}
+            onChange={() => {
+              setArticleTracking((v) => !v);
+              if (!showExtras) setShowExtras(true);
+            }}
+            title="Artikel-Tracking (Bewegungshistorie pro Artikel) ein-/ausblenden. Öffnet das Monitoring-Menü automatisch."
+          />
           <PillSwitch
             label="Monitoring & Debug"
             checked={showExtras}

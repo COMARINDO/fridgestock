@@ -170,6 +170,35 @@ Bestand wird dabei **nicht** verändert — das Booking dient nur der Nachverfol
 - Produkte ohne Vorgeschichte (erste Erfassung) werden ausgelassen — hier gibt es
   keine belastbare Baseline.
 
+### Artikel-Tracking (Bewegungshistorie pro Artikel)
+
+Für einen einzelnen Artikel läßt sich die komplette Bewegungshistorie einsehen:
+Wann, an welchem Standort, welche Aktion (Inventur, Zugang, Transfer rein/raus,
+Bruch, Verlust, Korrektur) und mit welcher Veränderung (Δ).
+
+**Aktivierung:**
+
+- Admin-Nav → unten → Schalter **„Artikel-Tracking"** einschalten.
+- Aktiviert automatisch das Monitoring-Menü und zeigt den Eintrag
+  **Monitoring → Artikel-Tracking**. Ausschalten blendet ihn wieder aus.
+
+**Seite (`/admin/article-tracking`):**
+
+- Filter: Produkt (Suche + Select), Standort (optional) und Zeitraum (7 – 180 Tage).
+- Tabelle: Zeitpunkt · Standort · Aktion (Badge) · Δ · Vorher · Nachher · Hinweis.
+  Hinweis-Spalte zeigt passende Admin-Audit-Log-Einträge, sofern zeitlich nah
+  (±5 s) eine Server-Action mit passendem Produkt ausgeführt wurde.
+- Totals: Σ Zugang, Σ Abgang, Inventuren, Transfers im Zeitraum.
+
+**Datenquelle:**
+
+- `public.inventory_history` (alle Bewegungen).
+- Δ wird aus dem zeitlich davorliegenden History-Eintrag pro `(location, product)`
+  berechnet — auch der Eintrag *vor* dem Fenster dient als Anker, damit der
+  erste sichtbare Δ-Wert korrekt ist.
+- `public.admin_audit_log` für die Hinweis-Spalte (wenn ein `product_id` in
+  `payload` hinterlegt ist).
+
 ### Bedarf · 10-Tage-Rückblick (7-Tage-Äquivalent)
 
 Die Bestellvorschläge basieren auf dem berechneten Verbrauch der letzten Tage.
