@@ -330,6 +330,16 @@ export function AdminNav() {
             onChange={() => setShowExtras((v) => !v)}
             title="Monitoring & Debug ein-/ausblenden"
           />
+          <a
+            href="/Ordarella-Anleitung.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-black/15 bg-white px-3 text-[12px] font-black text-black/75 hover:bg-black/[0.04] hover:text-black transition-colors active:scale-[0.99]"
+            title="Kurzanleitung als PDF öffnen"
+          >
+            <span aria-hidden>📘</span>
+            <span>Anleitung (PDF)</span>
+          </a>
           <button
             type="button"
             className="mt-1 h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"

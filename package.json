@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "guide": "node scripts/generate-guide.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
