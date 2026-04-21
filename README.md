@@ -132,9 +132,43 @@ Es laufen zwei unabhängige Backups parallel:
 - Tabelle `admin_audit_log` (Migration: `supabase/admin_audit_log.sql`).
 - Geschriebene Aktionen (Server-Routes mit `SERVER_ACTION_SECRET`):
   `orders.process_open`, `orders.archive_location`, `orders.update_items`,
-  `orders.confirm_delivery`.
+  `orders.confirm_delivery`, `inventory.shrinkage.book`, `inventory.shrinkage.ignore`.
 - Eintrag enthält Action, Actor (Header `x-actor` oder IP), Payload, Result,
   ok/error. Lesbar im Supabase-Dashboard.
+
+### Schwund · Lager (Inventur-Differenzen)
+
+Nach jeder Lager-Inventur kann im Admin kontrolliert werden, ob der gezählte
+Bestand mit dem erwarteten Bestand übereinstimmt. Differenzen (`expected > counted`)
+lassen sich **dokumentarisch verbuchen** oder **ignorieren**. Der tatsächliche
+Bestand wird dabei **nicht** verändert — das Booking dient nur der Nachverfolgung.
+
+**Einmal-Setup (SQL-Migration):**
+
+1. Supabase → SQL Editor → `supabase/inventory_discrepancies.sql` vollständig ausführen.
+   - Legt Tabelle `public.inventory_discrepancies` + RLS an (nur Service-Role).
+   - Erstellt die SQL-Funktion `public.inventory_shrinkage_for_session(location, session_no, gap)`,
+     die für eine Inventur-Session pro Produkt `expected` vs `counted` vergleicht.
+   - Idempotent (`IF NOT EXISTS` / `CREATE OR REPLACE`).
+
+**Nutzung:**
+
+- Admin-Nav → **Monitoring** → **Schwund · Lager** (sichtbar wenn „Monitoring & Debug"
+  eingeblendet ist).
+- Seite fragt einmalig den Admin-Code (`SERVER_ACTION_SECRET`) ab, zeigt dann alle
+  Inventur-Sessions des Lagers sowie Produkte mit Differenz.
+- Pro Zeile: **Verbuchen** → Status `booked` + Zeitstempel + Actor; **Ignorieren** → Status `ignored`.
+- Alle Aktionen landen zusätzlich im Audit-Log (`inventory.shrinkage.book/ignore`).
+
+**Logik (vereinfacht):**
+
+- Für jede `mode='count'`-Zeile der Ziel-Session sucht die SQL-Funktion die
+  unmittelbar davorliegende `inventory_history`-Zeile (beliebiger Modus) pro Produkt.
+  Deren `quantity` = erwartete Menge zum Zeitpunkt des Counts.
+- `shrink = max(0, expected - counted)`. Differenzen `≤ 0` (erwartet ≤ gezählt) werden
+  nicht gelistet — eine positive Überzählung ist kein Schwund.
+- Produkte ohne Vorgeschichte (erste Erfassung) werden ausgelassen — hier gibt es
+  keine belastbare Baseline.
 
 ### Tests
 

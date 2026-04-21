@@ -33,6 +33,7 @@ type NavItem = { href: string; label: string };
 const monitoring: NavItem[] = [
   { href: "/admin", label: "Übersicht" },
   { href: "/admin/inventory-sessions", label: "Inventur-Sessions" },
+  { href: "/admin/shrinkage", label: "Schwund · Lager" },
 ];
 
 const actions: NavItem[] = [
