@@ -755,6 +755,36 @@ function AdminOrdersPageContent() {
     }
   }
 
+  function exportLocalOutletOrderAsPdf(which: "hofstetten" | "kirchberg") {
+    const label = which === "hofstetten" ? HOFSTETTEN_NAME : KIRCHBERG_NAME;
+    const source = which === "hofstetten" ? hofstettenRows : kirchbergRows;
+    const rows = source
+      .filter((r) => r.displayOrder > 0)
+      .map((r) => ({
+        name: r.name,
+        metroNr: r.metro_order_number,
+        unit: r.metro_unit,
+        units: r.displayOrder,
+        piecesPerUnit: r.piecesPerOrderUnit,
+      }));
+    if (rows.length === 0) {
+      setErr("Keine Positionen zum Exportieren.");
+      return;
+    }
+    try {
+      setErr(null);
+      downloadOrderPdf({
+        title: `Bestellung ${label}`,
+        subtitle: "Nur Artikel mit Bestellmenge > 0",
+        rows,
+        includePieces: true,
+        fileName: defaultOrderPdfFileName(`Bestellung-${label}`),
+      });
+    } catch (e) {
+      setErr(errorMessage(e, "PDF-Export fehlgeschlagen."));
+    }
+  }
+
   async function archiveOrderForTab(tab: ArchiveTab) {
     let locationId: string | null = null;
     let label = "";
@@ -1700,6 +1730,15 @@ function AdminOrdersPageContent() {
             </span>
             <button
               type="button"
+              disabled={sumHof <= 0}
+              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => exportLocalOutletOrderAsPdf("hofstetten")}
+              title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
+            >
+              PDF Export
+            </button>
+            <button
+              type="button"
               disabled={archiveBusy !== null || sumHof <= 0}
               className={adminPrimaryButtonLgClass}
               onClick={() => void archiveOrderForTab("hofstetten")}
@@ -1904,6 +1943,15 @@ function AdminOrdersPageContent() {
               Summe Einheiten ({KIRCHBERG_NAME}):{" "}
               <span className="font-black text-black tabular-nums">{sumKir}</span>
             </span>
+            <button
+              type="button"
+              disabled={sumKir <= 0}
+              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => exportLocalOutletOrderAsPdf("kirchberg")}
+              title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
+            >
+              PDF Export
+            </button>
             <button
               type="button"
               disabled={archiveBusy !== null || sumKir <= 0}
