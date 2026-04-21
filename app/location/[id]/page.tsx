@@ -18,8 +18,16 @@ import {
   getLastUpdateByLocation,
   getInventoryHistoryForProduct,
   deleteInventoryHistoryEntry,
+  getInventoryQuantityForProductAtLocation,
+  getLocation,
+  transferStock,
 } from "@/lib/db";
-import type { InventoryHistoryRow, InventoryMissingCountRow, Product } from "@/lib/types";
+import type {
+  InventoryHistoryRow,
+  InventoryMissingCountRow,
+  Location,
+  Product,
+} from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType, NotFoundException } from "@zxing/library";
@@ -500,6 +508,22 @@ function LocationInner() {
   const [leaveGuardErr, setLeaveGuardErr] = useState<string | null>(null);
   const [leaveMissing, setLeaveMissing] = useState<InventoryMissingCountRow[]>([]);
 
+  const [locationInfo, setLocationInfo] = useState<Location | null>(null);
+
+  // Dialog for unexpected positive count-diffs (gezählt > erwartet).
+  // Lets the user either book the overage as a transfer from the warehouse
+  // (so the Lager is correctly reduced) or save the count as-is.
+  const [overageDialog, setOverageDialog] = useState<{
+    productId: string;
+    productLabel: string;
+    expected: number;
+    counted: number;
+    delta: number;
+    warehouseLocationId: string;
+  } | null>(null);
+  const [overageBusy, setOverageBusy] = useState(false);
+  const [overageErr, setOverageErr] = useState<string | null>(null);
+
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
@@ -610,6 +634,13 @@ function LocationInner() {
         const q: Record<string, number> = {};
         for (const p of rows) q[p.id] = p.quantity ?? 0;
         setQuantities(q);
+
+        try {
+          const loc = await getLocation(locationId);
+          setLocationInfo(loc);
+        } catch {
+          setLocationInfo(null);
+        }
 
         try {
           setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
@@ -1145,6 +1176,38 @@ function LocationInner() {
         setEditingId(null);
         return;
       }
+
+      // Überzähl-Check: wenn gezählt > aktuell erwartet UND Location hat ein
+      // Warehouse → Dialog anbieten (Transfer nachbuchen vs. einfach speichern).
+      const warehouseId = locationInfo?.warehouse_location_id ?? null;
+      if (warehouseId) {
+        try {
+          const expected = await getInventoryQuantityForProductAtLocation(
+            locationId,
+            productId
+          );
+          // Nur warnen, wenn vorher schon Bestand erfasst war. Erstbuchungen
+          // (expected == 0) ohne Vorgeschichte würden den Dialog sonst bei jeder
+          // ersten Inventur anzeigen; das wäre Lärm.
+          if (expected > 0 && next > expected) {
+            const prod = products.find((p) => p.id === productId);
+            const label = prod ? formatProductName(prod) : productId;
+            setOverageErr(null);
+            setOverageDialog({
+              productId,
+              productLabel: label,
+              expected,
+              counted: next,
+              delta: next - expected,
+              warehouseLocationId: warehouseId,
+            });
+            return;
+          }
+        } catch {
+          // Bei Fehler: zurück auf normalen Speicher-Pfad.
+        }
+      }
+
       try {
         await setInventoryQuantity({ locationId, productId, quantity: next });
         try {
@@ -1160,8 +1223,83 @@ function LocationInner() {
         setError(errorMessage(e, "Inventur fehlgeschlagen."));
       }
     },
-    [canWrite, locationId]
+    [canWrite, locationId, locationInfo, products]
   );
+
+  // Dialog-Aktion: Überzählung als Transfer vom Lager nachbuchen.
+  // Reihenfolge: (1) Transfer Lager → aktueller Ort (−delta beim Lager,
+  // +delta hier), (2) danach den Count als Inventur-Eintrag speichern
+  // (Δ = 0, dient nur der Session-Markierung und der normalen Historie).
+  const handleOverageTransfer = useCallback(async () => {
+    if (!overageDialog) return;
+    const { productId, counted, delta, warehouseLocationId } = overageDialog;
+    if (!locationId) return;
+    setOverageBusy(true);
+    setOverageErr(null);
+    try {
+      await transferStock({
+        productId,
+        fromLocationId: warehouseLocationId,
+        toLocationId: locationId,
+        quantity: delta,
+      });
+      await setInventoryQuantity({
+        locationId,
+        productId,
+        quantity: counted,
+      });
+      try {
+        setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+      } catch {
+        // ignore
+      }
+      setRefillToast(`Transfer +${delta} · Inventur ${counted}`);
+      window.setTimeout(() => setRefillToast(null), 2500);
+      setCountedInSessionByProduct((m) => ({ ...m, [productId]: true }));
+      setEditingId(null);
+      setOverageDialog(null);
+    } catch (e: unknown) {
+      setOverageErr(errorMessage(e, "Transfer-Buchung fehlgeschlagen."));
+    } finally {
+      setOverageBusy(false);
+    }
+  }, [overageDialog, locationId]);
+
+  // Dialog-Aktion: Überzählung ignorieren und Count wie bisher speichern.
+  const handleOverageSaveAsIs = useCallback(async () => {
+    if (!overageDialog) return;
+    const { productId, counted } = overageDialog;
+    if (!locationId) return;
+    setOverageBusy(true);
+    setOverageErr(null);
+    try {
+      await setInventoryQuantity({
+        locationId,
+        productId,
+        quantity: counted,
+      });
+      try {
+        setLastUpdateByProduct(await getLastUpdateByLocation(locationId));
+      } catch {
+        // ignore
+      }
+      setRefillToast(`Inventur: ${counted}`);
+      window.setTimeout(() => setRefillToast(null), 2000);
+      setCountedInSessionByProduct((m) => ({ ...m, [productId]: true }));
+      setEditingId(null);
+      setOverageDialog(null);
+    } catch (e: unknown) {
+      setOverageErr(errorMessage(e, "Inventur fehlgeschlagen."));
+    } finally {
+      setOverageBusy(false);
+    }
+  }, [overageDialog, locationId]);
+
+  const handleOverageCancel = useCallback(() => {
+    if (overageBusy) return;
+    setOverageDialog(null);
+    setOverageErr(null);
+  }, [overageBusy]);
 
   const handleOpenQuickEdit = useCallback((productId: string, productName: string) => {
     setHistoryErr(null);
@@ -1768,6 +1906,72 @@ function LocationInner() {
                   Ignorieren
                 </Button>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {overageDialog ? (
+        <div className="fixed inset-0 z-[75] bg-black/50 flex items-end">
+          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="min-w-0">
+              <div className="text-xs font-black uppercase tracking-wide text-amber-800">
+                Mehr gezählt als erwartet
+              </div>
+              <div className="mt-0.5 text-2xl font-black leading-tight text-black">
+                {overageDialog.productLabel}
+              </div>
+              <div className="mt-3 rounded-2xl border-2 border-amber-900/20 bg-amber-50 p-4 text-black">
+                <div className="text-sm font-black leading-snug">
+                  Erwartet:{" "}
+                  <span className="tabular-nums">{overageDialog.expected}</span>
+                  {" · "}Gezählt:{" "}
+                  <span className="tabular-nums">{overageDialog.counted}</span>
+                  {" · "}Differenz:{" "}
+                  <span className="tabular-nums text-emerald-800">
+                    +{overageDialog.delta}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs font-black text-black/65 leading-snug">
+                  Vermutlich hat jemand Ware aus dem Lager geholt, ohne den
+                  Transfer zu buchen. Du kannst die Differenz jetzt als Transfer
+                  vom Lager nachtragen — dann stimmt dein Lagerbestand wieder
+                  und der Verbrauch wird korrekt berechnet.
+                </div>
+              </div>
+            </div>
+
+            {overageErr ? (
+              <div className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-black text-red-800">
+                {overageErr}
+              </div>
+            ) : null}
+
+            <div className="mt-5 grid gap-3">
+              <Button
+                className="w-full h-14 text-lg"
+                disabled={overageBusy}
+                onClick={() => void handleOverageTransfer()}
+              >
+                {overageBusy
+                  ? "Buche…"
+                  : `Als Transfer vom Lager nachbuchen (Lager −${overageDialog.delta})`}
+              </Button>
+              <ButtonSecondary
+                className="w-full h-14 text-lg"
+                disabled={overageBusy}
+                onClick={() => void handleOverageSaveAsIs()}
+              >
+                Einfach speichern (kein Transfer)
+              </ButtonSecondary>
+              <button
+                type="button"
+                className="w-full h-12 rounded-2xl border-2 border-black bg-white text-black text-sm font-black active:scale-[0.99] disabled:opacity-50"
+                disabled={overageBusy}
+                onClick={handleOverageCancel}
+              >
+                Abbrechen
+              </button>
             </div>
           </div>
         </div>

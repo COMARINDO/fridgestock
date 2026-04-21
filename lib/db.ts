@@ -953,7 +953,7 @@ export async function recordInventoryAdjustment(args: {
   return { newQuantity };
 }
 
-async function getInventoryQuantityForProductAtLocation(
+export async function getInventoryQuantityForProductAtLocation(
   locationId: string,
   productId: string
 ): Promise<number> {

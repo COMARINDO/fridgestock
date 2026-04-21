@@ -170,6 +170,38 @@ Bestand wird dabei **nicht** verändert — das Booking dient nur der Nachverfol
 - Produkte ohne Vorgeschichte (erste Erfassung) werden ausgelassen — hier gibt es
   keine belastbare Baseline.
 
+### Überzähl-Dialog bei Inventur (Auto-Transfer-Vorschlag)
+
+Wenn an einer Verkaufsstelle bei der Inventur **mehr gezählt wird als erwartet**,
+schlägt der Dialog vor, die Differenz als Transfer vom Lager nachzubuchen.
+Damit wird der häufige Fall „Ware aus dem Lager geholt, aber Transfer nicht
+gebucht" korrekt dokumentiert:
+
+- Differenz wird über den bestehenden RPC `public.transfer_stock(...)`
+  gebucht: Lager −Δ, Verkaufsstelle +Δ (zwei `is_transfer=true`-Rows in
+  `inventory_history`).
+- Anschließend wird der gezählte Wert als regulärer Count abgespeichert.
+
+**Auslösung** (beim Speichern einer Inventur an einer Verkaufsstelle):
+
+- Ort hat `warehouse_location_id` (Teich, Rabenstein, Hofstetten, Kirchberg).
+- Erwarteter Bestand > 0 (Erstbuchungen lösen keinen Dialog aus).
+- Gezählter Wert > erwarteter Wert.
+- Online (offline → wie bisher in die Queue).
+
+**Drei Optionen:**
+
+1. **Als Transfer vom Lager nachbuchen (Lager −Δ)** — empfohlen, wenn die
+   Differenz von einem nicht gebuchten Transfer stammt.
+2. **Einfach speichern (kein Transfer)** — wenn die Differenz eine andere
+   Ursache hat (Retoure, Direktlieferung, Zählkorrektur).
+3. **Abbrechen** — Dialog schließen, Count nicht speichern.
+
+**Wirkung auf Bestellvorschläge:** bei (1) sinkt der Lagerbestand um Δ; der
+Verbrauch der Verkaufsstelle wird nicht künstlich durch eine „+Δ"-Zählung
+überdeckt, weil der positive Diff dann aus einem Transfer statt aus einem Count
+stammt (Transfers zählen ohnehin nicht als Verbrauch).
+
 ### Artikel-Tracking (Bewegungshistorie pro Artikel)
 
 Für einen einzelnen Artikel läßt sich die komplette Bewegungshistorie einsehen:
