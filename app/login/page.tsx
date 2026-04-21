@@ -195,6 +195,20 @@ export default function LoginPage() {
           </p>
         </div>
 
+        <div className="mt-4">
+          <a
+            href="/Ordarella-Anleitung.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full rounded-3xl border-2 border-black bg-white px-5 py-4 text-center text-[16px] font-extrabold text-black shadow-sm hover:bg-black/[0.04] active:scale-[0.99]"
+          >
+            📘 Anleitung (PDF)
+          </a>
+          <p className="mt-2 text-center text-[13px] text-black/55">
+            Kurz erklärt: so funktioniert Ordarella.
+          </p>
+        </div>
+
         <div className="mt-10 flex justify-center pb-6">
           <Image
             src="/logo.png"
