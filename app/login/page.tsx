@@ -18,6 +18,13 @@ import {
   tickCodeRateLimitClock,
 } from "@/lib/codeRateLimit";
 import { useCodeRateLimit } from "@/app/useCodeRateLimit";
+import {
+  publicBannerErrorClass,
+  publicBannerWarnClass,
+  publicCardClass,
+  publicCtaPrimaryClass,
+  publicCtaSecondaryClass,
+} from "@/app/_components/publicUi";
 
 const accessMap: Record<string, string> = {
   "3200": "Teich",
@@ -139,7 +146,7 @@ export default function LoginPage() {
   return (
     <div className="flex-1 flex flex-col">
       <div className="w-full px-4 pt-6">
-        <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm">
+        <div className={publicCardClass}>
           <Input
             value={code}
             onChange={(e) => {
@@ -159,7 +166,7 @@ export default function LoginPage() {
           />
 
           {codeLimit.locked ? (
-            <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-[15px] text-amber-900">
+            <div className={`${publicBannerWarnClass} mt-3`}>
               Zu viele fehlgeschlagene Versuche. Eingabe gesperrt für{" "}
               <span className="font-black tabular-nums">
                 {formatLockRemaining(lockRemainingDisplayMs)}
@@ -169,7 +176,7 @@ export default function LoginPage() {
           ) : null}
 
           {error ? (
-            <div className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-[15px] text-red-800">
+            <div className={`${publicBannerErrorClass} mt-3`} role="alert">
               {error}
             </div>
           ) : null}
@@ -184,10 +191,7 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-6">
-          <Link
-            href="/order"
-            className="block w-full rounded-3xl border-2 border-black bg-[#f2d2b6] px-5 py-5 text-center text-[18px] font-extrabold text-black shadow-sm hover:bg-[#eec79e] active:scale-[0.99]"
-          >
+          <Link href="/order" className={publicCtaPrimaryClass}>
             Bestellung aufgeben
           </Link>
           <p className="mt-2 text-center text-[13px] text-black/55">
@@ -200,7 +204,7 @@ export default function LoginPage() {
             href="/Ordarella-Anleitung.pdf"
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full rounded-3xl border-2 border-black bg-white px-5 py-4 text-center text-[16px] font-extrabold text-black shadow-sm hover:bg-black/[0.04] active:scale-[0.99]"
+            className={publicCtaSecondaryClass}
           >
             📘 Anleitung (PDF)
           </a>

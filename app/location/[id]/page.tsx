@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MutableRefObject } from "react";
 import { RequireAuth } from "@/app/_components/RequireAuth";
 import { Button, ButtonSecondary, Input } from "@/app/_components/ui";
+import { publicSheetCloseButtonClass } from "@/app/_components/publicUi";
 import { useAuth } from "@/app/providers";
 import {
   getProductByBarcode,
@@ -1679,7 +1680,7 @@ function LocationInner() {
                 </div>
               </div>
               <button
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99]"
+                className={publicSheetCloseButtonClass}
                 onClick={() => setScanSheet(null)}
               >
                 Schließen
@@ -1851,7 +1852,7 @@ function LocationInner() {
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99] shrink-0"
+                className={`${publicSheetCloseButtonClass} shrink-0`}
                 onClick={() => setLeaveGuardOpen(false)}
                 disabled={leaveGuardBusy}
               >
@@ -1989,7 +1990,7 @@ function LocationInner() {
               </div>
               <button
                 type="button"
-                className="h-10 px-3 rounded-2xl bg-white text-black text-sm font-black border-2 border-black active:scale-[0.99] shrink-0"
+                className={`${publicSheetCloseButtonClass} shrink-0`}
                 onClick={() => setQuickEdit(null)}
               >
                 Schließen

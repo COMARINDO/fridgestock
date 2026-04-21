@@ -24,7 +24,9 @@ const subLinkBase =
   "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12px] font-black " +
   "transition-colors";
 const subLinkIdle = "text-black/65 hover:bg-black/[0.04] hover:text-black";
-const subLinkActive = "bg-black/[0.06] text-black";
+// Aktiver Sub-Link bekommt denselben schwarzen Pill-Look wie die Top-Level-Aktion,
+// damit auf einen Blick klar ist, wo man sich befindet.
+const subLinkActive = "bg-black text-white";
 
 const groupTitleClass =
   "px-2 text-[10px] font-black uppercase tracking-[0.12em] text-black/40";
@@ -76,15 +78,19 @@ function NavBlock({
     <div className="min-w-0">
       <div className={`mb-1.5 ${groupTitleClass}`}>{title}</div>
       <div className="flex flex-col gap-0.5">
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`${navLinkBase} ${matchActive(pathname, item.href) ? navLinkActive : navLinkIdle}`}
-          >
-            <span className="truncate">{item.label}</span>
-          </Link>
-        ))}
+        {items.map((item) => {
+          const isActive = matchActive(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive ? "page" : undefined}
+              className={`${navLinkBase} ${isActive ? navLinkActive : navLinkIdle}`}
+            >
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
         {extra}
       </div>
     </div>
@@ -98,47 +104,33 @@ function AdminOrdersSubnav() {
   const subHref = (t: string) => `/admin/orders?tab=${t}`;
   const active = (t: string) => tab === t;
 
+  function subLink(tabId: string, label: ReactNode) {
+    const isActive = active(tabId);
+    return (
+      <Link
+        href={subHref(tabId)}
+        aria-current={isActive ? "page" : undefined}
+        className={`${subLinkBase} ${isActive ? subLinkActive : subLinkIdle}`}
+      >
+        <span className="truncate">{label}</span>
+      </Link>
+    );
+  }
+
   return (
-    <div className="mt-2 space-y-3 rounded-xl border border-black/[0.07] bg-black/[0.015] p-2">
+    <div className="mt-2 space-y-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-2">
       <div className="space-y-0.5">
         <div className={`pb-0.5 ${groupTitleClass}`}>1 · Rabenstein</div>
-        <Link
-          href={subHref("demand")}
-          className={`${subLinkBase} ${active("demand") ? subLinkActive : subLinkIdle}`}
-        >
-          <span className="truncate">Bedarf</span>
-        </Link>
-        <Link
-          href={subHref("central")}
-          className={`${subLinkBase} ${active("central") ? subLinkActive : subLinkIdle}`}
-        >
-          <span className="truncate">Lager</span>
-        </Link>
+        {subLink("demand", "Bedarf")}
+        {subLink("central", "Lager")}
       </div>
 
       <div className="space-y-0.5">
-        <Link
-          href={subHref("hofstetten")}
-          className={`${subLinkBase} ${active("hofstetten") ? subLinkActive : subLinkIdle}`}
-        >
-          <span className="truncate">2 · {HOFSTETTEN_NAME}</span>
-        </Link>
-        <Link
-          href={subHref("kirchberg")}
-          className={`${subLinkBase} ${active("kirchberg") ? subLinkActive : subLinkIdle}`}
-        >
-          <span className="truncate">3 · {KIRCHBERG_NAME}</span>
-        </Link>
+        {subLink("hofstetten", `2 · ${HOFSTETTEN_NAME}`)}
+        {subLink("kirchberg", `3 · ${KIRCHBERG_NAME}`)}
       </div>
 
-      <div className="space-y-0.5">
-        <Link
-          href={subHref("delivery")}
-          className={`${subLinkBase} ${active("delivery") ? subLinkActive : subLinkIdle}`}
-        >
-          <span className="truncate">4 · Lieferungen</span>
-        </Link>
-      </div>
+      <div className="space-y-0.5">{subLink("delivery", "4 · Lieferungen")}</div>
     </div>
   );
 }
@@ -330,26 +322,28 @@ export function AdminNav() {
             onChange={() => setShowExtras((v) => !v)}
             title="Monitoring & Debug ein-/ausblenden"
           />
-          <a
-            href="/Ordarella-Anleitung.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-black/15 bg-white px-3 text-[12px] font-black text-black/75 hover:bg-black/[0.04] hover:text-black transition-colors active:scale-[0.99]"
-            title="Kurzanleitung als PDF öffnen"
-          >
-            <span aria-hidden>📘</span>
-            <span>Anleitung (PDF)</span>
-          </a>
-          <button
-            type="button"
-            className="mt-1 h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"
-            onClick={() => {
-              exitAdmin();
-              router.replace("/login");
-            }}
-          >
-            Admin beenden
-          </button>
+          <div className="mt-2 flex flex-col gap-1.5 border-t border-black/10 pt-3">
+            <a
+              href="/Ordarella-Anleitung.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-black/15 bg-white px-3 text-[12px] font-black text-black/75 hover:bg-black/[0.04] hover:text-black transition-colors active:scale-[0.99]"
+              title="Kurzanleitung als PDF öffnen"
+            >
+              <span aria-hidden>📘</span>
+              <span>Anleitung (PDF)</span>
+            </a>
+            <button
+              type="button"
+              className="h-10 w-full rounded-xl border border-black/15 bg-white px-3 text-[13px] font-black text-black hover:bg-black/[0.04] transition-colors active:scale-[0.99]"
+              onClick={() => {
+                exitAdmin();
+                router.replace("/login");
+              }}
+            >
+              Admin beenden
+            </button>
+          </div>
         </div>
       </nav>
     </aside>

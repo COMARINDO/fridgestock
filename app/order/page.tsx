@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button, ButtonSecondary } from "@/app/_components/ui";
+import {
+  publicBannerErrorClass,
+  publicCardClass,
+} from "@/app/_components/publicUi";
 
 type Field =
   | "product"
@@ -313,7 +317,7 @@ export default function CustomerOrderPage() {
         ) : null}
 
         {stage === "summary" ? (
-          <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm space-y-3">
+          <div className={`${publicCardClass} space-y-3`}>
             <div className="text-[12px] font-bold uppercase tracking-wider text-black/50">
               Zusammenfassung
             </div>
@@ -348,7 +352,7 @@ export default function CustomerOrderPage() {
               onEdit={() => editField("location")}
             />
             {error ? (
-              <div className="rounded-2xl bg-red-50 px-4 py-3 text-[14px] text-red-800">
+              <div className={publicBannerErrorClass} role="alert">
                 {error}
               </div>
             ) : null}
@@ -364,7 +368,7 @@ export default function CustomerOrderPage() {
         ) : null}
 
         {stage === "done" ? (
-          <div className="rounded-3xl border-2 border-black bg-white p-5 shadow-sm space-y-3">
+          <div className={`${publicCardClass} space-y-3`}>
             <div className="text-[20px] font-black">Danke!</div>
             <div className="text-[15px] text-black/70">
               Deine Bestellung wurde übermittelt. Wir melden uns bei
@@ -384,9 +388,9 @@ export default function CustomerOrderPage() {
       </div>
 
       {showInput ? (
-        <div className="border-t border-black/10 bg-white px-4 py-3">
+        <div className="border-t border-black/10 bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
           {error ? (
-            <div className="mb-2 rounded-2xl bg-red-50 px-4 py-2 text-[14px] text-red-800">
+            <div className={`${publicBannerErrorClass} mb-2 py-2`} role="alert">
               {error}
             </div>
           ) : null}

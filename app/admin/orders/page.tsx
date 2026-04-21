@@ -52,10 +52,14 @@ import {
   adminBannerInfoClass,
   adminBannerSuccessClass,
   adminBannerWarnClass,
+  adminBrutalSecondaryButtonLgClass,
   adminDangerButtonLgClass,
+  adminEmptyStateClass,
+  adminOrderFormulaClass,
   adminPrimaryButtonLgClass,
   adminSectionTitleClass,
   adminTableClass,
+  adminTableScrollHintClass,
   adminTableShellClass,
   adminTableStickyHeadCellClass,
 } from "@/app/admin/_components/adminUi";
@@ -992,6 +996,65 @@ function AdminOrdersPageContent() {
           ? "Eigene Bestellung für dieses Platzerl. „Bestellung archivieren“ legt eine offene Lieferung an."
           : "Offene Lieferungen. Mengen ggf. anpassen (Teil-Lieferung) und buchen — Bestand wird automatisch erhöht.";
 
+  // Einheitlich gerenderter Mengen-Editor für die drei Tabs (Zentrallager,
+  // Hofstetten, Kirchberg). Zuvor war dieselbe JSX dreimal dupliziert; jetzt
+  // landet jede visuelle Änderung automatisch an allen drei Stellen.
+  function renderQuantityCell(
+    locationIdForRow: string | null,
+    row: { productId: string; units: number; overridden: boolean }
+  ) {
+    const isEd =
+      !!locationIdForRow &&
+      editing?.locationId === locationIdForRow &&
+      editing?.productId === row.productId;
+    if (isEd) {
+      return (
+        <div className="flex items-center gap-2 shrink-0">
+          <input
+            inputMode="numeric"
+            type="tel"
+            className="h-11 w-20 rounded-xl border-2 border-black text-center text-lg font-black"
+            value={editDraft}
+            onChange={(e) => setEditDraft(e.target.value.replace(/[^\d]/g, ""))}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void saveEdit();
+              if (e.key === "Escape") setEditing(null);
+            }}
+            aria-label="Bestellmenge"
+          />
+          <button
+            type="button"
+            disabled={saveBusy}
+            className="h-11 px-3 rounded-xl bg-black text-white text-sm font-black"
+            onClick={() => void saveEdit()}
+          >
+            OK
+          </button>
+        </div>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="h-11 min-w-[3rem] rounded-xl border-2 border-black bg-white px-3 text-lg font-black tabular-nums text-black active:scale-[0.99]"
+        onClick={() => {
+          if (!locationIdForRow) return;
+          setEditing({ locationId: locationIdForRow, productId: row.productId });
+          setEditDraft(String(row.units));
+        }}
+        aria-label={`Bestellmenge bearbeiten (aktuell ${row.units})`}
+      >
+        {row.units}
+        {row.overridden ? (
+          <span className="ml-1 text-amber-700" title="Override">
+            *
+          </span>
+        ) : null}
+      </button>
+    );
+  }
+
   return (
     <main className="w-full px-4 py-6 pb-28 max-w-5xl mx-auto">
       <AdminPageHeader
@@ -1009,7 +1072,9 @@ function AdminOrdersPageContent() {
       (activeTab === "central" ||
         activeTab === "hofstetten" ||
         activeTab === "kirchberg") ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-600/20 bg-emerald-50 px-3 py-2 text-[12px] font-black text-emerald-800">
+        <div
+          className={`${adminBannerSuccessClass} mt-4 flex flex-wrap items-center gap-2 text-[12px]`}
+        >
           <span className="inline-flex h-5 items-center rounded-md bg-emerald-600 px-1.5 text-white">
             +{reservePct} %
           </span>
@@ -1204,7 +1269,7 @@ function AdminOrdersPageContent() {
                 ))}
                 {demandRows.length === 0 ? (
                   <tr>
-                    <td className="p-4 text-sm font-black text-black/60" colSpan={5}>
+                    <td className={adminEmptyStateClass} colSpan={5}>
                       Keine offenen Bedarfsmeldungen.
                     </td>
                   </tr>
@@ -1289,7 +1354,7 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "central" && rabensteinId ? (
         <>
-          <section className={`${adminTableShellClass} mt-5`}>
+          <section className={`${adminTableShellClass} ${adminTableScrollHintClass} mt-5`}>
             <table className={`${adminTableClass} min-w-[640px]`}>
               <thead>
                 <tr>
@@ -1309,9 +1374,6 @@ function AdminOrdersPageContent() {
               </thead>
               <tbody>
                 {centralRows.map((r) => {
-                  const isEd =
-                    editing?.productId === r.productId &&
-                    editing?.locationId === rabensteinId;
                   const editMetroNr =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_order_number";
@@ -1336,7 +1398,7 @@ function AdminOrdersPageContent() {
                         ) : null}
                         {showFormula ? (
                           <div
-                            className="mt-1.5 text-[10px] font-black leading-snug text-black/60 tabular-nums"
+                            className={adminOrderFormulaClass}
                             title="Exakt diese Werte fließen in computeRabensteinGesamtOrderFromDemandReports ein (lib/orderSuggestions.ts)."
                           >
                             Δ Stück = Meld. {TEICH_NAME} ({r.demandTeich}) + Meld.{" "}
@@ -1390,51 +1452,11 @@ function AdminOrdersPageContent() {
                         ) : null}
                       </td>
                       <td className="p-3">
-                        {isEd ? (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <input
-                              inputMode="numeric"
-                              type="tel"
-                              className="h-11 w-20 rounded-xl border-2 border-black text-center text-lg font-black"
-                              value={editDraft}
-                              onChange={(e) =>
-                                setEditDraft(e.target.value.replace(/[^\d]/g, ""))
-                              }
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void saveEdit();
-                                if (e.key === "Escape") setEditing(null);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              disabled={saveBusy}
-                              className="h-11 px-3 rounded-xl bg-black text-white text-sm font-black"
-                              onClick={() => void saveEdit()}
-                            >
-                              OK
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-11 min-w-[3rem] rounded-xl border-2 border-black bg-white px-3 text-lg font-black tabular-nums text-black active:scale-[0.99]"
-                            onClick={() => {
-                              setEditing({
-                                locationId: rabensteinId,
-                                productId: r.productId,
-                              });
-                              setEditDraft(String(r.displayOrder));
-                            }}
-                          >
-                            {r.displayOrder}
-                            {r.overridden ? (
-                              <span className="ml-1 text-amber-700" title="Override">
-                                *
-                              </span>
-                            ) : null}
-                          </button>
-                        )}
+                        {renderQuantityCell(rabensteinId, {
+                          productId: r.productId,
+                          units: r.displayOrder,
+                          overridden: r.overridden,
+                        })}
                       </td>
                       <td className="p-3 text-right">
                         {editMetroNr ? (
@@ -1505,7 +1527,7 @@ function AdminOrdersPageContent() {
               </tbody>
             </table>
             {centralRows.length === 0 ? (
-              <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
+              <p className={adminEmptyStateClass}>Keine Positionen.</p>
             ) : null}
           </section>
           <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
@@ -1516,7 +1538,7 @@ function AdminOrdersPageContent() {
             <button
               type="button"
               disabled={sumCentral <= 0}
-              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              className={adminBrutalSecondaryButtonLgClass}
               onClick={() => exportCentralOrderAsPdf()}
               title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
             >
@@ -1539,7 +1561,7 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "hofstetten" && hofstettenId ? (
         <>
-          <section className={`${adminTableShellClass} mt-5`}>
+          <section className={`${adminTableShellClass} ${adminTableScrollHintClass} mt-5`}>
             <table className={`${adminTableClass} min-w-[560px]`}>
               <thead>
                 <tr>
@@ -1557,9 +1579,6 @@ function AdminOrdersPageContent() {
               </thead>
               <tbody>
                 {hofstettenRows.map((r) => {
-                  const isEd =
-                    editing?.productId === r.productId &&
-                    editing?.locationId === hofstettenId;
                   const editMetroNr =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_order_number";
@@ -1668,51 +1687,11 @@ function AdminOrdersPageContent() {
                       </td>
                       <td className="p-3 font-black tabular-nums">{r.usage7d}</td>
                       <td className="p-3">
-                        {isEd ? (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <input
-                              inputMode="numeric"
-                              type="tel"
-                              className="h-11 w-20 rounded-xl border-2 border-black text-center text-lg font-black"
-                              value={editDraft}
-                              onChange={(e) =>
-                                setEditDraft(e.target.value.replace(/[^\d]/g, ""))
-                              }
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void saveEdit();
-                                if (e.key === "Escape") setEditing(null);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              disabled={saveBusy}
-                              className="h-11 px-3 rounded-xl bg-black text-white text-sm font-black"
-                              onClick={() => void saveEdit()}
-                            >
-                              OK
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-11 min-w-[3rem] rounded-xl border-2 border-black bg-white px-3 text-lg font-black tabular-nums text-black active:scale-[0.99]"
-                            onClick={() => {
-                              setEditing({
-                                locationId: hofstettenId,
-                                productId: r.productId,
-                              });
-                              setEditDraft(String(r.displayUnits));
-                            }}
-                          >
-                            {r.displayUnits}
-                            {r.overridden ? (
-                              <span className="ml-1 text-amber-700" title="Override">
-                                *
-                              </span>
-                            ) : null}
-                          </button>
-                        )}
+                        {renderQuantityCell(hofstettenId, {
+                          productId: r.productId,
+                          units: r.displayUnits,
+                          overridden: r.overridden,
+                        })}
                       </td>
                     </tr>
                   );
@@ -1720,7 +1699,7 @@ function AdminOrdersPageContent() {
               </tbody>
             </table>
             {hofstettenRows.length === 0 ? (
-              <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
+              <p className={adminEmptyStateClass}>Keine Positionen.</p>
             ) : null}
           </section>
           <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
@@ -1731,7 +1710,7 @@ function AdminOrdersPageContent() {
             <button
               type="button"
               disabled={sumHof <= 0}
-              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              className={adminBrutalSecondaryButtonLgClass}
               onClick={() => exportLocalOutletOrderAsPdf("hofstetten")}
               title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
             >
@@ -1754,7 +1733,7 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "kirchberg" && kirchbergId ? (
         <>
-          <section className={`${adminTableShellClass} mt-5`}>
+          <section className={`${adminTableShellClass} ${adminTableScrollHintClass} mt-5`}>
             <table className={`${adminTableClass} min-w-[560px]`}>
               <thead>
                 <tr>
@@ -1772,9 +1751,6 @@ function AdminOrdersPageContent() {
               </thead>
               <tbody>
                 {kirchbergRows.map((r) => {
-                  const isEd =
-                    editing?.productId === r.productId &&
-                    editing?.locationId === kirchbergId;
                   const editMetroNr =
                     metroEditing?.productId === r.productId &&
                     metroEditing?.field === "metro_order_number";
@@ -1883,51 +1859,11 @@ function AdminOrdersPageContent() {
                       </td>
                       <td className="p-3 font-black tabular-nums">{r.usage7d}</td>
                       <td className="p-3">
-                        {isEd ? (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <input
-                              inputMode="numeric"
-                              type="tel"
-                              className="h-11 w-20 rounded-xl border-2 border-black text-center text-lg font-black"
-                              value={editDraft}
-                              onChange={(e) =>
-                                setEditDraft(e.target.value.replace(/[^\d]/g, ""))
-                              }
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void saveEdit();
-                                if (e.key === "Escape") setEditing(null);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              disabled={saveBusy}
-                              className="h-11 px-3 rounded-xl bg-black text-white text-sm font-black"
-                              onClick={() => void saveEdit()}
-                            >
-                              OK
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="h-11 min-w-[3rem] rounded-xl border-2 border-black bg-white px-3 text-lg font-black tabular-nums text-black active:scale-[0.99]"
-                            onClick={() => {
-                              setEditing({
-                                locationId: kirchbergId,
-                                productId: r.productId,
-                              });
-                              setEditDraft(String(r.displayUnits));
-                            }}
-                          >
-                            {r.displayUnits}
-                            {r.overridden ? (
-                              <span className="ml-1 text-amber-700" title="Override">
-                                *
-                              </span>
-                            ) : null}
-                          </button>
-                        )}
+                        {renderQuantityCell(kirchbergId, {
+                          productId: r.productId,
+                          units: r.displayUnits,
+                          overridden: r.overridden,
+                        })}
                       </td>
                     </tr>
                   );
@@ -1935,7 +1871,7 @@ function AdminOrdersPageContent() {
               </tbody>
             </table>
             {kirchbergRows.length === 0 ? (
-              <p className="p-4 text-sm text-black/60 font-black">Keine Positionen.</p>
+              <p className={adminEmptyStateClass}>Keine Positionen.</p>
             ) : null}
           </section>
           <div className="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-black/70">
@@ -1946,7 +1882,7 @@ function AdminOrdersPageContent() {
             <button
               type="button"
               disabled={sumKir <= 0}
-              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              className={adminBrutalSecondaryButtonLgClass}
               onClick={() => exportLocalOutletOrderAsPdf("kirchberg")}
               title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
             >
@@ -2067,7 +2003,8 @@ function AdminOrdersPageContent() {
                                   onChange={(e) =>
                                     setDeliveryDraft(o.id, it.product_id, e.target.value)
                                   }
-                                  className="w-20 rounded-lg border border-black/15 bg-white px-2 py-1 text-right text-base font-black tabular-nums text-black focus:border-black focus:outline-none"
+                                  aria-label="Gelieferte Menge"
+                                  className="h-10 w-20 rounded-xl border-2 border-black bg-white px-2 text-right text-base font-black tabular-nums text-black outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-60"
                                 />
                               </td>
                             </tr>
@@ -2075,10 +2012,7 @@ function AdminOrdersPageContent() {
                         })}
                         {items.length === 0 ? (
                           <tr>
-                            <td
-                              className="p-4 text-sm font-bold text-black/55"
-                              colSpan={3}
-                            >
+                            <td className={adminEmptyStateClass} colSpan={3}>
                               Keine Positionen.
                             </td>
                           </tr>

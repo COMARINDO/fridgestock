@@ -60,6 +60,16 @@ export const adminDangerButtonLgClass =
 export const adminDangerButtonSmClass =
   `${buttonBase} h-9 border border-red-800/30 bg-red-50 text-red-900 hover:bg-red-100 text-xs`;
 
+/**
+ * Sekundär-Button im neobrutalen Stil (2-px schwarzer Rand, harter Schatten,
+ * uppercase). Wird in Bestell-Ansichten für Aktionen genutzt, die visuell
+ * neben dem primären schwarzen CTA stehen sollen (z.B. "PDF Export").
+ */
+export const adminBrutalSecondaryButtonLgClass =
+  "rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black " +
+  "shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none " +
+  "disabled:cursor-not-allowed disabled:opacity-40";
+
 /* Form-Elemente -------------------------------------------------------- */
 
 export const adminInputClass =
@@ -144,3 +154,29 @@ export const adminTabBaseClass =
 export const adminTabIdleClass = "text-black/65 hover:bg-black/[0.04]";
 
 export const adminTabActiveClass = "bg-black text-white";
+
+/* Order-Ansicht spezifisch ------------------------------------------- */
+
+/**
+ * Dünne Erklär-/Formel-Zeile unter Produkten in Bestell-Tabellen.
+ * Etwas größer als vorher (text-[11px]) und mit break-words, damit längere
+ * deutsche Strings auch auf Mobile noch lesbar bleiben statt zu überlaufen.
+ */
+export const adminOrderFormulaClass =
+  "mt-1 max-w-full break-words text-[11px] leading-snug font-bold text-black/55 tabular-nums";
+
+/**
+ * Einheitlicher Empty-State in oder unter Tabellen.
+ * Ersetzt die bisher gemischten <p>-/<tr>-Varianten.
+ */
+export const adminEmptyStateClass =
+  "px-4 py-6 text-center text-sm font-black text-black/55 border-t border-black/[0.06]";
+
+/**
+ * Horizontaler Scroll-Hinweis auf mobilen Breakpoints. Fügt rechts einen
+ * dezenten Schatten hinzu, damit klar ist, dass die Tabelle horizontal
+ * gescrollt werden kann. Komplementiert `adminTableShellClass`.
+ */
+export const adminTableScrollHintClass =
+  "relative before:pointer-events-none before:absolute before:inset-y-0 before:right-0 before:w-6 " +
+  "before:bg-gradient-to-l before:from-black/[0.06] before:to-transparent md:before:hidden";
