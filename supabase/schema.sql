@@ -950,8 +950,15 @@ as $$
   group by d.location_id, d.product_id;
 $$;
 
--- Usage + coverage (early-stage support)
+-- Usage + coverage (early-stage support + 10-Tage-Rueckblick, normalisiert auf 7)
 -- Adds `days_covered` based on the earliest history row per (location, product), capped to 7.
+--
+-- Wichtig (seit usage_10d_normalize.sql):
+--  - Intern wird mindestens 10 Tage zurueckgeschaut (auch wenn p_since = now()-7d).
+--  - `usage` = 7-Tage-AEquivalent: round( raw_usage * 7 / observed_days ),
+--    wobei observed_days = min(10, Tage seit erstem History-Eintrag) ∈ [1..10].
+--  - So fliessen auch Inventuren, die 8–10 Tage zurueckliegen, korrekt in
+--    die Bestellvorschlaege ein — ohne die Basisfunktion zu aendern.
 drop function if exists public.usage_by_location_product_since_with_coverage(timestamptz);
 create or replace function public.usage_by_location_product_since_with_coverage(
   p_since timestamptz
@@ -964,12 +971,15 @@ create or replace function public.usage_by_location_product_since_with_coverage(
 language sql
 stable
 as $$
-  with usage as (
+  with bounds as (
+    select least(p_since, now() - interval '10 days') as effective_since
+  ),
+  raw as (
     select
       u.location_id,
       u.product_id,
-      u.usage
-    from public.usage_by_location_product_since(p_since) u
+      u.usage as raw_usage
+    from public.usage_by_location_product_since((select effective_since from bounds)) u
   ),
   first_seen as (
     select
@@ -980,9 +990,18 @@ as $$
     group by ih.location_id, ih.product_id
   )
   select
-    u.location_id,
-    u.product_id,
-    u.usage,
+    r.location_id,
+    r.product_id,
+    round(
+      r.raw_usage::numeric * 7.0 /
+      greatest(
+        1.0::numeric,
+        least(
+          10.0::numeric,
+          extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0
+        )
+      )
+    )::integer as usage,
     least(
       7::numeric,
       greatest(
@@ -990,10 +1009,10 @@ as $$
         extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0
       )
     ) as days_covered
-  from usage u
+  from raw r
   left join first_seen fs
-    on fs.location_id = u.location_id
-   and fs.product_id = u.product_id;
+    on fs.location_id = r.location_id
+   and fs.product_id = r.product_id;
 $$;
 
 grant execute on function public.usage_by_location_product_since_with_coverage(timestamptz) to anon;

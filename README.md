@@ -170,6 +170,32 @@ Bestand wird dabei **nicht** verändert — das Booking dient nur der Nachverfol
 - Produkte ohne Vorgeschichte (erste Erfassung) werden ausgelassen — hier gibt es
   keine belastbare Baseline.
 
+### Bedarf · 10-Tage-Rückblick (7-Tage-Äquivalent)
+
+Die Bestellvorschläge basieren auf dem berechneten Verbrauch der letzten Tage.
+Damit auch Verkaufsstellen mit *älteren* Inventuren (8–10 Tage) korrekt bewertet
+werden, arbeitet die Verbrauchsfunktion so:
+
+- Die Bestellvorschlags-Quelle
+  `public.usage_by_location_product_since_with_coverage(p_since)` schaut
+  **immer mindestens 10 Tage** zurück (auch wenn der Client `p_since = now()-7d`
+  übergibt).
+- `raw_usage` = Summe der negativen Diffs in diesem Fenster; Transfers,
+  `waste` und `loss` werden weiterhin ausgeschlossen (Basisfunktion
+  `usage_by_location_product_since`).
+- Rückgabe-`usage` = `round(raw_usage * 7 / observed_days)` mit
+  `observed_days = min(10, Tage seit erstem History-Eintrag) ∈ [1..10]`
+  → konsistentes **7-Tage-Äquivalent**, auch wenn die Inventur älter ist.
+- `days_covered` bleibt auf 0..7 gekappt, damit die Early-Stage-Glättung im
+  Client (wenig Historie → moderaterer Vorschlag) unverändert greift.
+- Die Basisfunktion `usage_by_location_product_since` (z. B. Übersicht) bleibt
+  strikt auf das angefragte `p_since`-Fenster und **unverändert**.
+
+**Migration ausführen (einmalig im Supabase SQL-Editor):**
+
+1. `supabase/usage_10d_normalize.sql` komplett ausführen.
+2. Neu laden — Bestellvorschläge ziehen jetzt auch ältere Inventuren mit ein.
+
 ### Tests
 
 - `npm test` — einmalig (Vitest)
