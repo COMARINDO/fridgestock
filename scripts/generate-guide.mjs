@@ -26,7 +26,6 @@ function setFill(doc, c) { doc.setFillColor(c[0], c[1], c[2]); }
 function setText(doc, c) { doc.setTextColor(c[0], c[1], c[2]); }
 function setDraw(doc, c) { doc.setDrawColor(c[0], c[1], c[2]); }
 
-// Neobrutalist card with drop shadow
 function card(doc, x, y, w, h, color, shadow = true) {
   if (shadow) {
     setFill(doc, BLACK);
@@ -46,7 +45,6 @@ function arrow(doc, x1, y1, x2, y2) {
   setDraw(doc, BLACK);
   doc.setLineWidth(0.8);
   doc.line(x1, y1, x2, y2);
-  // arrow head
   const len = 2.5;
   const angle = Math.atan2(y2 - y1, x2 - x1);
   const hx1 = x2 - len * Math.cos(angle - Math.PI / 6);
@@ -83,15 +81,14 @@ function footer(doc, pageNo, pageTotal) {
 
 // ---------- DOC ---------------------------------------------------------
 const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-const TOTAL_PAGES = 5;
+const TOTAL_PAGES = 4;
 
 // ============================================================
-// PAGE 1 — Cover / große Übersicht
+// PAGE 1 — Cover / der wöchentliche Kreislauf
 // ============================================================
 setFill(doc, YELLOW);
 doc.rect(0, 0, 210, 297, "F");
 
-// Big title
 setText(doc, BLACK);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(42);
@@ -101,13 +98,11 @@ doc.setFontSize(14);
 doc.setFont("helvetica", "normal");
 doc.text("So funktioniert das Programm", 105, 72, { align: "center" });
 
-// Core loop diagram
 const cx = 105;
 const cy = 160;
 const boxW = 55;
 const boxH = 22;
 
-// 4 boxes arranged as a cycle: top, right, bottom, left
 const top = { x: cx - boxW / 2, y: cy - 55 };
 const right = { x: cx + 30, y: cy - 11 };
 const bottom = { x: cx - boxW / 2, y: cy + 33 };
@@ -125,25 +120,22 @@ function labeledCard(pos, color, title, line1, line2) {
   if (line2) centeredText(doc, line2, pos.x, pos.y + 18.5, boxW);
 }
 
-labeledCard(top, GREEN, "1. Inventur", "zählen was da ist", "pro Standort");
+labeledCard(top, GREEN, "1. Inventur", "einmal pro Woche", "zählen, was da ist");
 labeledCard(right, ORANGE, "2. Bedarf", "Filialen melden", "was fehlt");
-labeledCard(bottom, BLUE, "3. Bestellung", "Admin archiviert", "+ PDF für Metro");
-labeledCard(left, WHITE, "4. Lieferung", "einbuchen →", "Bestand wächst");
+labeledCard(bottom, BLUE, "3. Bestellung", "an Metro", "(PDF)");
+labeledCard(left, WHITE, "4. Lieferung", "kommt & wird", "eingebucht");
 
-// Arrows (clockwise)
 arrow(doc, top.x + boxW, top.y + boxH / 2 + 3, right.x, right.y + 3);
 arrow(doc, right.x + boxW / 2, right.y + boxH, bottom.x + boxW, bottom.y + boxH / 2 - 3);
 arrow(doc, bottom.x, bottom.y + boxH / 2, left.x + boxW, left.y + boxH - 3);
 arrow(doc, left.x + boxW / 2, left.y, top.x, top.y + boxH / 2 - 3);
 
-// Center label
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
 setText(doc, BLACK);
-doc.text("täglicher", cx, cy - 2, { align: "center" });
+doc.text("wöchentlicher", cx, cy - 2, { align: "center" });
 doc.text("Kreislauf", cx, cy + 4, { align: "center" });
 
-// Footer hint
 doc.setFont("helvetica", "normal");
 doc.setFontSize(10);
 setText(doc, DARK);
@@ -165,7 +157,6 @@ footer(doc, 1, TOTAL_PAGES);
 doc.addPage();
 pageTitle(doc, "Die Standorte", "Wer bekommt was — und wer liefert wohin?");
 
-// METRO box
 card(doc, 14, 45, 50, 20, GRAY);
 setText(doc, BLACK);
 doc.setFont("helvetica", "bold");
@@ -175,12 +166,10 @@ doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
 centeredText(doc, "Großhändler", 14, 60, 50);
 
-// Arrow to Lager
 arrow(doc, 64, 55, 90, 55);
 doc.setFontSize(8);
 doc.text("liefert", 77, 53, { align: "center" });
 
-// Lager
 card(doc, 90, 45, 55, 20, GREEN);
 setText(doc, BLACK);
 doc.setFont("helvetica", "bold");
@@ -190,7 +179,6 @@ doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
 centeredText(doc, "Rabenstein", 90, 60, 55);
 
-// Fan out: 5 Verkaufstellen
 const outlets = [
   { name: "Teich", color: ORANGE, deliv: "vom Lager" },
   { name: "Rabenstein Geschäft", color: ORANGE, deliv: "vom Lager" },
@@ -209,7 +197,6 @@ outlets.forEach((o, i) => {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   centeredText(doc, o.deliv, 60, y + 12, 70);
-  // arrow from Lager/Metro
   if (o.deliv === "vom Lager") {
     arrow(doc, 117, 65, 95, y);
   } else if (o.deliv === "direkt Metro") {
@@ -217,7 +204,6 @@ outlets.forEach((o, i) => {
   }
 });
 
-// Legende
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
 setText(doc, BLACK);
@@ -243,50 +229,49 @@ doc.text("Sonderrolle", 154, 147);
 footer(doc, 2, TOTAL_PAGES);
 
 // ============================================================
-// PAGE 3 — Der tägliche Ablauf
+// PAGE 3 — Der wöchentliche Ablauf
 // ============================================================
 doc.addPage();
-pageTitle(doc, "Der tägliche Ablauf", "3 Momente am Tag — mehr brauchst du nicht");
+pageTitle(doc, "Der wöchentliche Ablauf", "4 Momente in der Woche");
 
 const steps = [
   {
-    time: "Morgens",
+    time: "Einmal / Woche",
     title: "Inventur zählen",
     bullets: [
       "In jeder Filiale einloggen",
       "Jedes Produkt zählen, Menge eintragen",
-      "Fertig → Filiale hat aktuellen Bestand",
+      "Fertig — Filiale hat aktuellen Bestand",
     ],
     color: GREEN,
   },
   {
-    time: "Tagsüber",
-    title: "Bedarf melden (optional)",
+    time: "Bei Bedarf",
+    title: "Bedarf melden",
     bullets: [
-      "Wenn einer Filiale was ausgeht: auf „Bedarf melden“",
-      "Produkt & Menge wählen",
-      "Landet automatisch im Admin-Tab „Bedarf“",
+      "Wenn einer Filiale etwas ausgeht",
+      "In der App: Produkt & Menge wählen",
+      "Landet automatisch im Bestellsystem",
     ],
     color: ORANGE,
   },
   {
-    time: "Abends",
-    title: "Bestellung aufgeben",
+    time: "1× / Woche",
+    title: "Bestellung an Metro",
     bullets: [
-      "Admin öffnet /admin/orders",
-      "Tab „1 · Rabenstein“: Vorschlag prüfen, Mengen anpassen",
-      "„PDF Export“ → PDF an Metro mailen",
-      "„Bestellung archivieren“ → verschiebt Meldungen in „Lieferungen“",
+      "Vorschlag prüfen, Mengen anpassen",
+      "PDF-Export → an Metro mailen",
+      "Bestellung archivieren",
     ],
     color: BLUE,
   },
   {
-    time: "Wenn Lieferung kommt",
-    title: "Lieferung einbuchen",
+    time: "Lieferung",
+    title: "Ware einbuchen",
     bullets: [
-      "Tab „4 · Lieferungen“ öffnen",
+      "Wenn die Lieferung kommt",
       "Mengen ggf. an echte Lieferung anpassen",
-      "„Buchen“ → Bestand im Lager wächst automatisch",
+      "Buchen — Bestand im Lager wächst automatisch",
     ],
     color: YELLOW,
   },
@@ -294,30 +279,28 @@ const steps = [
 
 let sy = 42;
 steps.forEach((s, idx) => {
-  card(doc, 14, sy, 182, 36, s.color);
-  // Badge (time)
+  card(doc, 14, sy, 182, 40, s.color);
   setFill(doc, BLACK);
-  doc.rect(14, sy, 38, 36, "F");
+  doc.rect(14, sy, 44, 40, "F");
   setText(doc, WHITE);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  centeredText(doc, s.time, 14, sy + 12, 38);
-  doc.setFontSize(16);
-  centeredText(doc, String(idx + 1), 14, sy + 25, 38);
+  doc.setFontSize(9.5);
+  centeredText(doc, s.time, 14, sy + 12, 44);
+  doc.setFontSize(20);
+  centeredText(doc, String(idx + 1), 14, sy + 28, 44);
 
-  // Title + bullets
   setText(doc, BLACK);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text(s.title, 56, sy + 8);
+  doc.setFontSize(13);
+  doc.text(s.title, 62, sy + 10);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   s.bullets.forEach((b, i) => {
-    doc.text("•", 56, sy + 16 + i * 5);
-    doc.text(b, 60, sy + 16 + i * 5);
+    doc.text("•", 62, sy + 19 + i * 6);
+    doc.text(b, 66, sy + 19 + i * 6);
   });
 
-  sy += 40;
+  sy += 44;
 });
 
 footer(doc, 3, TOTAL_PAGES);
@@ -328,7 +311,6 @@ footer(doc, 3, TOTAL_PAGES);
 doc.addPage();
 pageTitle(doc, "Wie wird der Bedarf berechnet?", "Einfache Logik, klare Formel");
 
-// Flow: 3 boxes horizontally
 const fy = 50;
 const fbW = 52;
 const fbH = 30;
@@ -340,7 +322,7 @@ centeredText(doc, "Inventur alt", 14, fy + 8, fbW);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
 centeredText(doc, "z. B. 10 Stück", 14, fy + 16, fbW);
-centeredText(doc, "am Montag", 14, fy + 22, fbW);
+centeredText(doc, "letzte Woche", 14, fy + 22, fbW);
 
 doc.setFontSize(20);
 doc.setFont("helvetica", "bold");
@@ -366,9 +348,8 @@ centeredText(doc, "Inventur neu", 144, fy + 8, fbW);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
 centeredText(doc, "z. B. 2 Stück", 144, fy + 16, fbW);
-centeredText(doc, "am Sonntag", 144, fy + 22, fbW);
+centeredText(doc, "diese Woche", 144, fy + 22, fbW);
 
-// = VERBRAUCH
 card(doc, 60, 95, 90, 22, ORANGE);
 setText(doc, BLACK);
 doc.setFont("helvetica", "bold");
@@ -380,147 +361,44 @@ centeredText(doc, "in dieser Woche", 60, 112, 90);
 
 arrow(doc, 105, 83, 105, 94);
 
-// → auf 7 Tage normalisiert
 card(doc, 40, 135, 130, 26, YELLOW);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(12);
 centeredText(doc, "→ Bestellvorschlag nächste Woche: 12 Stück", 40, 145, 130);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
-centeredText(
-  doc,
-  "auf 7 Tage gerechnet, auch wenn Inventur 8-10 Tage zurückliegt",
-  40,
-  153,
-  130
-);
+centeredText(doc, "immer auf 7 Tage gerechnet", 40, 153, 130);
 
 arrow(doc, 105, 119, 105, 134);
 
-// Optional: Reserve-Aufschlag
 card(doc, 14, 180, 182, 28, WHITE);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
-doc.text("Optional: Reserve-Aufschlag", 18, 189);
+doc.text("Reserve-Aufschlag (optional)", 18, 189);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9.5);
-doc.text('Im Switch "Reserve" rechts oben aktivieren und z. B. "+20%" eintragen.', 18, 196);
-doc.text("Dann wird der Vorschlag um 20 % erhöht — als Sicherheitspuffer.", 18, 201);
-doc.text("Beispiel: aus 12 Stück wird 15 Stück (aufgerundet).", 18, 206);
+doc.text(
+  'Beim Reserve-Switch z. B. "+20 %" eintragen — dann wird der Vorschlag',
+  18,
+  196
+);
+doc.text("um 20 % erhöht (als Sicherheitspuffer).", 18, 201);
+doc.text("Beispiel: aus 12 Stück werden 15 Stück (aufgerundet).", 18, 206);
 
-// Hinweis-Box
-card(doc, 14, 218, 182, 32, GRAY);
+card(doc, 14, 218, 182, 26, GRAY);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
-doc.text("Wichtig zu wissen", 18, 227);
+doc.text("Gut zu wissen", 18, 227);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9.5);
+doc.text("• Je sauberer gezählt wird, desto genauer der Vorschlag.", 18, 234);
 doc.text(
-  "• Je öfter du inventierst, desto genauer die Vorschläge.",
-  18,
-  234
-);
-doc.text(
-  "• Lieferungen vom Lager werden automatisch erkannt — nichts extra zu tun.",
+  "• Lieferungen vom Lager in die Filialen werden automatisch erkannt.",
   18,
   240
 );
-doc.text(
-  "• Schwund im Lager wird separat dokumentiert (/admin/shrinkage), nicht als Verbrauch.",
-  18,
-  246
-);
 
 footer(doc, 4, TOTAL_PAGES);
-
-// ============================================================
-// PAGE 5 — Die Admin-Menüs
-// ============================================================
-doc.addPage();
-pageTitle(doc, "Das Admin-Menü", "Was ist wo — auf einen Blick");
-
-const menus = [
-  {
-    group: "Alltag",
-    color: GREEN,
-    items: [
-      ["Bedarf & Bestellen", "Tägliche Bestell-Zentrale — hier passiert 90 %"],
-      ["Bestellungen → Lieferungen", "Offene Lieferungen einbuchen"],
-      ["Kunden-Bestellungen", "Bestellungen vom Chatbot (ohne Login)"],
-      ["Backstube", "Bestellungen sortiert nach Abholtag"],
-    ],
-  },
-  {
-    group: "Stammdaten",
-    color: BLUE,
-    items: [
-      ["Produkte", "Artikel anlegen, Metro-Daten pflegen"],
-      ["Standorte", "Filialen & Platzerl verwalten"],
-      ["Benutzer", "Logins zuordnen"],
-    ],
-  },
-  {
-    group: "Monitoring (optional)",
-    color: ORANGE,
-    items: [
-      ["Übersicht", "Stand aller Filialen auf einen Blick"],
-      ["Inventur-Sessions", "Wann wurde wo gezählt?"],
-      ["Schwund · Lager", "Fehlmengen bei Lager-Inventur verbuchen"],
-      ["Artikel-Tracking", "Bewegungshistorie pro Artikel"],
-    ],
-  },
-];
-
-let my = 42;
-menus.forEach((m) => {
-  // Group title bar
-  setFill(doc, m.color);
-  setDraw(doc, BLACK);
-  doc.setLineWidth(0.6);
-  doc.rect(14, my, 182, 9, "FD");
-  setText(doc, BLACK);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text(m.group, 18, my + 6.5);
-  my += 9;
-
-  m.items.forEach(([name, desc], i) => {
-    if (i % 2 === 0) {
-      setFill(doc, GRAY);
-      doc.rect(14, my, 182, 11, "F");
-    }
-    setDraw(doc, BLACK);
-    doc.setLineWidth(0.2);
-    doc.rect(14, my, 182, 11);
-    setText(doc, BLACK);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text(name, 18, my + 7);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    setText(doc, DARK);
-    doc.text(desc, 85, my + 7);
-    my += 11;
-  });
-  my += 3;
-});
-
-// Tipp am Ende
-card(doc, 14, my + 2, 182, 20, YELLOW);
-setText(doc, BLACK);
-doc.setFont("helvetica", "bold");
-doc.setFontSize(11);
-doc.text("Tipp", 18, my + 10);
-doc.setFont("helvetica", "normal");
-doc.setFontSize(9.5);
-doc.text(
-  "Monitoring ist standardmäßig ausgeblendet. Im linken Menü unten mit dem",
-  18,
-  my + 15.5
-);
-doc.text('"Monitoring & Debug"-Switch einblenden.', 18, my + 19.5);
-
-footer(doc, 5, TOTAL_PAGES);
 
 // ----- write file -------------------------------------------------------
 const buf = Buffer.from(doc.output("arraybuffer"));
