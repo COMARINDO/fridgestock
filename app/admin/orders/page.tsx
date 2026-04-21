@@ -42,6 +42,7 @@ import {
 } from "@/lib/locationConstants";
 import type { Location, OrderOverrideRow, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
+import { downloadOrderPdf, defaultOrderPdfFileName } from "@/lib/exportOrderPdf";
 import { formatProductName } from "@/lib/formatProductName";
 import {
   adminActionSectionClass,
@@ -725,6 +726,34 @@ function AdminOrdersPageContent() {
   }
 
   type ArchiveTab = "central" | "hofstetten" | "kirchberg";
+
+  function exportCentralOrderAsPdf() {
+    const rows = centralRows
+      .filter((r) => r.displayOrder > 0)
+      .map((r) => ({
+        name: r.name,
+        metroNr: r.metro_order_number,
+        unit: r.metro_unit,
+        units: r.displayOrder,
+        piecesPerUnit: r.piecesPerOrderUnit,
+      }));
+    if (rows.length === 0) {
+      setErr("Keine Positionen zum Exportieren.");
+      return;
+    }
+    try {
+      setErr(null);
+      downloadOrderPdf({
+        title: `Bestellung ${RABENSTEIN_LAGER_NAME}`,
+        subtitle: "Nur Artikel mit Bestellmenge > 0",
+        rows,
+        includePieces: true,
+        fileName: defaultOrderPdfFileName(`Bestellung-${RABENSTEIN_LAGER_NAME}`),
+      });
+    } catch (e) {
+      setErr(errorMessage(e, "PDF-Export fehlgeschlagen."));
+    }
+  }
 
   async function archiveOrderForTab(tab: ArchiveTab) {
     let locationId: string | null = null;
@@ -1454,6 +1483,15 @@ function AdminOrdersPageContent() {
               Summe Einheiten ({RABENSTEIN_LAGER_NAME}):{" "}
               <span className="font-black text-black tabular-nums">{sumCentral}</span>
             </span>
+            <button
+              type="button"
+              disabled={sumCentral <= 0}
+              className="rounded-xl border-2 border-black bg-white px-4 py-2 text-sm font-black uppercase tracking-wide text-black shadow-[3px_3px_0_rgba(0,0,0,1)] transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => exportCentralOrderAsPdf()}
+              title="Nur die Artikel mit Bestellmenge > 0 als PDF exportieren"
+            >
+              PDF Export
+            </button>
             <button
               type="button"
               disabled={archiveBusy !== null || sumCentral <= 0}
