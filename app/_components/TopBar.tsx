@@ -187,7 +187,14 @@ export function TopBar() {
     "h-10 px-3 rounded-2xl border-2 text-[14px] font-black transition-colors active:scale-[0.99]";
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 border-b-2 border-black bg-[var(--background)]">
+    <div
+      className={[
+        "fixed top-0 left-0 right-0 z-50",
+        bareLoginScreen
+          ? "bg-transparent"
+          : "border-b-2 border-black bg-[var(--background)]",
+      ].join(" ")}
+    >
       <div className="w-full px-4 py-3 min-h-[56px] flex items-center justify-start">
         {bareLoginScreen ? null : isAdminRoute ? (
           <div className="flex w-full min-w-0 items-center justify-start gap-2">
