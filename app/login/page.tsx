@@ -297,6 +297,19 @@ export default function LoginPage() {
         <p className="mt-8 text-center text-[11px] font-black uppercase tracking-[0.2em] text-pink-700/40">
           made with <span aria-hidden>💗</span> in Rabenstein
         </p>
+
+        <nav
+          aria-label="Rechtliches"
+          className="mt-3 flex items-center justify-center gap-4 text-[11px] font-black uppercase tracking-[0.18em] text-pink-700/60"
+        >
+          <Link href="/datenschutz" className="hover:text-pink-700 hover:underline">
+            Datenschutz
+          </Link>
+          <span aria-hidden className="text-pink-700/30">·</span>
+          <Link href="/impressum" className="hover:text-pink-700 hover:underline">
+            Impressum
+          </Link>
+        </nav>
       </div>
     </div>
   );

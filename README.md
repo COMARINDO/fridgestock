@@ -121,9 +121,48 @@ Es laufen zwei unabhängige Backups parallel:
 - Tabelle `admin_audit_log` (Migration: `supabase/admin_audit_log.sql`).
 - Geschriebene Aktionen (Server-Routes mit `SERVER_ACTION_SECRET`):
   `orders.process_open`, `orders.archive_location`, `orders.update_items`,
-  `orders.confirm_delivery`, `inventory.shrinkage.book`, `inventory.shrinkage.ignore`.
-- Eintrag enthält Action, Actor (Header `x-actor` oder IP), Payload, Result,
-  ok/error. Lesbar im Supabase-Dashboard.
+  `orders.confirm_delivery`, `inventory.shrinkage.book`, `inventory.shrinkage.ignore`,
+  `customer_order.update`, `dsgvo.search`, `dsgvo.delete`, `dsgvo.cleanup`.
+- Eintrag enthält Action, Actor (Header `x-actor` oder **anonymisierte** IP —
+  siehe `lib/auditLog.ts`), Payload, Result, ok/error. Lesbar im
+  Supabase-Dashboard.
+
+### DSGVO · Datenschutz
+
+Technische Maßnahmen zur DSGVO-Konformität, die der Code bereitstellt. Die
+juristische Abnahme (Datenschutzerklärung-Inhalt, AVVs mit Dienstleistern,
+Impressum-Angaben) ist Aufgabe des Betreibers.
+
+**Öffentliche Seiten:**
+
+- `/datenschutz` — Datenschutzerklärung nach Art. 13 DSGVO (Template mit
+  Platzhaltern `[[ ... ]]`, die vor Live-Schalten ausgefüllt werden müssen).
+- `/impressum` — Offenlegung nach § 5 ECG / § 25 MedienG (Template).
+- Links sind von der Login-Seite erreichbar; die Datenschutzerklärung ist auch
+  vom Kunden-Chat (`/order`) verlinkt.
+
+**Automatische Löschung (Retention):**
+
+- SQL-Migration: `supabase/dsgvo_cleanup.sql` (einmalig im SQL-Editor ausführen).
+- Vercel-Cron `/api/dsgvo/cleanup` läuft täglich um **02:30 UTC**
+  (mit `Authorization: Bearer $CRON_SECRET`) und löscht:
+  - abgeschlossene / stornierte Kundenbestellungen nach 90 Tagen,
+  - offene Kundenbestellungen nach 180 Tagen,
+  - Admin-Audit-Einträge nach 180 Tagen.
+
+**Betroffenenrechte (Art. 15 / 17):**
+
+- Admin-Nav → Aktionen → **DSGVO · Kundendaten** (`/admin/dsgvo`).
+- Suche nach Telefonnummer oder Name; Auskunft als Tabelle direkt in der UI.
+- Einzel-Löschung per Auswahl oder Sammel-Löschung aller Einträge einer
+  Telefonnummer. Jede Aktion wird im Audit-Log protokolliert
+  (`dsgvo.search` / `dsgvo.delete`).
+
+**IP-Anonymisierung:**
+
+- `lib/auditLog.ts → actorFromRequest()` verkürzt vor dem Schreiben ins
+  Audit-Log jede IPv4 aufs /24 und jede IPv6 aufs /48. Die Funktion
+  `anonymizeIp()` ist dafür testbar ausgeführt.
 
 ### Schwund · Lager (Inventur-Differenzen)
 

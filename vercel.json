@@ -3,6 +3,10 @@
     {
       "path": "/api/backup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/dsgvo/cleanup",
+      "schedule": "30 2 * * *"
     }
   ]
 }

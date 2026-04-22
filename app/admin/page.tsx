@@ -79,6 +79,11 @@ const actionLinks: QuickLink[] = [
     title: "Artikel",
     hint: "Stammdaten bearbeiten – Preise, Barcode, Metro-Nummern.",
   },
+  {
+    href: "/admin/dsgvo",
+    title: "DSGVO · Kundendaten",
+    hint: "Auskunft und Löschung auf Anfrage (Art. 15 / 17).",
+  },
 ];
 
 const debugLinks: QuickLink[] = [

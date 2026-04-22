@@ -290,11 +290,14 @@ export async function GET(request: Request) {
       result.bucket = { ok: false, error: backupErrorMessage(e) };
     }
 
-    // 2) Optional: per Email versenden, wenn Resend konfiguriert ist.
+    // 2) Optional: per Email versenden, wenn Resend und BACKUP_EMAIL konfiguriert sind.
+    //    Kein Hardcoded-Default mehr: wenn BACKUP_EMAIL fehlt, ueberspringen wir
+    //    den Email-Versand stillschweigend (Bucket-Backup reicht).
     const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
+    const backupEmail = process.env.BACKUP_EMAIL?.trim();
+    if (resendKey && backupEmail) {
       try {
-        const to = process.env.BACKUP_EMAIL ?? "sebastian.strasser@gmx.at";
+        const to = backupEmail;
         const from = process.env.RESEND_FROM ?? "onboarding@resend.dev";
         const resend = new Resend(resendKey);
         const { error: resendErr } = await resend.emails.send({
@@ -391,7 +394,7 @@ export async function POST(request: Request) {
 
     // Email-Modus (Default fuer den UI-Button "Backup senden")
     const resendKey = process.env.RESEND_API_KEY;
-    const to = process.env.BACKUP_EMAIL ?? "sebastian.strasser@gmx.at";
+    const to = process.env.BACKUP_EMAIL?.trim();
     const from = process.env.RESEND_FROM ?? "onboarding@resend.dev";
 
     if (!resendKey) {
@@ -400,6 +403,16 @@ export async function POST(request: Request) {
           ok: false,
           error:
             "RESEND_API_KEY fehlt. Lokal in .env.local setzen; auf Vercel/hosting unter Environment Variables eintragen und neu deployen.",
+        },
+        { status: 500 }
+      );
+    }
+    if (!to) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "BACKUP_EMAIL fehlt. Bitte in .env.local bzw. in den Vercel-Environment-Variables eine Empfaengeradresse setzen.",
         },
         { status: 500 }
       );

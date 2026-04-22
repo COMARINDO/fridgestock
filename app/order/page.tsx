@@ -272,6 +272,23 @@ export default function CustomerOrderPage() {
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
+        <div
+          role="note"
+          className="rounded-2xl border border-black/10 bg-white/80 px-4 py-3 text-[12.5px] leading-snug text-black/70 shadow-sm"
+        >
+          <b className="mr-1 text-black">Hinweis zum Datenschutz:</b>
+          Mit dem Absenden deiner Bestellung speichern wir Name, Telefonnummer
+          und Abholzeit zur Bearbeitung. Zur besseren Dialogführung wird der
+          Chatverlauf an OpenAI (USA) übermittelt. Bestellungen werden nach
+          Abschluss automatisch gelöscht. Details in der{" "}
+          <Link
+            href="/datenschutz"
+            className="font-extrabold text-black underline decoration-dotted underline-offset-2 hover:text-pink-700"
+          >
+            Datenschutzerklärung
+          </Link>
+          .
+        </div>
         {messages.map((m) => (
           <div
             key={m.id}
