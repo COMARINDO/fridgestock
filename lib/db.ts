@@ -1465,6 +1465,72 @@ export async function updateProduct(args: {
   if (error) throw error;
 }
 
+/**
+ * Aktualisiert alle bearbeitbaren Produkt-Felder in einem einzigen Update.
+ * Wird im Admin-Bereich (/admin/products) verwendet.
+ * Leere Strings werden zu null normalisiert; numerische Felder akzeptieren null.
+ */
+export async function updateProductAllFields(args: {
+  productId: string;
+  brand: string;
+  product_name: string;
+  zusatz: string | null;
+  barcode: string | null;
+  short_name: string | null;
+  min_quantity: number | null;
+  supplier: string | null;
+  purchase_price: number | null;
+  selling_price: number | null;
+  metro_order_number: string | null;
+  metro_unit: string | null;
+}) {
+  const id = args.productId.trim();
+  if (!id) throw new Error("Produkt-ID fehlt.");
+  if (!args.brand.trim()) throw new Error("Brand fehlt.");
+  if (!args.product_name.trim()) throw new Error("Produkt fehlt.");
+
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (c: string, v: unknown) => Promise<{ error: unknown }>;
+      };
+    };
+  };
+
+  const norm = (v: string | null): string | null => {
+    if (v === null || v === undefined) return null;
+    const t = v.trim();
+    return t ? t : null;
+  };
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      brand: args.brand.trim(),
+      product_name: args.product_name.trim(),
+      zusatz: norm(args.zusatz),
+      barcode: norm(args.barcode),
+      short_name: norm(args.short_name),
+      min_quantity:
+        args.min_quantity === null || args.min_quantity === undefined
+          ? null
+          : args.min_quantity,
+      supplier: norm(args.supplier),
+      purchase_price:
+        args.purchase_price === null || args.purchase_price === undefined
+          ? null
+          : args.purchase_price,
+      selling_price:
+        args.selling_price === null || args.selling_price === undefined
+          ? null
+          : args.selling_price,
+      metro_order_number: norm(args.metro_order_number),
+      metro_unit: norm(args.metro_unit),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export async function updateProductPricing(args: {
   productId: string;
   supplier: string | null;

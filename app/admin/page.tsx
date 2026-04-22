@@ -74,6 +74,11 @@ const actionLinks: QuickLink[] = [
     title: "Bestellungen",
     hint: "Bedarf, Lager, Hofstetten und Kirchberg.",
   },
+  {
+    href: "/admin/products",
+    title: "Artikel",
+    hint: "Stammdaten bearbeiten – Preise, Barcode, Metro-Nummern.",
+  },
 ];
 
 const debugLinks: QuickLink[] = [

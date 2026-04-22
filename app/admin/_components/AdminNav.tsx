@@ -47,6 +47,7 @@ const articleTrackingItem: NavItem = {
 const actions: NavItem[] = [
   { href: "/admin/orders?tab=demand", label: "Bestellungen" },
   { href: "/admin/customer-orders", label: "Kundenbestellungen" },
+  { href: "/admin/products", label: "Artikel" },
 ];
 
 const debug: NavItem[] = [
