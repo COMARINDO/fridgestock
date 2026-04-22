@@ -11,10 +11,8 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
 - **2) Env Vars setzen**
   - Kopiere `.env.local.example` nach `.env.local`
   - Trage `NEXT_PUBLIC_SUPABASE_URL` und `NEXT_PUBLIC_SUPABASE_ANON_KEY` ein
-  - Für serverseitige Jobs (Backup / AI) zusätzlich:
+  - Für serverseitige Jobs (Backup) zusätzlich:
     - `SUPABASE_SERVICE_ROLE_KEY`
-    - `OPENAI_API_KEY`
-    - `AI_CONSUMPTION_CRON_SECRET` (für manuelle Trigger via `x-ai-cron-secret`)
     - `CRON_SECRET` (für Vercel Cron — Vercel sendet `Authorization: Bearer …`)
     - `ADMIN_BACKUP_CODE` (verpflichtend für `/api/backup` POST aus dem UI)
     - `SERVER_ACTION_SECRET` (verpflichtend für geschützte Admin-Aktionen über API)
@@ -23,13 +21,15 @@ Mobile-first Web-App (PWA) zur Verwaltung von Getränkebeständen in **mehreren 
       Default `1402`. Landet im Browser-Bundle — also kein Geheimnis, aber rotierbar.)
     - `RESEND_API_KEY` + `BACKUP_EMAIL` für Email-Backups
     - Supabase Storage Bucket `backups` (privat) für tägliche Backup-CSV-Uploads
-    - `CUSTOMER_CHAT_AI=1` aktiviert den smarten Kunden-Chat (/order)
-    - `CUSTOMER_CHAT_ASSISTANT_ID` (Option A): Wenn gesetzt, nutzt /order OpenAI **Assistants v2**
-      (Threads/Runs + Tool-Calls) für flexiblere Gespräche. Ohne diese Env-Var nutzt der Chat
-      weiterhin die leichtere Chat-Completions-Variante (gpt-4o-mini) als Fallback.
-    - `BAKERY_HOMEPAGE_URL` (optional): offizielle Homepage, die der Chat bei Fragen ausgibt
-    - `BAKERY_FACEBOOK_URL` (optional): offizielle Facebook-Seite, die der Chat bei Fragen ausgibt
-    - `OPENAI_MODEL` optional (Default `gpt-4o-mini`)
+    - Kunden-Chat (nur `/order`, unabhängig vom Bestellsystem):
+      - `CUSTOMER_CHAT_AI=1` aktiviert den smarten Kunden-Chat
+      - `OPENAI_API_KEY` (Pflicht, sobald `CUSTOMER_CHAT_AI=1`)
+      - `OPENAI_MODEL` optional (Default `gpt-4o-mini`)
+      - `CUSTOMER_CHAT_ASSISTANT_ID` (Option A): Wenn gesetzt, nutzt /order OpenAI **Assistants v2**
+        (Threads/Runs + Tool-Calls) für flexiblere Gespräche. Ohne diese Env-Var nutzt der Chat
+        weiterhin die leichtere Chat-Completions-Variante als Fallback.
+      - `BAKERY_HOMEPAGE_URL` (optional): offizielle Homepage, die der Chat bei Fragen ausgibt
+      - `BAKERY_FACEBOOK_URL` (optional): offizielle Facebook-Seite, die der Chat bei Fragen ausgibt
 
 - **3) Starten**
 
@@ -48,30 +48,19 @@ npm run dev
 - Inhalt pro Location: `loc_<id>`
 - Admin → Tab **QR** → Download PNG
 
-### KI-Verbrauchsprognose (immer mitlernen)
+### Bestellvorschlag (klassisch)
 
-Damit die KI bei jeder Inventur „mitlernt“:
+Es gibt genau **eine** Formel für Bestellvorschläge — den klassischen
+7-Tage-Verbrauch aus `inventory_history`. Siehe Abschnitt
+„Bedarf · 10-Tage-Rückblick" weiter unten für die Normalisierung bei älteren
+Inventuren.
 
-1. **Migration ausführen** (Supabase → SQL Editor):
-   - `supabase/ai_consumption_jobs_trigger.sql`
-   - Legt Tabellen `ai_consumption_jobs` / `ai_consumption` (falls fehlt) an
-     und einen Trigger auf `inventory_history`, der nach jeder
-     Count-Inventur einen Job in `ai_consumption_jobs` einreiht
-    (nur wenn der Bestand tatsächlich gesunken ist).
-2. **Vercel Cron** (`vercel.json`) ruft `/api/ai/consumption/process?limit=50`
-   einmal täglich um **03:00 UTC** auf.
-   - Erforderliche Env-Var auf Vercel: `CRON_SECRET` (wird von Vercel
-     automatisch als `Authorization: Bearer …` Header mitgeschickt).
-   - Manueller Trigger weiterhin möglich:
-     `POST /api/ai/consumption/process` mit Header
-     `x-ai-cron-secret: $AI_CONSUMPTION_CRON_SECRET`, optional `?limit=25` (1–50).
-   - Der Worker verarbeitet pending Jobs, ruft OpenAI auf (`OPENAI_MODEL`,
-     default `gpt-4o-mini`), glättet 70/30 mit Historie und schreibt das
-     Ergebnis in `ai_consumption`. Stale „processing“-Jobs werden nach 15 Min
-     auto-reset.
-3. **In Bestellungen nutzen**: Toggle „KI Prognose aktiv“ in der Admin-Nav
-   schaltet das Overlay ein — der KI-`suggested_order_7_days` ersetzt dann
-   den klassischen 7-Tages-Verbrauch in der Bestell-Berechnung.
+> Die früher vorhandene parallele „KI-Verbrauchsprognose" (Tabellen
+> `ai_consumption`, `ai_consumption_jobs`, Trigger, `/api/ai/consumption/*`,
+> zugehöriger Vercel-Cron und Admin-Toggle „KI-Prognose") wurde entfernt.
+> Wer die Migration `supabase/ai_consumption_jobs_trigger.sql` früher
+> ausgeführt hat, führt einmalig `supabase/retire_ai_consumption.sql` aus,
+> um Trigger, Funktion und Tabellen zu entfernen.
 
 ### Tägliches Backup
 

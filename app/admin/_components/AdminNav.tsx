@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAdmin } from "@/app/admin-provider";
 import { HOFSTETTEN_NAME, KIRCHBERG_NAME } from "@/lib/locationConstants";
 import { useAdminNavExtrasToggle } from "@/lib/useAdminNavExtrasToggle";
-import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import { useArticleTrackingToggle } from "@/lib/useArticleTrackingToggle";
 import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
 import { useOrderReserveEnabled } from "@/lib/useOrderReserveEnabled";
@@ -197,7 +196,6 @@ export function AdminNav() {
   const { exitAdmin } = useAdmin();
   const onOrders = pathname === "/admin/orders" || pathname.startsWith("/admin/orders/");
   const [showExtras, setShowExtras] = useAdminNavExtrasToggle();
-  const [useAi, setUseAi] = useAiConsumptionToggle();
   const [articleTracking, setArticleTracking] = useArticleTrackingToggle();
   const [showFormula, setShowFormula] = useOrderFormulaToggle();
   const [reserveEnabled, setReserveEnabled] = useOrderReserveEnabled();
@@ -260,12 +258,6 @@ export function AdminNav() {
           <NavBlock title="Debug · Historie" items={debug} pathname={pathname} />
         ) : null}
         <div className="mt-auto flex flex-col gap-2 border-t border-black/10 pt-3">
-          <PillSwitch
-            label="KI-Prognose"
-            checked={useAi}
-            onChange={() => setUseAi((v) => !v)}
-            title="KI-Prognose an/aus"
-          />
           <PillSwitch
             label="Formel"
             checked={showFormula}

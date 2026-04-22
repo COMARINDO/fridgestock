@@ -153,43 +153,6 @@ const BACKUP_TABLES: TableSpec[] = [
     orderColumn: "updated_at",
     fallbackHeaders: ["location_id", "product_id", "quantity", "updated_at"],
   },
-  // KI
-  {
-    section: "AI_CONSUMPTION",
-    table: "ai_consumption",
-    orderColumn: "created_at",
-    fallbackHeaders: [
-      "id",
-      "location_id",
-      "product_id",
-      "daily_consumption",
-      "suggested_order_7_days",
-      "is_anomaly",
-      "raw_input",
-      "raw_output",
-      "created_at",
-    ],
-  },
-  {
-    section: "AI_CONSUMPTION_JOBS",
-    table: "ai_consumption_jobs",
-    orderColumn: "created_at",
-    fallbackHeaders: [
-      "id",
-      "inventory_history_id",
-      "location_id",
-      "product_id",
-      "previous_quantity",
-      "current_quantity",
-      "days_between",
-      "status",
-      "error",
-      "raw_input",
-      "raw_output",
-      "created_at",
-      "processed_at",
-    ],
-  },
   // Audit + User-Mapping (optional: existieren nicht zwingend in jeder Umgebung)
   {
     section: "ADMIN_AUDIT_LOG",

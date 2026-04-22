@@ -3,7 +3,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdmin } from "@/app/admin-provider";
-import { useAiConsumptionToggle } from "@/lib/useAiConsumptionToggle";
 import { useOrderFormulaToggle } from "@/lib/useOrderFormulaToggle";
 import { useOrderReserveEnabled } from "@/lib/useOrderReserveEnabled";
 import { useOrderReservePct } from "@/lib/useOrderReservePct";
@@ -173,7 +172,6 @@ function AdminOrdersPageContent() {
   const searchParams = useSearchParams();
   const { isAdmin, adminHydrated } = useAdmin();
 
-  const [useAi] = useAiConsumptionToggle();
   const [showFormula] = useOrderFormulaToggle();
   const [reserveEnabled] = useOrderReserveEnabled();
   const [reservePctRaw] = useOrderReservePct();
@@ -265,7 +263,7 @@ function AdminOrdersPageContent() {
     const [locs, prods, usageMeta, invAll, ovs, reqs, allDeliveries] = await Promise.all([
       listLocations(),
       listProducts(),
-      getWeeklyUsageWithCoverageByLocationProduct({ days: 7, useAi }),
+      getWeeklyUsageWithCoverageByLocationProduct({ days: 7 }),
       listInventoryAll(),
       listOrderOverrides(),
       listOpenOrderRequests(),
@@ -301,7 +299,7 @@ function AdminOrdersPageContent() {
       )
     );
     setDeliveryDrafts({});
-  }, [useAi]);
+  }, []);
 
   useEffect(() => {
     if (!adminHydrated || !isAdmin) return;
