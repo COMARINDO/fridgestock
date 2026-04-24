@@ -1797,22 +1797,24 @@ export type DeliveryNoteImportResult = {
 /**
  * Upload a Metro delivery-note PDF. The server parses it via OpenAI Vision,
  * maps positions onto our products via `metro_order_number`, and returns a
- * preview. Nothing is persisted yet; the caller confirms by booking the
- * delivery through `confirmSubmittedOrderDelivery`.
+ * preview. Nothing is persisted yet.
+ *
+ * If `orderId` is set, only positions that appear on that submitted order are
+ * matched; others get `reason: "not_in_order"`. If `orderId` is omitted, every
+ * known Metro-Nr is matched (for standalone warehouse booking).
  */
 export async function importDeliveryNote(args: {
-  orderId: string;
+  orderId?: string;
   file: File | Blob;
   adminCode: string;
 }): Promise<DeliveryNoteImportResult> {
-  const orderId = args.orderId.trim();
-  if (!orderId) throw new Error("orderId fehlt.");
+  const orderId = (args.orderId ?? "").trim();
   const code = args.adminCode.trim();
   if (!code) throw new Error("Admin-Code fehlt.");
 
   const form = new FormData();
   form.append("adminCode", code);
-  form.append("orderId", orderId);
+  if (orderId) form.append("orderId", orderId);
   form.append("file", args.file);
 
   const res = await fetch("/api/admin/orders/import-delivery-note", {
@@ -1867,5 +1869,41 @@ export async function importDeliveryNote(args: {
     positionsParsed: Math.max(0, Math.floor(Number(data.positionsParsed) || 0)),
     matched,
     unmatched,
+  };
+}
+
+export async function bookDeliveryNoteInventory(args: {
+  locationId: string;
+  items: Array<{ product_id: string; quantity: number }>;
+  adminCode: string;
+}): Promise<{ applied: number; locationName: string }> {
+  const locationId = args.locationId.trim();
+  if (!locationId) throw new Error("locationId fehlt.");
+  const code = args.adminCode.trim();
+  if (!code) throw new Error("Admin-Code fehlt.");
+
+  const res = await fetch("/api/admin/inventory/book-delivery-note", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      adminCode: code,
+      locationId,
+      items: args.items,
+    }),
+  });
+  const raw = await res.text();
+  let data: { ok?: boolean; error?: unknown; applied?: unknown; locationName?: unknown };
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(raw.trim().slice(0, 300) || `Antwort ohne JSON (HTTP ${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    const err = typeof data.error === "string" ? data.error : `HTTP ${res.status}`;
+    throw new Error(err);
+  }
+  return {
+    applied: Math.max(0, Math.floor(Number(data.applied) || 0)),
+    locationName: typeof data.locationName === "string" ? data.locationName : "",
   };
 }

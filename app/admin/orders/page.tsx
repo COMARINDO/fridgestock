@@ -13,6 +13,7 @@ import {
   deleteOpenOrderRequest,
   deleteSubmittedOrder,
   getWeeklyUsageWithCoverageByLocationProduct,
+  bookDeliveryNoteInventory,
   importDeliveryNote,
   listInventoryAll,
   listLocations,
@@ -235,17 +236,16 @@ function AdminOrdersPageContent() {
     Record<string, Record<string, string>>
   >({});
   const [deliveryBusyId, setDeliveryBusyId] = useState<string | null>(null);
-  const [importBusyId, setImportBusyId] = useState<string | null>(null);
-  const [importDragId, setImportDragId] = useState<string | null>(null);
-  const [importResultByOrder, setImportResultByOrder] = useState<
-    Record<
-      string,
-      {
-        notice: string;
-        unmatched: DeliveryNoteImportUnmatched[];
-      }
-    >
-  >({});
+
+  type DnTargetKey = "rabenstein" | "hofstetten" | "kirchberg";
+  const [dnTarget, setDnTarget] = useState<DnTargetKey>("rabenstein");
+  const [dnDrag, setDnDrag] = useState(false);
+  const [dnParseBusy, setDnParseBusy] = useState(false);
+  const [dnBookBusy, setDnBookBusy] = useState(false);
+  const [dnUnmatched, setDnUnmatched] = useState<DeliveryNoteImportUnmatched[]>([]);
+  const [dnRows, setDnRows] = useState<
+    Array<{ product_id: string; metroNr: string; noteName: string; qtyStr: string }>
+  >([]);
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -911,66 +911,6 @@ function AdminOrdersPageContent() {
     });
   }
 
-  async function handleDeliveryNoteFile(o: SubmittedOrderRow, file: File) {
-    if (!file) return;
-    if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) {
-      setErr("Bitte ein PDF droppen.");
-      return;
-    }
-    const code = window.prompt("Admin-Code eingeben") ?? "";
-    if (!code.trim()) return;
-
-    setImportBusyId(o.id);
-    setPlaceMsg(null);
-    setErr(null);
-    try {
-      const res = await importDeliveryNote({
-        orderId: o.id,
-        file,
-        adminCode: code,
-      });
-
-      // Overlay matched quantities into the delivery drafts for this order so
-      // the user immediately sees the proposed "geliefert" amounts. Quantities
-      // for products that were NOT on the delivery note stay as-is (they just
-      // default to the ordered amount via getDeliveryDraft). Explicitly set 0
-      // for ordered products that were not present on the note so the admin
-      // notices partial deliveries.
-      const matchedByProduct = new Map(res.matched.map((m) => [m.product_id, m.quantity]));
-      setDeliveryDrafts((cur) => {
-        const next = { ...cur };
-        const mapForOrder: Record<string, string> = { ...(cur[o.id] ?? {}) };
-        for (const it of o.items ?? []) {
-          const pid = it.product_id;
-          if (matchedByProduct.has(pid)) {
-            mapForOrder[pid] = String(matchedByProduct.get(pid) ?? 0);
-          } else {
-            // Product was ordered but not on the note -> mark as 0 delivered.
-            mapForOrder[pid] = "0";
-          }
-        }
-        next[o.id] = mapForOrder;
-        return next;
-      });
-
-      const notice =
-        `Lieferschein verarbeitet: ${res.positionsParsed} Position(en) erkannt · ` +
-        `${res.matched.length} zugeordnet` +
-        (res.unmatched.length > 0 ? ` · ${res.unmatched.length} unklar` : "") +
-        ". Mengen prüfen und „Lieferung buchen“ drücken.";
-
-      setImportResultByOrder((cur) => ({
-        ...cur,
-        [o.id]: { notice, unmatched: res.unmatched },
-      }));
-      setPlaceMsg(notice);
-    } catch (e: unknown) {
-      setErr(errorMessage(e, "Lieferschein-Import fehlgeschlagen."));
-    } finally {
-      setImportBusyId(null);
-    }
-  }
-
   async function bookDelivery(o: SubmittedOrderRow) {
     const items = deliveryItemsForOrder(o);
     const totalPositions = items.filter((it) => it.quantity > 0).length;
@@ -1033,6 +973,106 @@ function AdminOrdersPageContent() {
     [locations]
   );
 
+  function resolveDnLocationId(): string | null {
+    if (dnTarget === "rabenstein") return rabensteinId;
+    if (dnTarget === "hofstetten") return hofstettenId;
+    return kirchbergId;
+  }
+
+  function dnLocationLabel(): string {
+    if (dnTarget === "rabenstein") return RABENSTEIN_LAGER_NAME;
+    if (dnTarget === "hofstetten") return HOFSTETTEN_NAME;
+    return KIRCHBERG_NAME;
+  }
+
+  async function parseDeliveryNoteToRows(file: File) {
+    if (!file) return;
+    if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) {
+      setErr("Bitte ein PDF droppen.");
+      return;
+    }
+    const code = window.prompt("Admin-Code eingeben") ?? "";
+    if (!code.trim()) return;
+
+    setDnParseBusy(true);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      const res = await importDeliveryNote({ file, adminCode: code });
+      setDnUnmatched(res.unmatched);
+      setDnRows(
+        res.matched.map((m) => ({
+          product_id: m.product_id,
+          metroNr: m.metroNr,
+          noteName: m.name,
+          qtyStr: String(m.quantity),
+        }))
+      );
+      setPlaceMsg(
+        `Lieferschein: ${res.positionsParsed} Position(en) erkannt · ${res.matched.length} zugeordnet` +
+          (res.unmatched.length > 0 ? ` · ${res.unmatched.length} ohne Zuordnung` : "") +
+          "."
+      );
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Lieferschein-Import fehlgeschlagen."));
+    } finally {
+      setDnParseBusy(false);
+    }
+  }
+
+  async function bookDnInventoryFromRows() {
+    const locId = resolveDnLocationId();
+    if (!locId) {
+      setErr(`Platzerl „${dnLocationLabel()}" nicht gefunden.`);
+      return;
+    }
+    const locLabel = dnLocationLabel();
+    const rowsWithQty = dnRows
+      .map((r) => ({
+        product_id: r.product_id,
+        noteName: r.noteName,
+        n: Math.max(0, Math.floor(Number(r.qtyStr.replace(/[^\d]/g, "")) || 0)),
+      }))
+      .filter((r) => r.n > 0);
+    if (rowsWithQty.length === 0) {
+      setErr("Mindestens eine Zeile mit Menge > 0 eingeben.");
+      return;
+    }
+    for (const r of rowsWithQty) {
+      const p = productById.get(r.product_id);
+      const label = p ? formatProductName(p) : r.noteName || r.product_id;
+      const ok = window.confirm(
+        `${label}\n\n${r.n} Stück nach „${locLabel}" einbuchen?`
+      );
+      if (!ok) return;
+    }
+    const code = window.prompt(
+      "Admin-Code eingeben (bestätigt die Wareneingänge auf dem Server)"
+    ) ?? "";
+    if (!code.trim()) return;
+
+    setDnBookBusy(true);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      const res = await bookDeliveryNoteInventory({
+        locationId: locId,
+        items: rowsWithQty.map((r) => ({ product_id: r.product_id, quantity: r.n })),
+        adminCode: code,
+      });
+      setPlaceMsg(
+        `Wareneingang: ${res.applied} Position(en) nach „${res.locationName || locLabel}" gebucht.`
+      );
+      setDnRows([]);
+      setDnUnmatched([]);
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Wareneingang konnte nicht gebucht werden."));
+    } finally {
+      setDnBookBusy(false);
+    }
+  }
+
   if (!adminHydrated) {
     return (
       <main className="w-full px-4 py-8 text-center text-black">
@@ -1067,7 +1107,7 @@ function AdminOrdersPageContent() {
         ? "Vorschlag fürs Zentrallager. Bei „Bestellung archivieren“ entsteht eine offene Lieferung im Tab 4."
         : activeTab === "hofstetten" || activeTab === "kirchberg"
           ? "Eigene Bestellung für dieses Platzerl. „Bestellung archivieren“ legt eine offene Lieferung an."
-          : "Offene Lieferungen. Mengen ggf. anpassen (Teil-Lieferung) und buchen — Bestand wird automatisch erhöht.";
+          : "Lieferschein-PDF mit Ziel-Lager (Rabenstein Lager, Hofstetten, Kirchberg) einlesen und nach Rückfrage je Position einbuchen — oder offene archivierte Lieferungen manuell buchen.";
 
   // Einheitlich gerenderter Mengen-Editor für die drei Tabs (Zentrallager,
   // Hofstetten, Kirchberg). Zuvor war dieselbe JSX dreimal dupliziert; jetzt
@@ -1978,7 +2018,186 @@ function AdminOrdersPageContent() {
 
       {!busy && !err && activeTab === "delivery" ? (
         <>
-          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm font-bold text-black/65">
+          <section className={`${adminTableShellClass} mt-5`}>
+            <header className="border-b border-black/10 bg-zinc-50 p-4">
+              <h3 className={adminSectionTitleClass}>Lieferschein → Wareneingang</h3>
+              <p className="mt-1 text-sm font-bold text-black/65 max-w-prose">
+                Ziel-Lager wählen, PDF droppen, Mengen prüfen. Beim Einbuchen wird für{" "}
+                <strong className="font-black text-black">jede Zeile mit Menge &gt; 0</strong>{" "}
+                ein Bestätigungsdialog angezeigt, danach einmal der Admin-Code für den Server.
+              </p>
+            </header>
+            <div className="p-4 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="self-center text-xs font-black text-black/55">Ziel:</span>
+                {(
+                  [
+                    { key: "rabenstein" as const, label: RABENSTEIN_LAGER_NAME, id: rabensteinId },
+                    { key: "hofstetten" as const, label: HOFSTETTEN_NAME, id: hofstettenId },
+                    { key: "kirchberg" as const, label: KIRCHBERG_NAME, id: kirchbergId },
+                  ] as const
+                ).map(({ key, label, id }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={dnParseBusy || dnBookBusy || !id}
+                    onClick={() => setDnTarget(key)}
+                    className={[
+                      "rounded-xl border-2 px-3 py-2 text-xs font-black transition",
+                      dnTarget === key
+                        ? "border-black bg-black text-white"
+                        : "border-black/25 bg-white text-black hover:border-black/50",
+                      !id ? "opacity-40 cursor-not-allowed" : "",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <label
+                htmlFor="dn-global-file"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (!dnParseBusy && !dnBookBusy) setDnDrag(true);
+                }}
+                onDragLeave={() => setDnDrag(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDnDrag(false);
+                  if (dnParseBusy || dnBookBusy) return;
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) void parseDeliveryNoteToRows(f);
+                }}
+                className={[
+                  "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-6 text-center transition",
+                  dnDrag ? "border-emerald-700 bg-emerald-50" : "border-black/30 bg-white hover:border-black/60",
+                  dnParseBusy || dnBookBusy ? "pointer-events-none opacity-60" : "",
+                ].join(" ")}
+              >
+                <div className="text-sm font-black text-black">
+                  {dnParseBusy ? "Lese Lieferschein…" : "Metro-Lieferschein-PDF hier droppen oder klicken"}
+                </div>
+                <div className="text-[11px] font-bold text-black/60">
+                  Zuordnung über Metro-Nr im Produktstamm. Nach dem Einlesen erscheint die Vorschau unten.
+                </div>
+                <input
+                  id="dn-global-file"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  disabled={dnParseBusy || dnBookBusy}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void parseDeliveryNoteToRows(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+
+              {dnUnmatched.length > 0 ? (
+                <div className={`${adminBannerWarnClass} text-[12px] font-bold`}>
+                  <div className="font-black">{dnUnmatched.length} Position(en) ohne Zuordnung:</div>
+                  <ul className="mt-1 list-disc pl-5">
+                    {dnUnmatched.map((u, idx) => {
+                      const reasonLabel =
+                        u.reason === "no_metro_nr"
+                          ? "keine Metro-Nr erkannt"
+                          : u.reason === "product_not_found"
+                            ? "Metro-Nr kein Produkt im System"
+                            : "nicht in dieser Bestellung";
+                      return (
+                        <li key={`${u.metroNr ?? "x"}-${idx}`}>
+                          {u.metroNr ? <span className="font-black">{u.metroNr} · </span> : null}
+                          {u.name || "—"} · {u.quantity}
+                          {u.unit ? ` ${u.unit}` : ""} —{" "}
+                          <span className="text-black/70">{reasonLabel}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+
+              {dnRows.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={adminBadgeNeutralClass}>{dnRows.length} Zeile(n) Vorschau</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={dnBookBusy || dnParseBusy}
+                        className={adminBrutalSecondaryButtonLgClass}
+                        onClick={() => {
+                          setDnRows([]);
+                          setDnUnmatched([]);
+                          setPlaceMsg(null);
+                        }}
+                      >
+                        Vorschau leeren
+                      </button>
+                      <button
+                        type="button"
+                        disabled={dnBookBusy || dnParseBusy || !resolveDnLocationId()}
+                        className={adminPrimaryButtonLgClass}
+                        onClick={() => void bookDnInventoryFromRows()}
+                        title="Je Position bestätigen, dann Admin-Code"
+                      >
+                        {dnBookBusy ? "Buche…" : `Nach „${dnLocationLabel()}" einbuchen`}
+                      </button>
+                    </div>
+                  </div>
+                  <div className={`${adminTableShellClass} overflow-x-auto`}>
+                    <table className={`${adminTableClass} min-w-[560px]`}>
+                      <thead>
+                        <tr>
+                          <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
+                          <th className={adminTableStickyHeadCellClass}>Metro</th>
+                          <th className={`${adminTableStickyHeadCellClass} text-left`}>Name (Schein)</th>
+                          <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Menge · Stück</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dnRows.map((r) => {
+                          const p = productById.get(r.product_id) ?? null;
+                          const label = p ? formatProductName(p) : r.product_id;
+                          return (
+                            <tr key={r.product_id} className="border-b border-black/10 align-middle">
+                              <td className="p-3 font-black text-black max-w-[240px]">{label}</td>
+                              <td className="p-3 font-black tabular-nums text-black/80">{r.metroNr}</td>
+                              <td className="p-3 text-xs font-bold text-black/70 max-w-[200px]">
+                                {r.noteName}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={r.qtyStr}
+                                  disabled={dnBookBusy}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/[^\d]/g, "");
+                                    setDnRows((cur) =>
+                                      cur.map((row) =>
+                                        row.product_id === r.product_id ? { ...row, qtyStr: v } : row
+                                      )
+                                    );
+                                  }}
+                                  aria-label="Menge Stück"
+                                  className="h-10 w-24 rounded-xl border-2 border-black bg-white px-2 text-right text-base font-black tabular-nums text-black outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-60"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </section>
+
+          <div className="mt-8 flex flex-wrap items-center gap-2 text-sm font-bold text-black/65">
             <span className={adminBadgeNeutralClass}>
               {openDeliveries.length} offene Lieferung(en)
             </span>
@@ -1998,11 +2217,7 @@ function AdminOrdersPageContent() {
                   (s, it) => s + it.quantity,
                   0
                 );
-                const isBookBusy = deliveryBusyId === o.id;
-                const isImportBusy = importBusyId === o.id;
-                const isBusy = isBookBusy || isImportBusy;
-                const isDragActive = importDragId === o.id;
-                const importResult = importResultByOrder[o.id] ?? null;
+                const isBusy = deliveryBusyId === o.id;
                 return (
                   <section key={o.id} className={adminTableShellClass}>
                     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-black/10 bg-zinc-50 p-4">
@@ -2022,7 +2237,7 @@ function AdminOrdersPageContent() {
                           className={adminDangerButtonLgClass}
                           onClick={() => void deleteDelivery(o)}
                         >
-                          {isBookBusy ? "…" : "Löschen"}
+                          {isBusy ? "…" : "Löschen"}
                         </button>
                         <button
                           type="button"
@@ -2031,91 +2246,10 @@ function AdminOrdersPageContent() {
                           onClick={() => void bookDelivery(o)}
                           title="Mengen anwenden und Bestand erhöhen"
                         >
-                          {isBookBusy ? "Buche…" : "Lieferung buchen"}
+                          {isBusy ? "Buche…" : "Lieferung buchen"}
                         </button>
                       </div>
                     </header>
-
-                    <div className="border-b border-black/10 p-4">
-                      <label
-                        htmlFor={`ds-file-${o.id}`}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (!isBusy) setImportDragId(o.id);
-                        }}
-                        onDragLeave={() => {
-                          if (importDragId === o.id) setImportDragId(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setImportDragId(null);
-                          if (isBusy) return;
-                          const f = e.dataTransfer.files?.[0];
-                          if (f) void handleDeliveryNoteFile(o, f);
-                        }}
-                        className={[
-                          "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-5 text-center transition",
-                          isDragActive
-                            ? "border-emerald-700 bg-emerald-50"
-                            : "border-black/30 bg-white hover:border-black/60",
-                          isBusy ? "pointer-events-none opacity-60" : "",
-                        ].join(" ")}
-                      >
-                        <div className="text-sm font-black text-black">
-                          {isImportBusy
-                            ? "Lese Lieferschein…"
-                            : "Lieferschein-PDF hier droppen oder klicken"}
-                        </div>
-                        <div className="text-[11px] font-bold text-black/60">
-                          Artikel werden über die Metro-Nr automatisch zugeordnet — Mengen
-                          danach prüfen und buchen.
-                        </div>
-                        <input
-                          id={`ds-file-${o.id}`}
-                          type="file"
-                          accept="application/pdf,.pdf"
-                          disabled={isBusy}
-                          className="sr-only"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) void handleDeliveryNoteFile(o, f);
-                            // Reset the input so the same file can be dropped again after correction.
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
-
-                      {importResult && importResult.unmatched.length > 0 ? (
-                        <div
-                          className={`${adminBannerWarnClass} mt-3 text-[12px] font-bold`}
-                        >
-                          <div className="font-black">
-                            {importResult.unmatched.length} Position(en) nicht
-                            zugeordnet:
-                          </div>
-                          <ul className="mt-1 list-disc pl-5">
-                            {importResult.unmatched.map((u, idx) => {
-                              const reasonLabel =
-                                u.reason === "no_metro_nr"
-                                  ? "keine Metro-Nr erkannt"
-                                  : u.reason === "product_not_found"
-                                    ? "Metro-Nr kein Produkt im System"
-                                    : "nicht in dieser Bestellung";
-                              return (
-                                <li key={`${u.metroNr ?? "x"}-${idx}`}>
-                                  {u.metroNr ? (
-                                    <span className="font-black">{u.metroNr} · </span>
-                                  ) : null}
-                                  {u.name || "—"} · {u.quantity}
-                                  {u.unit ? ` ${u.unit}` : ""} —{" "}
-                                  <span className="text-black/70">{reasonLabel}</span>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
 
                     <table className={`${adminTableClass} min-w-[520px]`}>
                       <thead>

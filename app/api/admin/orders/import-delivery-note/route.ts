@@ -72,9 +72,6 @@ export async function POST(request: Request) {
     }
 
     orderId = String(form.get("orderId") ?? "").trim();
-    if (!orderId) {
-      return NextResponse.json({ ok: false, error: "orderId fehlt." }, { status: 400 });
-    }
 
     const file = form.get("file");
     if (!(file instanceof Blob)) {
@@ -100,67 +97,65 @@ export async function POST(request: Request) {
         : "lieferschein.pdf";
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Load the submitted order (to know which products are expected) and all
-    // products (for Metro-Nr -> product_id mapping).
     const supabase = getSupabaseAdmin();
-    const [orderRes, productsRes] = await Promise.all([
-      supabase
+
+    let orderProductIds: Set<string> | null = null;
+    if (orderId) {
+      const { data: orderData, error: orderErr } = await supabase
         .from("submitted_orders")
-        .select("id,location_id,items,delivered_at")
+        .select("id,items,delivered_at")
         .eq("id", orderId)
         .limit(1)
-        .maybeSingle(),
-      supabase.from("products").select("id,metro_order_number"),
-    ]);
+        .maybeSingle();
 
-    if (orderRes.error) {
-      return NextResponse.json(
-        { ok: false, error: `Lieferung konnte nicht geladen werden: ${orderRes.error.message}` },
-        { status: 500 }
-      );
+      if (orderErr) {
+        return NextResponse.json(
+          { ok: false, error: `Lieferung konnte nicht geladen werden: ${orderErr.message}` },
+          { status: 500 }
+        );
+      }
+      if (!orderData) {
+        return NextResponse.json({ ok: false, error: "Lieferung nicht gefunden." }, { status: 404 });
+      }
+      if ((orderData as { delivered_at?: unknown }).delivered_at) {
+        return NextResponse.json(
+          { ok: false, error: "Lieferung ist bereits gebucht." },
+          { status: 409 }
+        );
+      }
+      const orderItems: SubmittedOrderItem[] = Array.isArray(
+        (orderData as { items?: unknown }).items
+      )
+        ? ((orderData as { items: unknown[] }).items as SubmittedOrderItem[]).map((it) => ({
+            product_id: String((it as { product_id?: unknown })?.product_id ?? "").trim(),
+            quantity: Math.max(
+              0,
+              Math.floor(Number((it as { quantity?: unknown })?.quantity) || 0)
+            ),
+          }))
+        : [];
+      orderProductIds = new Set(orderItems.map((it) => it.product_id).filter(Boolean));
     }
-    if (!orderRes.data) {
+
+    const { data: productRows, error: productsErr } = await supabase
+      .from("products")
+      .select("id,metro_order_number");
+
+    if (productsErr) {
       return NextResponse.json(
-        { ok: false, error: "Lieferung nicht gefunden." },
-        { status: 404 }
-      );
-    }
-    if (orderRes.data.delivered_at) {
-      return NextResponse.json(
-        { ok: false, error: "Lieferung ist bereits gebucht." },
-        { status: 409 }
-      );
-    }
-    if (productsRes.error) {
-      return NextResponse.json(
-        { ok: false, error: `Produkte nicht ladbar: ${productsRes.error.message}` },
+        { ok: false, error: `Produkte nicht ladbar: ${productsErr.message}` },
         { status: 500 }
       );
     }
 
     const productsByMetro = new Map<string, string>();
-    for (const row of productsRes.data ?? []) {
+    for (const row of productRows ?? []) {
       const metro = normalizeMetroDigits((row as { metro_order_number?: unknown }).metro_order_number);
       const pid = String((row as { id?: unknown }).id ?? "").trim();
       if (!metro || !pid) continue;
-      // If duplicate Metro-Nrs exist, the first wins; we still report the conflict via warning.
       if (!productsByMetro.has(metro)) productsByMetro.set(metro, pid);
     }
 
-    const orderItems: SubmittedOrderItem[] = Array.isArray(
-      (orderRes.data as { items?: unknown }).items
-    )
-      ? ((orderRes.data as { items: unknown[] }).items as SubmittedOrderItem[]).map((it) => ({
-          product_id: String((it as { product_id?: unknown })?.product_id ?? "").trim(),
-          quantity: Math.max(
-            0,
-            Math.floor(Number((it as { quantity?: unknown })?.quantity) || 0)
-          ),
-        }))
-      : [];
-    const orderProductIds = new Set(orderItems.map((it) => it.product_id).filter(Boolean));
-
-    // Run the AI parser. If it throws, translate into a 502.
     let parseResult;
     try {
       parseResult = await parseDeliveryNotePdf({
@@ -174,7 +169,7 @@ export async function POST(request: Request) {
       await logAudit({
         action: "orders.import_delivery_note",
         actor,
-        payload: { orderId, fileName, size: file.size },
+        payload: { orderId: orderId || null, fileName, size: file.size },
         ok: false,
         error: message,
       });
@@ -212,7 +207,7 @@ export async function POST(request: Request) {
         });
         continue;
       }
-      if (!orderProductIds.has(productId)) {
+      if (orderProductIds && !orderProductIds.has(productId)) {
         unmatched.push({
           metroNr: metroDigits,
           name: pos.name,
@@ -222,7 +217,6 @@ export async function POST(request: Request) {
         });
         continue;
       }
-      // Aggregate multiple rows for the same product (rare but possible).
       const prev = matched.get(productId);
       if (prev) {
         prev.quantity += pos.quantity;
@@ -244,7 +238,7 @@ export async function POST(request: Request) {
       action: "orders.import_delivery_note",
       actor,
       payload: {
-        orderId,
+        orderId: orderId || null,
         fileName,
         size: file.size,
         positionsParsed,
