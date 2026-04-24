@@ -1773,4 +1773,99 @@ export async function getWeeklyUsageWithCoverageByLocationProduct(args?: {
   }
 }
 
+export type DeliveryNoteImportMatched = {
+  product_id: string;
+  quantity: number;
+  metroNr: string;
+  name: string;
+};
 
+export type DeliveryNoteImportUnmatched = {
+  metroNr: string | null;
+  name: string;
+  quantity: number;
+  unit: string | null;
+  reason: "no_metro_nr" | "product_not_found" | "not_in_order";
+};
+
+export type DeliveryNoteImportResult = {
+  positionsParsed: number;
+  matched: DeliveryNoteImportMatched[];
+  unmatched: DeliveryNoteImportUnmatched[];
+};
+
+/**
+ * Upload a Metro delivery-note PDF. The server parses it via OpenAI Vision,
+ * maps positions onto our products via `metro_order_number`, and returns a
+ * preview. Nothing is persisted yet; the caller confirms by booking the
+ * delivery through `confirmSubmittedOrderDelivery`.
+ */
+export async function importDeliveryNote(args: {
+  orderId: string;
+  file: File | Blob;
+  adminCode: string;
+}): Promise<DeliveryNoteImportResult> {
+  const orderId = args.orderId.trim();
+  if (!orderId) throw new Error("orderId fehlt.");
+  const code = args.adminCode.trim();
+  if (!code) throw new Error("Admin-Code fehlt.");
+
+  const form = new FormData();
+  form.append("adminCode", code);
+  form.append("orderId", orderId);
+  form.append("file", args.file);
+
+  const res = await fetch("/api/admin/orders/import-delivery-note", {
+    method: "POST",
+    body: form,
+  });
+  const raw = await res.text();
+  let data: {
+    ok?: boolean;
+    error?: unknown;
+    positionsParsed?: unknown;
+    matched?: unknown;
+    unmatched?: unknown;
+  };
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(raw.trim().slice(0, 300) || `Antwort ohne JSON (HTTP ${res.status})`);
+  }
+  if (!res.ok || !data.ok) {
+    const err = typeof data.error === "string" ? data.error : `HTTP ${res.status}`;
+    throw new Error(err);
+  }
+
+  const matched: DeliveryNoteImportMatched[] = Array.isArray(data.matched)
+    ? (data.matched as Array<Record<string, unknown>>)
+        .map((m) => ({
+          product_id: String(m.product_id ?? "").trim(),
+          quantity: Math.max(0, Math.floor(Number(m.quantity) || 0)),
+          metroNr: String(m.metroNr ?? "").trim(),
+          name: String(m.name ?? "").trim(),
+        }))
+        .filter((m) => m.product_id && m.quantity > 0)
+    : [];
+
+  const unmatched: DeliveryNoteImportUnmatched[] = Array.isArray(data.unmatched)
+    ? (data.unmatched as Array<Record<string, unknown>>).map((u) => ({
+        metroNr: typeof u.metroNr === "string" && u.metroNr ? u.metroNr : null,
+        name: String(u.name ?? "").trim(),
+        quantity: Math.max(0, Math.floor(Number(u.quantity) || 0)),
+        unit: typeof u.unit === "string" && u.unit ? u.unit : null,
+        reason:
+          u.reason === "no_metro_nr" ||
+          u.reason === "product_not_found" ||
+          u.reason === "not_in_order"
+            ? (u.reason as DeliveryNoteImportUnmatched["reason"])
+            : "product_not_found",
+      }))
+    : [];
+
+  return {
+    positionsParsed: Math.max(0, Math.floor(Number(data.positionsParsed) || 0)),
+    matched,
+    unmatched,
+  };
+}

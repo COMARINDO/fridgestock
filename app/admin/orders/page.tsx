@@ -13,6 +13,7 @@ import {
   deleteOpenOrderRequest,
   deleteSubmittedOrder,
   getWeeklyUsageWithCoverageByLocationProduct,
+  importDeliveryNote,
   listInventoryAll,
   listLocations,
   listOpenOrderRequests,
@@ -39,6 +40,9 @@ import {
   RABENSTEIN_LAGER_NAME,
   TEICH_NAME,
 } from "@/lib/locationConstants";
+import type {
+  DeliveryNoteImportUnmatched,
+} from "@/lib/db";
 import type { Location, OrderOverrideRow, Product, SubmittedOrderRow } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { downloadOrderPdf, defaultOrderPdfFileName } from "@/lib/exportOrderPdf";
@@ -231,6 +235,17 @@ function AdminOrdersPageContent() {
     Record<string, Record<string, string>>
   >({});
   const [deliveryBusyId, setDeliveryBusyId] = useState<string | null>(null);
+  const [importBusyId, setImportBusyId] = useState<string | null>(null);
+  const [importDragId, setImportDragId] = useState<string | null>(null);
+  const [importResultByOrder, setImportResultByOrder] = useState<
+    Record<
+      string,
+      {
+        notice: string;
+        unmatched: DeliveryNoteImportUnmatched[];
+      }
+    >
+  >({});
 
   const rabensteinId = useMemo(
     () => resolveLocationIdByName(locations, RABENSTEIN_LAGER_NAME),
@@ -894,6 +909,66 @@ function AdminOrdersPageContent() {
       const n = Math.max(0, Math.floor(Number(raw) || 0));
       return { product_id: it.product_id, quantity: n };
     });
+  }
+
+  async function handleDeliveryNoteFile(o: SubmittedOrderRow, file: File) {
+    if (!file) return;
+    if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) {
+      setErr("Bitte ein PDF droppen.");
+      return;
+    }
+    const code = window.prompt("Admin-Code eingeben") ?? "";
+    if (!code.trim()) return;
+
+    setImportBusyId(o.id);
+    setPlaceMsg(null);
+    setErr(null);
+    try {
+      const res = await importDeliveryNote({
+        orderId: o.id,
+        file,
+        adminCode: code,
+      });
+
+      // Overlay matched quantities into the delivery drafts for this order so
+      // the user immediately sees the proposed "geliefert" amounts. Quantities
+      // for products that were NOT on the delivery note stay as-is (they just
+      // default to the ordered amount via getDeliveryDraft). Explicitly set 0
+      // for ordered products that were not present on the note so the admin
+      // notices partial deliveries.
+      const matchedByProduct = new Map(res.matched.map((m) => [m.product_id, m.quantity]));
+      setDeliveryDrafts((cur) => {
+        const next = { ...cur };
+        const mapForOrder: Record<string, string> = { ...(cur[o.id] ?? {}) };
+        for (const it of o.items ?? []) {
+          const pid = it.product_id;
+          if (matchedByProduct.has(pid)) {
+            mapForOrder[pid] = String(matchedByProduct.get(pid) ?? 0);
+          } else {
+            // Product was ordered but not on the note -> mark as 0 delivered.
+            mapForOrder[pid] = "0";
+          }
+        }
+        next[o.id] = mapForOrder;
+        return next;
+      });
+
+      const notice =
+        `Lieferschein verarbeitet: ${res.positionsParsed} Position(en) erkannt · ` +
+        `${res.matched.length} zugeordnet` +
+        (res.unmatched.length > 0 ? ` · ${res.unmatched.length} unklar` : "") +
+        ". Mengen prüfen und „Lieferung buchen“ drücken.";
+
+      setImportResultByOrder((cur) => ({
+        ...cur,
+        [o.id]: { notice, unmatched: res.unmatched },
+      }));
+      setPlaceMsg(notice);
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Lieferschein-Import fehlgeschlagen."));
+    } finally {
+      setImportBusyId(null);
+    }
   }
 
   async function bookDelivery(o: SubmittedOrderRow) {
@@ -1923,7 +1998,11 @@ function AdminOrdersPageContent() {
                   (s, it) => s + it.quantity,
                   0
                 );
-                const isBusy = deliveryBusyId === o.id;
+                const isBookBusy = deliveryBusyId === o.id;
+                const isImportBusy = importBusyId === o.id;
+                const isBusy = isBookBusy || isImportBusy;
+                const isDragActive = importDragId === o.id;
+                const importResult = importResultByOrder[o.id] ?? null;
                 return (
                   <section key={o.id} className={adminTableShellClass}>
                     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-black/10 bg-zinc-50 p-4">
@@ -1943,7 +2022,7 @@ function AdminOrdersPageContent() {
                           className={adminDangerButtonLgClass}
                           onClick={() => void deleteDelivery(o)}
                         >
-                          {isBusy ? "…" : "Löschen"}
+                          {isBookBusy ? "…" : "Löschen"}
                         </button>
                         <button
                           type="button"
@@ -1952,10 +2031,91 @@ function AdminOrdersPageContent() {
                           onClick={() => void bookDelivery(o)}
                           title="Mengen anwenden und Bestand erhöhen"
                         >
-                          {isBusy ? "Buche…" : "Lieferung buchen"}
+                          {isBookBusy ? "Buche…" : "Lieferung buchen"}
                         </button>
                       </div>
                     </header>
+
+                    <div className="border-b border-black/10 p-4">
+                      <label
+                        htmlFor={`ds-file-${o.id}`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!isBusy) setImportDragId(o.id);
+                        }}
+                        onDragLeave={() => {
+                          if (importDragId === o.id) setImportDragId(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setImportDragId(null);
+                          if (isBusy) return;
+                          const f = e.dataTransfer.files?.[0];
+                          if (f) void handleDeliveryNoteFile(o, f);
+                        }}
+                        className={[
+                          "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-5 text-center transition",
+                          isDragActive
+                            ? "border-emerald-700 bg-emerald-50"
+                            : "border-black/30 bg-white hover:border-black/60",
+                          isBusy ? "pointer-events-none opacity-60" : "",
+                        ].join(" ")}
+                      >
+                        <div className="text-sm font-black text-black">
+                          {isImportBusy
+                            ? "Lese Lieferschein…"
+                            : "Lieferschein-PDF hier droppen oder klicken"}
+                        </div>
+                        <div className="text-[11px] font-bold text-black/60">
+                          Artikel werden über die Metro-Nr automatisch zugeordnet — Mengen
+                          danach prüfen und buchen.
+                        </div>
+                        <input
+                          id={`ds-file-${o.id}`}
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          disabled={isBusy}
+                          className="sr-only"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleDeliveryNoteFile(o, f);
+                            // Reset the input so the same file can be dropped again after correction.
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+
+                      {importResult && importResult.unmatched.length > 0 ? (
+                        <div
+                          className={`${adminBannerWarnClass} mt-3 text-[12px] font-bold`}
+                        >
+                          <div className="font-black">
+                            {importResult.unmatched.length} Position(en) nicht
+                            zugeordnet:
+                          </div>
+                          <ul className="mt-1 list-disc pl-5">
+                            {importResult.unmatched.map((u, idx) => {
+                              const reasonLabel =
+                                u.reason === "no_metro_nr"
+                                  ? "keine Metro-Nr erkannt"
+                                  : u.reason === "product_not_found"
+                                    ? "Metro-Nr kein Produkt im System"
+                                    : "nicht in dieser Bestellung";
+                              return (
+                                <li key={`${u.metroNr ?? "x"}-${idx}`}>
+                                  {u.metroNr ? (
+                                    <span className="font-black">{u.metroNr} · </span>
+                                  ) : null}
+                                  {u.name || "—"} · {u.quantity}
+                                  {u.unit ? ` ${u.unit}` : ""} —{" "}
+                                  <span className="text-black/70">{reasonLabel}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <table className={`${adminTableClass} min-w-[520px]`}>
                       <thead>
