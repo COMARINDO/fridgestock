@@ -24,11 +24,6 @@ import {
   listLocations,
   transferStock,
 } from "@/lib/db";
-import {
-  HOFSTETTEN_NAME,
-  KIRCHBERG_NAME,
-  TEICH_NAME,
-} from "@/lib/locationConstants";
 import type {
   InventoryHistoryRow,
   InventoryMissingCountRow,
@@ -526,12 +521,15 @@ function LocationInner() {
   } | null>(null);
   const [outboundBusy, setOutboundBusy] = useState(false);
   const [outboundLocs, setOutboundLocs] = useState<Location[]>([]);
+  const [outboundLocsLoaded, setOutboundLocsLoaded] = useState(false);
 
-  const outboundTargetByName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const l of outboundLocs) m.set(l.name, l.id);
-    return m;
-  }, [outboundLocs]);
+  /** Alle Standorte außer dem aktuell geöffneten (Umbuchungs-Ziele). */
+  const outboundTransferTargets = useMemo(() => {
+    if (!locationId) return [];
+    return outboundLocs
+      .filter((l) => l.id !== locationId)
+      .sort((a, b) => a.name.localeCompare(b.name, "de-AT"));
+  }, [outboundLocs, locationId]);
 
   useEffect(() => {
     void (async () => {
@@ -539,6 +537,8 @@ function LocationInner() {
         setOutboundLocs(await listLocations());
       } catch {
         setOutboundLocs([]);
+      } finally {
+        setOutboundLocsLoaded(true);
       }
     })();
   }, []);
@@ -1969,35 +1969,31 @@ function LocationInner() {
 
               <div>
                 <div className="text-sm font-black text-black">Umbuchen nach</div>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  {(
-                    [
-                      { label: KIRCHBERG_NAME, id: outboundTargetByName.get(KIRCHBERG_NAME) },
-                      { label: TEICH_NAME, id: outboundTargetByName.get(TEICH_NAME) },
-                      { label: HOFSTETTEN_NAME, id: outboundTargetByName.get(HOFSTETTEN_NAME) },
-                    ] as const
-                  ).map((t) => {
-                    const dis =
-                      !t.id || t.id === locationId || outboundBusy;
-                    return (
+                {!outboundLocsLoaded ? (
+                  <p className="mt-2 text-sm font-black text-black/50">Standorte werden geladen…</p>
+                ) : outboundTransferTargets.length === 0 ? (
+                  <p className="mt-2 text-sm font-black text-black/50">
+                    Kein anderer Standort verfügbar.
+                  </p>
+                ) : (
+                  <div className="mt-2 max-h-[40vh] overflow-y-auto pr-1 flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-2 sm:content-start">
+                    {outboundTransferTargets.map((t) => (
                       <ButtonSecondary
-                        key={t.label}
-                        className="h-14 min-w-0 flex-1 text-sm font-black sm:min-w-[7rem]"
+                        key={t.id}
+                        className="h-14 min-w-0 text-sm font-black"
                         type="button"
-                        disabled={dis}
-                        title={!t.id ? "Platzerl in der Verwaltung nicht gefunden" : ""}
+                        disabled={outboundBusy}
                         onClick={() => {
                           const s = outboundSheet;
-                          const toId = t.id;
-                          if (!s || !toId || toId === locationId || outboundBusy) return;
+                          if (!s || outboundBusy) return;
                           void (async () => {
                             setOutboundBusy(true);
                             try {
                               const ok = await transferOut(
                                 s.productId,
                                 s.delta,
-                                toId,
-                                t.label
+                                t.id,
+                                t.name
                               );
                               if (ok) {
                                 setOutboundSheet(null);
@@ -2011,12 +2007,11 @@ function LocationInner() {
                           })();
                         }}
                       >
-                        {t.label}
-                        {!t.id ? " (—)" : t.id === locationId ? " (hier)" : ""}
+                        {t.name}
                       </ButtonSecondary>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
