@@ -21,8 +21,14 @@ import {
   deleteInventoryHistoryEntry,
   getInventoryQuantityForProductAtLocation,
   getLocation,
+  listLocations,
   transferStock,
 } from "@/lib/db";
+import {
+  HOFSTETTEN_NAME,
+  KIRCHBERG_NAME,
+  TEICH_NAME,
+} from "@/lib/locationConstants";
 import type {
   InventoryHistoryRow,
   InventoryMissingCountRow,
@@ -80,7 +86,7 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
   onOpenQtyEditor: (productId: string) => void;
   onFocusQtyAndSelect: (productId: string) => void;
   onAddPositiveDelta: (productId: string, delta: number) => Promise<boolean>;
-  onRecordAdjustment: (productId: string, delta: number, reason: "waste" | "loss") => Promise<boolean>;
+  onRequestOutbound: (productId: string, productName: string) => void;
   onOpenQuickEdit: (productId: string, productName: string) => void;
   rowRefSetter: (productId: string, el: HTMLDivElement | null) => void;
   qtyInputRefSetter: (productId: string, el: HTMLInputElement | null) => void;
@@ -293,21 +299,9 @@ const VirtualProductGrid = memo(function VirtualProductGrid(props: {
                           className="h-14 px-4 rounded-2xl bg-red-700 text-white text-xl font-black active:scale-[0.99]"
                           disabled={!r.canWrite}
                           onClick={() => {
-                            void (async () => {
-                              const n = Number(r.inlineAddDraft || "0");
-                              const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-                              if (!d) {
-                                pr.onSetError("Bitte eine Zahl größer als 0 eingeben.");
-                                return;
-                              }
-                              const ok = await pr.onRecordAdjustment(p.id, d, "waste");
-                              if (ok) {
-                                pr.onSetInlineAddDraft("0");
-                                pr.onSetEditingId(null);
-                                pr.onFocusQty(p.id);
-                              }
-                            })();
+                            pr.onRequestOutbound(p.id, formatProductName(p));
                           }}
+                          aria-label="Ausbuchung: Art wählen"
                         >
                           -
                         </button>
@@ -524,6 +518,30 @@ function LocationInner() {
   } | null>(null);
   const [overageBusy, setOverageBusy] = useState(false);
   const [overageErr, setOverageErr] = useState<string | null>(null);
+
+  const [outboundSheet, setOutboundSheet] = useState<{
+    productId: string;
+    productName: string;
+    delta: number;
+  } | null>(null);
+  const [outboundBusy, setOutboundBusy] = useState(false);
+  const [outboundLocs, setOutboundLocs] = useState<Location[]>([]);
+
+  const outboundTargetByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of outboundLocs) m.set(l.name, l.id);
+    return m;
+  }, [outboundLocs]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setOutboundLocs(await listLocations());
+      } catch {
+        setOutboundLocs([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     quantitiesRef.current = quantities;
@@ -878,9 +896,82 @@ function LocationInner() {
       return false;
     }
 
-    setRefillToast(`-${d} gebucht`);
+    setRefillToast(reason === "waste" ? `-${d} Verderb` : `-${d} Verlust`);
     window.setTimeout(() => setRefillToast(null), 2500);
     return true;
+  }
+
+  /**
+   * Bestand lokal verringern und atomar an ein anderes Platzerl buchen
+   * (entspricht inventory_history / transfer in der Verwaltung).
+   */
+  async function transferOut(
+    productId: string,
+    delta: number,
+    toLocationId: string,
+    toName: string
+  ): Promise<boolean> {
+    if (!locationId || !canWrite) {
+      setError("Keine Schreibrechte für dieses Platzerl.");
+      return false;
+    }
+    if (toLocationId === locationId) {
+      setError("Dieser Ort ist bereits das aktive Platzerl.");
+      return false;
+    }
+    const d = Math.floor(Number(delta));
+    if (!Number.isFinite(d) || d <= 0) {
+      setError("Bitte eine Zahl größer als 0 eingeben.");
+      return false;
+    }
+    const online = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!online) {
+      setError("Offline: Umbuchen ist jetzt nicht möglich.");
+      return false;
+    }
+    const cur = quantitiesRef.current[productId] ?? 0;
+    if (cur < d) {
+      setError("Nicht genug Bestand.");
+      return false;
+    }
+    const optimistic = cur - d;
+    quantitiesRef.current = { ...quantitiesRef.current, [productId]: optimistic };
+    setQuantities((m) => ({ ...m, [productId]: optimistic }));
+    try {
+      const { newFromQuantity } = await transferStock({
+        fromLocationId: locationId,
+        toLocationId,
+        productId,
+        quantity: d,
+      });
+      quantitiesRef.current = { ...quantitiesRef.current, [productId]: newFromQuantity };
+      setQuantities((m) => ({ ...m, [productId]: newFromQuantity }));
+    } catch (e: unknown) {
+      quantitiesRef.current = { ...quantitiesRef.current, [productId]: cur };
+      setQuantities((m) => ({ ...m, [productId]: cur }));
+      setError(errorMessage(e, "Umbuchen fehlgeschlagen."));
+      return false;
+    }
+    setRefillToast(`-${d} → ${toName}`);
+    window.setTimeout(() => setRefillToast(null), 2500);
+    return true;
+  }
+
+  function requestOutbound(productId: string, productName: string) {
+    if (!canWrite) return;
+    setError(null);
+    const n = Number(inlineAddDraft || "0");
+    const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    if (!d) {
+      setError("Bitte eine Zahl größer als 0 eingeben.");
+      return;
+    }
+    const cur = quantitiesRef.current[productId] ?? 0;
+    if (cur < d) {
+      setError("Nicht genug Bestand.");
+      return;
+    }
+    setOutboundSheet({ productId, productName, delta: d });
   }
 
   async function deleteHistoryRow(row: InventoryHistoryRow) {
@@ -1389,7 +1480,7 @@ function LocationInner() {
           onOpenQtyEditor={openQtyEditor}
           onFocusQtyAndSelect={focusQtyInput}
           onAddPositiveDelta={addPositiveDelta}
-          onRecordAdjustment={recordAdjustment}
+          onRequestOutbound={requestOutbound}
           onOpenQuickEdit={handleOpenQuickEdit}
           rowRefSetter={(productId, el) => {
             rowRefs.current[productId] = el;
@@ -1806,6 +1897,128 @@ function LocationInner() {
                 </ButtonSecondary>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {outboundSheet ? (
+        <div
+          className="fixed inset-0 z-[62] bg-black/40 flex items-end"
+          onClick={() => {
+            if (outboundBusy) return;
+            setOutboundSheet(null);
+          }}
+        >
+          <div
+            className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 border-t-2 border-black"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal
+            aria-labelledby="outbound-sheet-title"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div id="outbound-sheet-title" className="text-2xl font-black leading-tight text-black">
+                  Ausbuchung
+                </div>
+                {locationInfo?.name ? (
+                  <div className="mt-1 text-xs font-black text-black/50">Von: {locationInfo.name}</div>
+                ) : null}
+                <div className="mt-2 text-sm font-black text-black">
+                  {outboundSheet.productName}
+                </div>
+                <div className="mt-1 text-lg font-black text-black tabular-nums">
+                  −{outboundSheet.delta} Stück
+                </div>
+              </div>
+              <button
+                type="button"
+                className={publicSheetCloseButtonClass + " shrink-0"}
+                disabled={outboundBusy}
+                onClick={() => setOutboundSheet(null)}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <Button
+                className="w-full h-14 text-lg border-2 border-red-900 bg-red-700 text-white hover:bg-red-800"
+                disabled={outboundBusy}
+                onClick={() => {
+                  const s = outboundSheet;
+                  if (!s || outboundBusy) return;
+                  void (async () => {
+                    setOutboundBusy(true);
+                    try {
+                      const ok = await recordAdjustment(s.productId, s.delta, "waste");
+                      if (ok) {
+                        setOutboundSheet(null);
+                        setInlineAddDraft("0");
+                        setEditingId(null);
+                        focusQtyInput(s.productId);
+                      }
+                    } finally {
+                      setOutboundBusy(false);
+                    }
+                  })();
+                }}
+              >
+                {outboundBusy ? "…" : "Verderb"}
+              </Button>
+
+              <div>
+                <div className="text-sm font-black text-black">Umbuchen nach</div>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {(
+                    [
+                      { label: KIRCHBERG_NAME, id: outboundTargetByName.get(KIRCHBERG_NAME) },
+                      { label: TEICH_NAME, id: outboundTargetByName.get(TEICH_NAME) },
+                      { label: HOFSTETTEN_NAME, id: outboundTargetByName.get(HOFSTETTEN_NAME) },
+                    ] as const
+                  ).map((t) => {
+                    const dis =
+                      !t.id || t.id === locationId || outboundBusy;
+                    return (
+                      <ButtonSecondary
+                        key={t.label}
+                        className="h-14 min-w-0 flex-1 text-sm font-black sm:min-w-[7rem]"
+                        type="button"
+                        disabled={dis}
+                        title={!t.id ? "Platzerl in der Verwaltung nicht gefunden" : ""}
+                        onClick={() => {
+                          const s = outboundSheet;
+                          const toId = t.id;
+                          if (!s || !toId || toId === locationId || outboundBusy) return;
+                          void (async () => {
+                            setOutboundBusy(true);
+                            try {
+                              const ok = await transferOut(
+                                s.productId,
+                                s.delta,
+                                toId,
+                                t.label
+                              );
+                              if (ok) {
+                                setOutboundSheet(null);
+                                setInlineAddDraft("0");
+                                setEditingId(null);
+                                focusQtyInput(s.productId);
+                              }
+                            } finally {
+                              setOutboundBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {t.label}
+                        {!t.id ? " (—)" : t.id === locationId ? " (hier)" : ""}
+                      </ButtonSecondary>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
