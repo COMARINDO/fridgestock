@@ -15,6 +15,7 @@ import {
   getWeeklyUsageWithCoverageByLocationProduct,
   bookDeliveryNoteInventory,
   importDeliveryNote,
+  createProductFromDeliveryUnmatched,
   listInventoryAll,
   listLocations,
   listOpenOrderRequests,
@@ -33,6 +34,8 @@ import {
   computeRabensteinGesamtOrderFromDemandReports,
   piecesPerOrderUnitFromProductFields,
 } from "@/lib/orderSuggestions";
+import { splitNameToBrandProduct } from "@/lib/brandProduct";
+import { PRODUCT_LIST_LABELS, type ProductListCategory } from "@/lib/productListCategory";
 import {
   HOFSTETTEN_NAME,
   KIRCHBERG_NAME,
@@ -128,8 +131,8 @@ type CentralRowModel = {
   metro_order_number: string | null;
   metro_unit: string | null;
   stockRabenstein: number;
-  /** Verbrauch 7 Tage (Stück): Teich + Rabenstein-Filiale (Planungsgröße). */
-  bedarf7dStück: number;
+  /** Verbrauch 14-Tage-Rollfenster (Stück): Teich + Rabenstein-Filiale. */
+  bedarf14dStück: number;
   /** Meldungen (Stück), Teich */
   demandTeich: number;
   /** Meldungen (Stück), außer Teich & Zentrallager (im UI: Rabenstein Geschäft + ggf. weitere Melder) */
@@ -155,7 +158,7 @@ type LocalOutletRowModel = {
   metro_order_number: string | null;
   metro_unit: string | null;
   stock: number;
-  /** Verbrauch / Bedarf (Stück), Rollfenster 7 Tage */
+  /** Verbrauch / Bedarf (Stück), Rollfenster 14 Tage */
   usage7d: number;
   /** Nachbestell-Bedarf in Stück (Vorschlagslogik) */
   calculatedOrder: number;
@@ -243,6 +246,10 @@ function AdminOrdersPageContent() {
   const [dnParseBusy, setDnParseBusy] = useState(false);
   const [dnBookBusy, setDnBookBusy] = useState(false);
   const [dnUnmatched, setDnUnmatched] = useState<DeliveryNoteImportUnmatched[]>([]);
+  const [unmatchedCategory, setUnmatchedCategory] = useState<
+    Record<number, ProductListCategory>
+  >({});
+  const [unmatchedCreateBusy, setUnmatchedCreateBusy] = useState<number | null>(null);
   const [dnRows, setDnRows] = useState<
     Array<{ product_id: string; metroNr: string; noteName: string; qtyStr: string }>
   >([]);
@@ -278,7 +285,7 @@ function AdminOrdersPageContent() {
     const [locs, prods, usageMeta, invAll, ovs, reqs, allDeliveries] = await Promise.all([
       listLocations(),
       listProducts(),
-      getWeeklyUsageWithCoverageByLocationProduct({ days: 7 }),
+      getWeeklyUsageWithCoverageByLocationProduct(),
       listInventoryAll(),
       listOrderOverrides(),
       listOpenOrderRequests(),
@@ -353,7 +360,7 @@ function AdminOrdersPageContent() {
       const usageFiliale7 = fId
         ? Math.max(0, Math.round(usageByLoc[fId]?.[p.id] ?? 0))
         : 0;
-      const bedarf7dStück = usageTeich7 + usageFiliale7;
+      const bedarf14dStück = usageTeich7 + usageFiliale7;
 
       let demandTeich = 0;
       let demandOther = 0;
@@ -402,7 +409,7 @@ function AdminOrdersPageContent() {
         metro_order_number: p.metro_order_number ?? null,
         metro_unit: p.metro_unit ?? null,
         stockRabenstein: stockRab,
-        bedarf7dStück,
+        bedarf14dStück,
         demandTeich,
         demandOther,
         deltaStück,
@@ -985,6 +992,52 @@ function AdminOrdersPageContent() {
     return KIRCHBERG_NAME;
   }
 
+  async function createProductFromUnmatchedRow(
+    idx: number,
+    u: DeliveryNoteImportUnmatched
+  ) {
+    const metroDigits = (u.metroNr ?? "").replace(/\D/g, "").trim();
+    if (!metroDigits) {
+      setErr(
+        "Für diese Position fehlt eine Metro-Bestellnummer — bitte manuell unter Artikel anlegen."
+      );
+      return;
+    }
+    const cat = unmatchedCategory[idx] ?? "metro";
+    const sp = splitNameToBrandProduct(u.name);
+    const brand = sp.brand.trim() || "Metro";
+    const product_name = (sp.product_name || u.name).trim() || u.name;
+    setUnmatchedCreateBusy(idx);
+    setErr(null);
+    try {
+      const { id } = await createProductFromDeliveryUnmatched({
+        brand,
+        product_name,
+        zusatz: null,
+        metro_order_number: metroDigits,
+        list_category: cat,
+      });
+      setDnUnmatched((prev) => prev.filter((_, j) => j !== idx));
+      setDnRows((rows) => [
+        ...rows,
+        {
+          product_id: id,
+          metroNr: u.metroNr ?? metroDigits,
+          noteName: u.name,
+          qtyStr: String(Math.max(0, Math.floor(Number(u.quantity) || 0))),
+        },
+      ]);
+      setPlaceMsg(
+        `Neuer Artikel „${product_name}" (${PRODUCT_LIST_LABELS[cat]}) — zur Vorschau hinzugefügt.`
+      );
+      await reload();
+    } catch (e: unknown) {
+      setErr(errorMessage(e, "Artikel konnte nicht angelegt werden."));
+    } finally {
+      setUnmatchedCreateBusy(null);
+    }
+  }
+
   async function parseDeliveryNoteToRows(file: File) {
     if (!file) return;
     if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) {
@@ -1000,6 +1053,7 @@ function AdminOrdersPageContent() {
     try {
       const res = await importDeliveryNote({ file, adminCode: code });
       setDnUnmatched(res.unmatched);
+      setUnmatchedCategory({});
       setDnRows(
         res.matched.map((m) => ({
           product_id: m.product_id,
@@ -1473,7 +1527,7 @@ function AdminOrdersPageContent() {
                 <tr>
                   <th className={`${adminTableStickyHeadCellClass} text-left`}>Produkt</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    Bedarf 7d · Stück
+                    Bedarf 14d · Stück
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     {RABENSTEIN_LAGER_NAME} · Bestand
@@ -1550,7 +1604,7 @@ function AdminOrdersPageContent() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="p-3 font-black tabular-nums text-black">{r.bedarf7dStück}</td>
+                      <td className="p-3 font-black tabular-nums text-black">{r.bedarf14dStück}</td>
                       <td
                         className={[
                           "p-3 font-black tabular-nums",
@@ -1683,7 +1737,7 @@ function AdminOrdersPageContent() {
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    Bedarf 7d · Stück
+                    Bedarf 14d · Stück
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bestellen · Einheiten
@@ -1855,7 +1909,7 @@ function AdminOrdersPageContent() {
                   <th className={adminTableStickyHeadCellClass}>Einheit</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>Bestand</th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
-                    Bedarf 7d · Stück
+                    Bedarf 14d · Stück
                   </th>
                   <th className={`${adminTableStickyHeadCellClass} tabular-nums`}>
                     Bestellen · Einheiten
@@ -2098,7 +2152,7 @@ function AdminOrdersPageContent() {
               {dnUnmatched.length > 0 ? (
                 <div className={`${adminBannerWarnClass} text-[12px] font-bold`}>
                   <div className="font-black">{dnUnmatched.length} Position(en) ohne Zuordnung:</div>
-                  <ul className="mt-1 list-disc pl-5">
+                  <ul className="mt-2 list-none space-y-3 pl-0">
                     {dnUnmatched.map((u, idx) => {
                       const reasonLabel =
                         u.reason === "no_metro_nr"
@@ -2106,12 +2160,52 @@ function AdminOrdersPageContent() {
                           : u.reason === "product_not_found"
                             ? "Metro-Nr kein Produkt im System"
                             : "nicht in dieser Bestellung";
+                      const metroOk = Boolean((u.metroNr ?? "").replace(/\D/g, "").trim());
+                      const cat = unmatchedCategory[idx] ?? "metro";
                       return (
-                        <li key={`${u.metroNr ?? "x"}-${idx}`}>
-                          {u.metroNr ? <span className="font-black">{u.metroNr} · </span> : null}
-                          {u.name || "—"} · {u.quantity}
-                          {u.unit ? ` ${u.unit}` : ""} —{" "}
-                          <span className="text-black/70">{reasonLabel}</span>
+                        <li
+                          key={`${u.metroNr ?? "x"}-${idx}`}
+                          className="rounded-xl border-2 border-black/15 bg-white p-3"
+                        >
+                          <div>
+                            {u.metroNr ? <span className="font-black">{u.metroNr} · </span> : null}
+                            {u.name || "—"} · {u.quantity}
+                            {u.unit ? ` ${u.unit}` : ""} —{" "}
+                            <span className="text-black/70">{reasonLabel}</span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-black text-black/55">Liste (PWA)</span>
+                            <select
+                              className="h-9 rounded-lg border-2 border-black/20 bg-white px-2 text-xs font-black"
+                              value={cat}
+                              disabled={unmatchedCreateBusy !== null}
+                              onChange={(e) =>
+                                setUnmatchedCategory((m) => ({
+                                  ...m,
+                                  [idx]: e.target.value as ProductListCategory,
+                                }))
+                              }
+                            >
+                              <option value="kuehl">{PRODUCT_LIST_LABELS.kuehl}</option>
+                              <option value="metro">{PRODUCT_LIST_LABELS.metro}</option>
+                              <option value="gebaeck">{PRODUCT_LIST_LABELS.gebaeck}</option>
+                            </select>
+                            <button
+                              type="button"
+                              className={adminBrutalSecondaryButtonLgClass}
+                              disabled={!metroOk || unmatchedCreateBusy === idx}
+                              title={
+                                !metroOk
+                                  ? "Ohne Metro-Nummer kann kein Stammdatensatz angelegt werden."
+                                  : "Legt den Artikel an und fügt ihn der Einbuch-Vorschau hinzu."
+                              }
+                              onClick={() => void createProductFromUnmatchedRow(idx, u)}
+                            >
+                              {unmatchedCreateBusy === idx
+                                ? "Lege an…"
+                                : "Anlegen & zu Vorschau"}
+                            </button>
+                          </div>
                         </li>
                       );
                     })}

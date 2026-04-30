@@ -2,16 +2,18 @@
  * Zentrales (geteiltes) Lager: Teich + Rabenstein bilden gemeinsam den Lagerbestand.
  * Verbrauch kommt aus Teich + Filiale (beide konsumieren aus dem gemeinsamen Lager).
  *
- * Standard: order = max(0, round((usage_teich_7d + usage_filiale_7d) - (stock_rabenstein + stock_teich)))
- * Optional: order = max(0, ceil((total_usage_7d * 1.1) - total_stock))
+ * Standard: order = max(0, round((usage_teich_roll + usage_filiale_roll) - (stock_rabenstein + stock_teich)))
+ * Optional: order = max(0, ceil((total_usage_roll * 1.1) - total_stock))
  */
 export const CENTRAL_ORDER_USE_ELEVEN_PERCENT_BUFFER = false;
 
-// Early-stage smoothing: when we have < 7 days of history, blend observed daily usage
-// with a conservative baseline to avoid overreacting to short spikes.
+// Early-stage smoothing: wenn noch < USAGE_WINDOW_DAYS Verlauf, Mischung aus beobachteter
+// Tagesrate und konservativem Baseline gegen kurze Spitzen.
 export const EARLY_STAGE_FALLBACK_DAILY_USAGE = 3; // units/day (startup baseline)
-export const EARLY_STAGE_MAX_MULTIPLIER = 2; // safety limit vs observed usage_7d
-export const EARLY_STAGE_TARGET_DAYS = 7;
+export const EARLY_STAGE_MAX_MULTIPLIER = 2; // safety limit vs observed window total
+/** Rollfenster für Verbrauch / Bedarf (SQL + Bestellvorschlag). */
+export const USAGE_WINDOW_DAYS = 14;
+export const EARLY_STAGE_TARGET_DAYS = USAGE_WINDOW_DAYS;
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
@@ -46,9 +48,12 @@ function computeEarlyStageOrder(input: {
 }): { demand7d: number; orderQuantity: number } {
   const usage7d = Math.max(0, Math.round(Number(input.usage7d) || 0));
   const stock = Math.floor(Number(input.stock) || 0);
-  const targetDays = Math.max(1, Math.round(Number(input.targetDays ?? EARLY_STAGE_TARGET_DAYS) || 7));
+  const targetDays = Math.max(
+    1,
+    Math.round(Number(input.targetDays ?? EARLY_STAGE_TARGET_DAYS) || USAGE_WINDOW_DAYS)
+  );
   // Baseline: avoid under-ordering at startup. Default is at least 3/day,
-  // but never below the implied average of observed usage_7d / 7 (if any).
+  // but never below the implied average usage / window (if any).
   const fallbackDaily = Math.max(
     0,
     Math.max(
@@ -62,7 +67,7 @@ function computeEarlyStageOrder(input: {
   const daysCovered = clamp(daysCoveredRaw, 0, targetDays);
   const daysCoveredSafe = Math.max(1, daysCovered);
 
-  // Normal mode: full coverage -> standard logic (demand=usage7d).
+  // Normal mode: full coverage -> standard logic (demand = Verbrauch im Rollfenster).
   if (daysCovered >= targetDays) {
     const demand7d = usage7d;
     return { demand7d, orderQuantity: Math.max(0, Math.round(demand7d - stock)) };
@@ -70,7 +75,7 @@ function computeEarlyStageOrder(input: {
 
   // Observed daily usage from partial window.
   let observedDaily = usage7d / daysCoveredSafe;
-  // Clamp spikes: daily usage must not exceed the total observed usage_7d.
+  // Clamp spikes: daily usage must not exceed the observed window total.
   observedDaily = Math.min(observedDaily, usage7d);
 
   // Confidence curve: learn faster early, stabilize later.
@@ -168,7 +173,7 @@ export function computeRabensteinGesamtOrderFromDemandReports(input: {
   return Math.ceil(delta / pack);
 }
 
-/** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch 7d − Bestand)). */
+/** Ein Platzerl mit eigenem Bestand: max(0, round(Verbrauch Rollfenster − Bestand)). */
 export function computeLocalOutletOrder(input: {
   usage7d: number;
   stock: number;
@@ -184,7 +189,7 @@ export function computeLocalOutletOrder(input: {
 
 /**
  * Bestellvorschlag aus 7-Tage-Verbrauch und zuletzt gezähltem Bestand (Snapshot).
- * order_quantity = max(0, usage_7d - estimated_stock)
+ * order_quantity = max(0, usage_window - estimated_stock)
  */
 
 export type OrderSuggestionResult = {
@@ -201,7 +206,7 @@ export function computeOrderSuggestion(input: {
 }): OrderSuggestionResult {
   const now = input.now ?? new Date();
   const u = Math.max(0, Number(input.usage7d) || 0);
-  const daily = u / 7;
+  const daily = u / USAGE_WINDOW_DAYS;
   const lastQ = Math.max(0, Math.round(Number(input.lastQuantity) || 0));
 
   if (!input.lastCountAt) {

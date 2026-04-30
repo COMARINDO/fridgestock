@@ -52,7 +52,7 @@ function LocationOrderInner() {
     try {
       const [rows, usageMeta] = await Promise.all([
         listProductsWithInventoryForLocation(locationId),
-        getWeeklyUsageWithCoverageByLocationProduct({ days: 7 }),
+        getWeeklyUsageWithCoverageByLocationProduct(),
       ]);
 
       setProducts(rows as any);

@@ -1,3 +1,5 @@
+import type { ProductListCategory } from "./productListCategory";
+
 export type User = {
   id: string; // uuid
   name: string;
@@ -18,6 +20,8 @@ export type Product = {
   selling_price?: number | null;
   metro_order_number?: string | null;
   metro_unit?: string | null;
+  /** Listen-Gruppe: Kühl, Metro, Gebäck (PWA-Tabs) */
+  list_category?: ProductListCategory | null;
 };
 
 export type Location = {

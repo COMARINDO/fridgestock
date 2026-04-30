@@ -1,33 +1,19 @@
 -- =====================================================================
--- Verbrauchsberechnung: Rückblick bis zu 10 Tage, normalisiert auf 7 Tage.
+-- Verbrauchsberechnung: Rückblick bis zu 14 Tage, normalisiert auf 14 Tage.
 --
 -- Zweck:
---  - Die Bestellvorschlags-Logik verlangt einen robusten 7-Tage-Verbrauch.
---  - Wenn die letzte Inventur an einer Verkaufsstelle aelter als 7 Tage ist
---    (z. B. 8–10 Tage), soll der Verbrauch trotzdem erfasst und auf eine
---    7-Tage-Baseline skaliert werden.
---  - Diese Migration passt NUR `usage_by_location_product_since_with_coverage`
---    an (= die Quelle der Bestellvorschlaege ueber
---    `getWeeklyUsageWithCoverageByLocationProduct`).
---  - Die Basisfunktion `usage_by_location_product_since` bleibt unveraendert
---    (wird in der Uebersicht verwendet und soll dort unveraendert 7 Tage
---    zeigen).
+--  - Bestellvorschläge nutzen ein 14-Tage-Äquivalent aus `inventory_history`.
+--  - Wenn die Historie kürzer ist als 14 Tage, wird per observed_days hochgerechnet.
+--  - Diese Migration ersetzt `usage_by_location_product_since_with_coverage`.
+--  - Die Basisfunktion `usage_by_location_product_since` bleibt unverändert.
 --
--- Verhalten (neu):
---  - Intern wird IMMER mindestens bis `now() - 10 Tage` zurueckgeschaut
---    (auch wenn der Client p_since = now()-7d mitgibt).
---  - `raw_usage` ist die Summe der negativen Diffs ueber dieses Fenster
---    (Transfers/Waste/Loss werden weiterhin ausgeschlossen — dafuer sorgt
---    die Basisfunktion).
---  - `observed_days` = min(10, Tage seit erstem History-Eintrag). Der Wert
---    ist mindestens 1, um Division durch Null zu vermeiden.
---  - `usage` = round( raw_usage * 7.0 / observed_days ) → 7-Tage-Aequivalent.
---  - `days_covered` bleibt (wie bisher) auf 0..7 gekappt; damit funktioniert
---    die Early-Stage-Glaettung im Client unveraendert.
+-- Verhalten:
+--  - Intern mindestens `now() - 14 Tage` (auch wenn der Client p_since = now()-14d sendet).
+--  - `usage` = round( raw_usage * 14.0 / observed_days ),
+--    observed_days = greatest(1, least(14, Tage seit erstem History-Eintrag)).
+--  - `days_covered` = 0..14 (Early-Stage-Glättung im Client).
 --
--- Ausfuehrung:
---  - Diese Datei im Supabase SQL-Editor komplett ausfuehren.
---  - Idempotent (CREATE OR REPLACE / drop + create).
+-- Ausführung: komplett im Supabase SQL-Editor (idempotent).
 -- =====================================================================
 
 drop function if exists public.usage_by_location_product_since_with_coverage(timestamptz);
@@ -44,8 +30,7 @@ language sql
 stable
 as $$
   with bounds as (
-    -- Immer mindestens 10 Tage zurueckschauen; bei aelterem p_since nicht einschraenken.
-    select least(p_since, now() - interval '10 days') as effective_since
+    select least(p_since, now() - interval '14 days') as effective_since
   ),
   raw as (
     select
@@ -65,22 +50,18 @@ as $$
   select
     r.location_id,
     r.product_id,
-    -- Normalisierung auf 7-Tage-Aequivalent:
-    --   raw_usage (ueber bis zu 10 Tage) * 7 / observed_days
-    --   observed_days ist gedeckelt: 1..10 (damit keine Div/0 und keine Explosion).
     round(
-      r.raw_usage::numeric * 7.0 /
+      r.raw_usage::numeric * 14.0 /
       greatest(
         1.0::numeric,
         least(
-          10.0::numeric,
+          14.0::numeric,
           extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0
         )
       )
     )::integer as usage,
-    -- days_covered bleibt 0..7 (Early-Stage-Glaettung im Client erwartet das).
     least(
-      7::numeric,
+      14::numeric,
       greatest(
         0::numeric,
         extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0

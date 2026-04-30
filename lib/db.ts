@@ -1,4 +1,11 @@
 import { getSupabase } from "@/lib/supabase";
+import {
+  type ProductListCategory,
+  DEFAULT_LIST_CATEGORY,
+  parseListCategory,
+} from "@/lib/productListCategory";
+import { suggestShortName } from "@/lib/shortName";
+import { USAGE_WINDOW_DAYS } from "@/lib/orderSuggestions";
 import type {
   InventoryHistoryRow,
   InventoryRow,
@@ -47,6 +54,9 @@ const LOGIN_LOCATION_NAMES = new Set<string>([
   "Backstube",
 ]);
 
+const PRODUCT_STAMM_COLUMNS =
+  "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit,list_category";
+
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await from("locations")
     .select("id,name,parent_id,type,warehouse_location_id")
@@ -82,25 +92,33 @@ export async function getLocation(id: string): Promise<Location | null> {
 
 export async function listProducts(): Promise<Product[]> {
   const { data, error } = await from("products")
-    .select(
-      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit"
-    )
+    .select(PRODUCT_STAMM_COLUMNS)
     .order("brand");
   if (error) throw error;
-  return (data ?? []) as Product[];
+  return ((data ?? []) as Product[]).map((p) => ({
+    ...p,
+    list_category: parseListCategory(
+      (p as unknown as { list_category?: string | null }).list_category
+    ),
+  }));
 }
 
 export async function getProductByBarcode(barcode: string): Promise<Product | null> {
   const code = barcode.trim();
   if (!code) return null;
   const { data, error } = await from("products")
-    .select(
-      "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit"
-    )
+    .select(PRODUCT_STAMM_COLUMNS)
     .eq("barcode", code)
     .maybeSingle();
   if (error) throw error;
-  return (data ?? null) as Product | null;
+  if (!data) return null;
+  const p = data as Product;
+  return {
+    ...p,
+    list_category: parseListCategory(
+      (p as unknown as { list_category?: string | null }).list_category
+    ),
+  };
 }
 
 export async function getInventoryForLocation(
@@ -144,7 +162,7 @@ export async function listProductsWithInventoryForLocation(
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit,inventory:inventory!left(quantity,location_id)"
+        "id,brand,product_name,zusatz,barcode,short_name,min_quantity,supplier,purchase_price,selling_price,metro_order_number,metro_unit,list_category,inventory:inventory!left(quantity,location_id)"
       )
       .eq("inventory.location_id", loc);
 
@@ -173,6 +191,9 @@ export async function listProductsWithInventoryForLocation(
           metro_order_number:
             (p as unknown as { metro_order_number?: string | null }).metro_order_number ?? null,
           metro_unit: (p as unknown as { metro_unit?: string | null }).metro_unit ?? null,
+          list_category: parseListCategory(
+            (p as unknown as { list_category?: string | null }).list_category
+          ),
           quantity:
             Array.isArray(p.inventory) && p.inventory.length > 0
               ? Number(p.inventory[0]?.quantity ?? 0)
@@ -1400,6 +1421,7 @@ export async function createProductWithBarcode(args: {
   barcode: string;
   short_name?: string | null;
   min_quantity?: number | null;
+  list_category?: ProductListCategory | null;
 }) {
   if (!args.brand?.trim()) throw new Error("Brand fehlt.");
   if (!args.product_name?.trim()) throw new Error("Produkt fehlt.");
@@ -1410,8 +1432,58 @@ export async function createProductWithBarcode(args: {
     barcode: args.barcode,
     short_name: args.short_name ?? null,
     min_quantity: args.min_quantity ?? 0,
+    list_category: args.list_category ?? DEFAULT_LIST_CATEGORY,
   });
   if (error) throw error;
+}
+
+/**
+ * Neues Stammdaten-Produkt aus Lieferschein-Position (ohne Barcode), z. B. wenn Metro-Nr im System fehlt.
+ */
+export async function createProductFromDeliveryUnmatched(args: {
+  brand: string;
+  product_name: string;
+  zusatz: string | null;
+  metro_order_number: string;
+  list_category: ProductListCategory;
+}): Promise<{ id: string }> {
+  const brand = args.brand.trim();
+  const product_name = args.product_name.trim();
+  if (!brand) throw new Error("Brand fehlt.");
+  if (!product_name) throw new Error("Produktname fehlt.");
+  const metro = args.metro_order_number.replace(/\D/g, "").trim();
+  if (!metro) throw new Error("Metro-Bestellnummer fehlt.");
+  const short = suggestShortName({
+    brand,
+    product_name,
+    zusatz: args.zusatz,
+  });
+  const supabase = getSupabase() as unknown as {
+    from: (t: string) => {
+      insert: (v: Record<string, unknown>) => {
+        select: (c: string) => { single: () => Promise<{ data: unknown; error: unknown }> };
+      };
+    };
+  };
+  const { data, error } = await supabase
+    .from("products")
+    .insert({
+      brand,
+      product_name,
+      zusatz: args.zusatz,
+      metro_order_number: metro,
+      list_category: args.list_category,
+      min_quantity: 0,
+      short_name: short || null,
+      barcode: null,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const row = data as { id?: string } | null;
+  const id = row?.id;
+  if (!id) throw new Error("Produkt konnte nicht angelegt werden.");
+  return { id };
 }
 
 export async function updateProductBarcode(args: {
@@ -1483,6 +1555,7 @@ export async function updateProductAllFields(args: {
   selling_price: number | null;
   metro_order_number: string | null;
   metro_unit: string | null;
+  list_category: ProductListCategory;
 }) {
   const id = args.productId.trim();
   if (!id) throw new Error("Produkt-ID fehlt.");
@@ -1526,6 +1599,7 @@ export async function updateProductAllFields(args: {
           : args.selling_price,
       metro_order_number: norm(args.metro_order_number),
       metro_unit: norm(args.metro_unit),
+      list_category: args.list_category,
     })
     .eq("id", id);
   if (error) throw error;
@@ -1731,7 +1805,7 @@ export async function getWeeklyUsageWithCoverageByLocationProduct(args?: {
   usageByLoc: Record<string, Record<string, number>>;
   daysCoveredByLoc: Record<string, Record<string, number>>;
 }> {
-  const days = args?.days ?? 7;
+  const days = args?.days ?? USAGE_WINDOW_DAYS;
   const multiplier = args?.multiplier ?? 1;
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1764,7 +1838,10 @@ export async function getWeeklyUsageWithCoverageByLocationProduct(args?: {
       if (!usageByLoc[lid]) usageByLoc[lid] = {};
       if (!daysCoveredByLoc[lid]) daysCoveredByLoc[lid] = {};
       usageByLoc[lid][pid] = Math.round(Math.max(0, Number(row.usage ?? 0)) * multiplier);
-      daysCoveredByLoc[lid][pid] = Math.max(0, Math.min(7, Number(row.days_covered ?? 0) || 0));
+      daysCoveredByLoc[lid][pid] = Math.max(
+        0,
+        Math.min(USAGE_WINDOW_DAYS, Number(row.days_covered ?? 0) || 0)
+      );
     }
 
     return { usageByLoc, daysCoveredByLoc };

@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAdmin } from "@/app/admin-provider";
 import { listProducts, updateProductAllFields } from "@/lib/db";
+import {
+  PRODUCT_LIST_CATEGORIES,
+  PRODUCT_LIST_LABELS,
+  type ProductListCategory,
+  parseListCategory,
+} from "@/lib/productListCategory";
 import type { Product } from "@/lib/types";
 import { errorMessage } from "@/lib/error";
 import { formatProductName } from "@/lib/formatProductName";
@@ -37,6 +43,7 @@ type EditState = {
   selling_price: string;
   metro_order_number: string;
   metro_unit: string;
+  list_category: ProductListCategory;
 };
 
 function toEditState(p: Product): EditState {
@@ -62,6 +69,7 @@ function toEditState(p: Product): EditState {
         : String(p.selling_price),
     metro_order_number: p.metro_order_number ?? "",
     metro_unit: p.metro_unit ?? "",
+    list_category: parseListCategory(p.list_category),
   };
 }
 
@@ -135,6 +143,7 @@ export default function AdminProductsPage() {
         p.supplier,
         p.metro_order_number,
         p.metro_unit,
+        PRODUCT_LIST_LABELS[parseListCategory(p.list_category)],
       ]
         .filter(Boolean)
         .join(" ")
@@ -163,6 +172,7 @@ export default function AdminProductsPage() {
           ? edit.metro_order_number
           : null,
         metro_unit: edit.metro_unit.trim() ? edit.metro_unit : null,
+        list_category: edit.list_category,
       });
       await reload();
       setEdit(null);
@@ -249,6 +259,7 @@ export default function AdminProductsPage() {
                   </th>
                   <th className={adminTableStickyHeadCellClass}>Metro-Nr.</th>
                   <th className={adminTableStickyHeadCellClass}>Metro-Einheit</th>
+                  <th className={adminTableStickyHeadCellClass}>Liste</th>
                   <th className={adminTableStickyHeadCellClass}>
                     <span className="sr-only">Aktion</span>
                   </th>
@@ -298,6 +309,9 @@ export default function AdminProductsPage() {
                     <td className="p-3 align-top text-sm font-bold text-black/75">
                       {p.metro_unit || "–"}
                     </td>
+                    <td className="p-3 align-top text-xs font-black text-black/70">
+                      {PRODUCT_LIST_LABELS[parseListCategory(p.list_category)]}
+                    </td>
                     <td className="p-3 align-top text-right">
                       <button
                         type="button"
@@ -317,7 +331,7 @@ export default function AdminProductsPage() {
                   <tr>
                     <td
                       className="p-4 text-sm font-bold text-black/55"
-                      colSpan={10}
+                      colSpan={11}
                     >
                       Keine Artikel gefunden.
                     </td>
@@ -409,6 +423,24 @@ function EditModal({
             value={state.product_name}
             onChange={(v) => set({ product_name: v })}
           />
+          <div className="flex flex-col gap-1">
+            <span className="text-[12px] font-black uppercase tracking-wide text-black/55">
+              PWA-Liste
+            </span>
+            <select
+              className={adminInputClass}
+              value={state.list_category}
+              onChange={(e) =>
+                set({ list_category: e.target.value as ProductListCategory })
+              }
+            >
+              {PRODUCT_LIST_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {PRODUCT_LIST_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
           <Field
             label="Zusatz"
             value={state.zusatz}

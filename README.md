@@ -259,31 +259,25 @@ Bruch, Verlust, Korrektur) und mit welcher Veränderung (Δ).
 - `public.admin_audit_log` für die Hinweis-Spalte (wenn ein `product_id` in
   `payload` hinterlegt ist).
 
-### Bedarf · 10-Tage-Rückblick (7-Tage-Äquivalent)
+### Bedarf · Rollfenster (14-Tage-Äquivalent)
 
-Die Bestellvorschläge basieren auf dem berechneten Verbrauch der letzten Tage.
-Damit auch Verkaufsstellen mit *älteren* Inventuren (8–10 Tage) korrekt bewertet
-werden, arbeitet die Verbrauchsfunktion so:
+Die Bestellvorschläge basieren auf einem **14-Tage-gemittelten Verbrauch**.
 
-- Die Bestellvorschlags-Quelle
-  `public.usage_by_location_product_since_with_coverage(p_since)` schaut
-  **immer mindestens 10 Tage** zurück (auch wenn der Client `p_since = now()-7d`
-  übergibt).
+- `public.usage_by_location_product_since_with_coverage(p_since)` schaut
+  **immer mindestens 14 Tage** zurück (der Client nutzt `p_since = now()-14d`).
 - `raw_usage` = Summe der negativen Diffs in diesem Fenster; Transfers,
-  `waste` und `loss` werden weiterhin ausgeschlossen (Basisfunktion
+  `waste` und `loss` werden ausgeschlossen (Basisfunktion
   `usage_by_location_product_since`).
-- Rückgabe-`usage` = `round(raw_usage * 7 / observed_days)` mit
-  `observed_days = min(10, Tage seit erstem History-Eintrag) ∈ [1..10]`
-  → konsistentes **7-Tage-Äquivalent**, auch wenn die Inventur älter ist.
-- `days_covered` bleibt auf 0..7 gekappt, damit die Early-Stage-Glättung im
-  Client (wenig Historie → moderaterer Vorschlag) unverändert greift.
+- Rückgabe-`usage` = `round(raw_usage * 14 / observed_days)` mit
+  `observed_days = min(14, Tage seit erstem History-Eintrag) ∈ [1..14]`
+  → konsistentes **14-Tage-Äquivalent**.
+- `days_covered` ist für die Early-Stage-Glättung im Client auf **0..14** gekappt.
+
+**Migration:** `supabase/usage_10d_normalize.sql` im Supabase SQL-Editor ausführen
+(enthält die aktuelle Definition von `usage_by_location_product_since_with_coverage`).
+
 - Die Basisfunktion `usage_by_location_product_since` (z. B. Übersicht) bleibt
   strikt auf das angefragte `p_since`-Fenster und **unverändert**.
-
-**Migration ausführen (einmalig im Supabase SQL-Editor):**
-
-1. `supabase/usage_10d_normalize.sql` komplett ausführen.
-2. Neu laden — Bestellvorschläge ziehen jetzt auch ältere Inventuren mit ein.
 
 ### Tests
 

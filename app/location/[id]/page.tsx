@@ -23,7 +23,15 @@ import {
   getLocation,
   listLocations,
   transferStock,
+  updateProductBarcode,
 } from "@/lib/db";
+import {
+  DEFAULT_LIST_CATEGORY,
+  PRODUCT_LIST_CATEGORIES,
+  PRODUCT_LIST_LABELS,
+  type ProductListCategory,
+  parseListCategory,
+} from "@/lib/productListCategory";
 import type {
   InventoryHistoryRow,
   InventoryMissingCountRow,
@@ -44,6 +52,8 @@ import {
   type OfflineQueueItem,
 } from "@/lib/offlineQueue";
 import { Grid } from "react-window";
+
+const FRIDGE_PRODUCT_LIST_TAB_KEY = "fridge.productListTab.v1";
 
 function formatHistoryTimestamp(iso: string): string {
   try {
@@ -450,6 +460,11 @@ function LocationInner() {
   const [addQty, setAddQty] = useState("0");
   const [inlineAddDraft, setInlineAddDraft] = useState("0");
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [unknownFlow, setUnknownFlow] = useState<"action" | "search" | "new">("action");
+  const [linkSearchQuery, setLinkSearchQuery] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [newListCategory, setNewListCategory] = useState<ProductListCategory>(DEFAULT_LIST_CATEGORY);
+  const [productListTab, setProductListTabState] = useState<ProductListCategory>(DEFAULT_LIST_CATEGORY);
   const [newProductBrand, setNewProductBrand] = useState("");
   const [newProductName, setNewProductName] = useState("");
   const [newProductZusatz, setNewProductZusatz] = useState("");
@@ -754,6 +769,26 @@ function LocationInner() {
     }
   }, [scanMode]);
 
+  useEffect(() => {
+    try {
+      const r = window.localStorage.getItem(FRIDGE_PRODUCT_LIST_TAB_KEY);
+      if (r === "kuehl" || r === "metro" || r === "gebaeck") {
+        setProductListTabState(r);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setProductListTab = useCallback((c: ProductListCategory) => {
+    setProductListTabState(c);
+    try {
+      window.localStorage.setItem(FRIDGE_PRODUCT_LIST_TAB_KEY, c);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   async function runSave(productId: string) {
     if (!locationId) return;
     if (!canWrite) return;
@@ -1057,6 +1092,9 @@ function LocationInner() {
         const p = await getProductByBarcode(code);
         if (!p) {
           setUnknownBarcode(code);
+          setUnknownFlow("action");
+          setLinkSearchQuery("");
+          setNewListCategory(DEFAULT_LIST_CATEGORY);
           setNewProductBrand("");
           setNewProductName("");
           setNewProductZusatz("");
@@ -1067,6 +1105,7 @@ function LocationInner() {
           return;
         }
 
+        setProductListTab(parseListCategory(p.list_category));
         setHighlightId(p.id);
         setTimeout(() => setHighlightId(null), 2500);
 
@@ -1086,11 +1125,11 @@ function LocationInner() {
         setScanError(errorMessage(e, "Barcode konnte nicht geprüft werden."));
       }
     },
-    [canWrite]
+    [canWrite, setProductListTab]
   );
 
   useEffect(() => {
-    if (!unknownBarcode) return;
+    if (!unknownBarcode || unknownFlow !== "new") return;
     let cancelled = false;
 
     (async () => {
@@ -1134,10 +1173,10 @@ function LocationInner() {
     return () => {
       cancelled = true;
     };
-  }, [unknownBarcode]);
+  }, [unknownBarcode, unknownFlow]);
 
   useEffect(() => {
-    if (!unknownBarcode) return;
+    if (!unknownBarcode || unknownFlow !== "new") return;
     if (newShortTouched) return;
     const sug = suggestShortName({
       brand: newProductBrand,
@@ -1145,7 +1184,7 @@ function LocationInner() {
       zusatz: newProductZusatz,
     });
     setNewProductShortName(sug);
-  }, [unknownBarcode, newProductBrand, newProductName, newProductZusatz, newShortTouched]);
+  }, [unknownBarcode, unknownFlow, newProductBrand, newProductName, newProductZusatz, newShortTouched]);
 
   // (barcode generation UI removed here)
 
@@ -1228,11 +1267,34 @@ function LocationInner() {
   }, [scannerOpen, canWrite, handleBarcode]);
 
   const visibleProducts = useMemo(() => {
-    const arr = [...products];
+    const arr = products.filter(
+      (p) => parseListCategory(p.list_category) === productListTab
+    );
     const label = (p: Product) => formatProductName(p).toLowerCase();
     arr.sort((a, b) => label(a).localeCompare(label(b)));
     return arr;
+  }, [products, productListTab]);
+
+  const listTabCounts = useMemo(() => {
+    const m: Record<ProductListCategory, number> = { kuehl: 0, metro: 0, gebaeck: 0 };
+    for (const p of products) m[parseListCategory(p.list_category)] += 1;
+    return m;
   }, [products]);
+
+  const linkPickProducts = useMemo(() => {
+    const q = linkSearchQuery.trim().toLowerCase();
+    const base = products;
+    const scored = !q
+      ? base
+      : base.filter((p) => {
+          const hay = [p.brand, p.product_name, p.zusatz, p.barcode, p.short_name]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        });
+    return scored.slice(0, 50);
+  }, [products, linkSearchQuery]);
 
   const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   useEffect(() => {
@@ -1447,6 +1509,61 @@ function LocationInner() {
     return `Letzte Inventur: vor ${days} Tagen`;
   }
 
+  function resetUnknownBarcodeFlow() {
+    setUnknownBarcode(null);
+    setUnknownFlow("action");
+    setLinkSearchQuery("");
+    setNewProductBrand("");
+    setNewProductName("");
+    setNewProductZusatz("");
+    setNewProductShortName("");
+    setNewShortTouched(false);
+  }
+
+  async function linkBarcodeToProduct(p: Product) {
+    if (!canWrite || !locationId || !unknownBarcode) return;
+    const code = unknownBarcode.trim();
+    if (p.barcode?.trim() && p.barcode.trim() !== code) {
+      if (
+        !window.confirm(
+          `Dieser Artikel hat Barcode ${p.barcode}. Durch ${code} ersetzen?`
+        )
+      )
+        return;
+    }
+    setLinkBusy(true);
+    setScanError(null);
+    try {
+      const short =
+        p.short_name?.trim() ||
+        suggestShortName({
+          brand: p.brand,
+          product_name: p.product_name,
+          zusatz: p.zusatz,
+        });
+      await updateProductBarcode({ productId: p.id, barcode: code, short_name: short });
+      const prods = await listProductsWithInventoryForLocation(locationId);
+      setProducts(prods);
+      setQuantities((prev) => {
+        const next = { ...prev };
+        for (const pr of prods) if (next[pr.id] === undefined) next[pr.id] = 0;
+        return next;
+      });
+      setProductListTab(parseListCategory(p.list_category));
+      resetUnknownBarcodeFlow();
+      setHighlightId(p.id);
+      setTimeout(() => {
+        rowRefs.current[p.id]?.scrollIntoView({ block: "center", behavior: "smooth" });
+        qtyInputs.current[p.id]?.focus();
+      }, 80);
+      setTimeout(() => setHighlightId(null), 2500);
+    } catch (e: unknown) {
+      setScanError(errorMessage(e, "Barcode konnte nicht verknüpft werden."));
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
   if (error) {
     return (
       <div className="flex-1 flex flex-col">
@@ -1460,6 +1577,30 @@ function LocationInner() {
   return (
     <div className="flex-1 flex flex-col">
       <main className="w-full px-4 pt-2 pb-28">
+        <div className="mb-3 flex flex-wrap gap-2">
+          {PRODUCT_LIST_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setProductListTab(c)}
+              className={[
+                "h-12 flex-1 min-w-[5.5rem] rounded-2xl border-2 px-2 text-sm font-black transition",
+                productListTab === c
+                  ? "border-black bg-black text-white"
+                  : "border-black/30 bg-white text-black active:bg-black/5",
+              ].join(" ")}
+            >
+              {PRODUCT_LIST_LABELS[c]}{" "}
+              <span className="tabular-nums opacity-80">({listTabCounts[c]})</span>
+            </button>
+          ))}
+        </div>
+        {visibleProducts.length === 0 ? (
+          <p className="mb-3 text-sm font-bold text-black/50">
+            In „{PRODUCT_LIST_LABELS[productListTab]}“ ist nichts hinterlegt. Anderen tab wählen oder
+            Artikel in Admin / per Scan anlegen.
+          </p>
+        ) : null}
         <VirtualProductGrid
           products={visibleProducts}
           quantities={quantities}
@@ -1551,210 +1692,208 @@ function LocationInner() {
 
       {unknownBarcode ? (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
-          <div className="w-full rounded-t-3xl bg-white p-5 border-t-2 border-black">
-            <div className="text-lg font-black text-black">Produkt nicht gefunden</div>
-              <div className="mt-1 text-sm text-black font-mono">
-              {unknownBarcode}
-            </div>
+          <div className="w-full max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white p-5 border-t-2 border-black">
+            <div className="text-lg font-black text-black">Unbekannter Barcode</div>
+            <div className="mt-1 text-sm text-black font-mono">{unknownBarcode}</div>
 
-            <div className="mt-3 rounded-2xl border-2 border-black bg-white p-4">
-              <div className="text-sm font-black text-black">
-                Vorschlag (Open Food Facts)
+            {unknownFlow === "action" ? (
+              <div className="mt-5 space-y-3">
+                <p className="text-sm font-bold text-black/80">
+                  Wie möchtest du fortfahren?
+                </p>
+                <Button
+                  className="w-full h-14 text-lg"
+                  onClick={() => {
+                    setUnknownFlow("search");
+                    setLinkSearchQuery("");
+                  }}
+                >
+                  Bestehenden Artikel verknüpfen
+                </Button>
+                <Button
+                  className="w-full h-14 text-lg border-2 border-emerald-900 bg-emerald-700 text-white hover:bg-emerald-800"
+                  onClick={() => setUnknownFlow("new")}
+                >
+                  Neues Produkt anlegen
+                </Button>
+                <ButtonSecondary className="w-full h-12" onClick={() => resetUnknownBarcodeFlow()}>
+                  Schließen
+                </ButtonSecondary>
               </div>
-              {offLoading ? (
-                <div className="mt-1 text-sm text-black">Suche…</div>
-              ) : offSuggestion ? (
-                <div className="mt-2">
-                  <div className="text-sm font-black text-black">
-                    {offSuggestion}
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button
-                      className="h-12"
-                      onClick={async () => {
-                        if (!canWrite) return;
-                        if (!unknownBarcode) return;
-                        try {
-                          await createProductWithBarcode({
-                            brand: newProductBrand.trim() ? newProductBrand.trim() : null,
-                            product_name: newProductName.trim() ? newProductName.trim() : null,
-                            zusatz: newProductZusatz.trim()
-                              ? newProductZusatz.trim()
-                              : null,
-                            short_name: newProductShortName.trim()
-                              ? newProductShortName.trim()
-                              : null,
-                            barcode: unknownBarcode,
-                          });
-                          const prods = await listProductsWithInventoryForLocation(
-                            locationId
-                          );
-                          setProducts(prods);
-                          setQuantities((prev) => {
-                            const next = { ...prev };
-                            for (const p of prods)
-                              if (next[p.id] === undefined) next[p.id] = 0;
-                            return next;
-                          });
-                          const created = prods.find(
-                            (p) => p.barcode === unknownBarcode
-                          );
-                          setUnknownBarcode(null);
-                          setNewProductBrand("");
-                          setNewProductName("");
-                          setNewProductZusatz("");
-                          setNewProductShortName("");
-                          setNewShortTouched(false);
-                          if (created) {
-                            setHighlightId(created.id);
-                            setTimeout(() => {
-                              rowRefs.current[created.id]?.scrollIntoView({
-                                block: "center",
-                                behavior: "smooth",
-                              });
-                              qtyInputs.current[created.id]?.focus();
-                            }, 80);
-                            setTimeout(() => setHighlightId(null), 1400);
-                          }
-                        } catch (e: unknown) {
-                          setScanError(
-                            errorMessage(e, "Produkt konnte nicht erstellt werden.")
-                          );
-                        }
-                      }}
-                    >
-                      Speichern
-                    </Button>
-                    <ButtonSecondary
-                      className="h-12"
-                      onClick={() => {
-                        setUnknownBarcode(null);
-                        setNewProductBrand("");
-                        setNewProductName("");
-                        setNewProductZusatz("");
-                        setNewProductShortName("");
-                        setNewShortTouched(false);
-                      }}
-                    >
-                      Abbrechen
-                    </ButtonSecondary>
-                  </div>
+            ) : null}
+
+            {unknownFlow === "search" ? (
+              <div className="mt-5 space-y-3">
+                <ButtonSecondary
+                  className="h-10 w-full"
+                  onClick={() => {
+                    setUnknownFlow("action");
+                    setLinkSearchQuery("");
+                  }}
+                >
+                  ← Zurück
+                </ButtonSecondary>
+                <div className="text-sm font-black text-black">Artikel suchen</div>
+                <Input
+                  value={linkSearchQuery}
+                  onChange={(ev) => setLinkSearchQuery(ev.target.value)}
+                  placeholder="Name, Marke, Kurzname…"
+                  autoFocus
+                />
+                <div className="max-h-[45vh] space-y-1 overflow-y-auto">
+                  {linkPickProducts.length === 0 ? (
+                    <p className="text-sm text-black/60">Kein Treffer.</p>
+                  ) : (
+                    linkPickProducts.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={linkBusy}
+                        onClick={() => void linkBarcodeToProduct(p)}
+                        className="w-full rounded-2xl border-2 border-black/15 bg-white px-3 py-3 text-left text-sm font-black text-black active:bg-black/5"
+                      >
+                        {formatProductName(p)}
+                        {p.barcode ? (
+                          <span className="ml-2 font-mono text-xs text-black/50">
+                            (BC: {p.barcode})
+                          </span>
+                        ) : null}
+                        <span className="ml-2 text-xs text-black/45">
+                          · {PRODUCT_LIST_LABELS[parseListCategory(p.list_category)]}
+                        </span>
+                      </button>
+                    ))
+                  )}
                 </div>
-              ) : (
-                <div className="mt-1 text-sm text-black">
-                  {offError ?? "Kein Vorschlag."}
+                {linkBusy ? (
+                  <p className="text-xs font-bold text-black/50">Verknüpfe…</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {unknownFlow === "new" ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {PRODUCT_LIST_CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewListCategory(c)}
+                      className={[
+                        "h-11 flex-1 min-w-[5rem] rounded-2xl border-2 px-2 text-xs font-black",
+                        newListCategory === c
+                          ? "border-black bg-black text-white"
+                          : "border-black/25 bg-white",
+                      ].join(" ")}
+                    >
+                      {PRODUCT_LIST_LABELS[c]}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+                <p className="mt-2 text-xs font-bold text-black/55">
+                  Liste: {PRODUCT_LIST_LABELS[newListCategory]}
+                </p>
 
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Brand</div>
-              <Input
-                value={newProductBrand}
-                onChange={(ev) => setNewProductBrand(ev.target.value)}
-                placeholder='z.B. "Red Bull"'
-                autoFocus
-              />
-            </div>
+                <div className="mt-3 rounded-2xl border-2 border-black bg-white p-4">
+                  <div className="text-sm font-black text-black">Vorschlag (Open Food Facts)</div>
+                  {offLoading ? (
+                    <div className="mt-1 text-sm text-black">Suche…</div>
+                  ) : offSuggestion ? (
+                    <div className="mt-2 text-sm font-black text-black">{offSuggestion}</div>
+                  ) : (
+                    <div className="mt-1 text-sm text-black">{offError ?? "Kein Vorschlag."}</div>
+                  )}
+                </div>
 
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Produkt</div>
-              <Input
-                value={newProductName}
-                onChange={(ev) => setNewProductName(ev.target.value)}
-                placeholder='z.B. "Zero"'
-              />
-            </div>
+                <div className="mt-4">
+                  <div className="text-sm font-black text-black">Brand</div>
+                  <Input
+                    value={newProductBrand}
+                    onChange={(ev) => setNewProductBrand(ev.target.value)}
+                    placeholder='z.B. "Red Bull"'
+                    autoFocus
+                  />
+                </div>
+                <div className="mt-4">
+                  <div className="text-sm font-black text-black">Produkt</div>
+                  <Input
+                    value={newProductName}
+                    onChange={(ev) => setNewProductName(ev.target.value)}
+                    placeholder='z.B. "Zero"'
+                  />
+                </div>
+                <div className="mt-4">
+                  <div className="text-sm font-black text-black">Zusatz</div>
+                  <Input
+                    value={newProductZusatz}
+                    onChange={(ev) => setNewProductZusatz(ev.target.value)}
+                    placeholder='z.B. "0,5l"'
+                    className="mt-2"
+                  />
+                </div>
+                <div className="mt-4">
+                  <div className="text-sm font-black text-black">Kurzname (Label)</div>
+                  <Input
+                    value={newProductShortName}
+                    onChange={(ev) => {
+                      setNewShortTouched(true);
+                      setNewProductShortName(ev.target.value);
+                    }}
+                    placeholder='z.B. "co 0,5"'
+                    className="mt-2"
+                  />
+                </div>
 
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Zusatz</div>
-              <Input
-                value={newProductZusatz}
-                onChange={(ev) => setNewProductZusatz(ev.target.value)}
-                placeholder='z.B. "0,5l", "1l", "Dose"'
-                className="mt-2"
-              />
-            </div>
-
-            <div className="mt-4">
-              <div className="text-sm font-black text-black">Kurzname (Label)</div>
-              <Input
-                value={newProductShortName}
-                onChange={(ev) => {
-                  setNewShortTouched(true);
-                  setNewProductShortName(ev.target.value);
-                }}
-                placeholder='z.B. "co 0,5"'
-                className="mt-2"
-              />
-            </div>
-
-            {!offSuggestion && !offLoading ? (
-              <div className="mt-4 grid gap-2">
-              <Button
-                className="w-full h-14 text-lg"
-                disabled={!newProductName.trim()}
-                onClick={async () => {
-                    if (!canWrite) return;
-                  if (!unknownBarcode) return;
-                  try {
-                    await createProductWithBarcode({
-                      brand: newProductBrand.trim() ? newProductBrand.trim() : null,
-                      product_name: newProductName.trim() ? newProductName.trim() : null,
-                      zusatz: newProductZusatz.trim() ? newProductZusatz.trim() : null,
-                      short_name: newProductShortName.trim()
-                        ? newProductShortName.trim()
-                        : null,
-                      barcode: unknownBarcode,
-                    });
-                    const prods = await listProductsWithInventoryForLocation(
-                      locationId
-                    );
-                    setProducts(prods);
-                    setQuantities((prev) => {
-                      const next = { ...prev };
-                      for (const p of prods) if (next[p.id] === undefined) next[p.id] = 0;
-                      return next;
-                    });
-                    const created = prods.find((p) => p.barcode === unknownBarcode);
-                    setUnknownBarcode(null);
-                    setNewProductBrand("");
-                    setNewProductName("");
-                    setNewProductZusatz("");
-                    setNewProductShortName("");
-                    setNewShortTouched(false);
-                    if (created) {
-                      setHighlightId(created.id);
-                      setTimeout(() => {
-                        rowRefs.current[created.id]?.scrollIntoView({
-                          block: "center",
-                          behavior: "smooth",
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    className="w-full h-14 text-lg"
+                    disabled={!newProductName.trim() || !canWrite}
+                    onClick={async () => {
+                      if (!canWrite || !unknownBarcode) return;
+                      try {
+                        await createProductWithBarcode({
+                          brand: newProductBrand.trim() ? newProductBrand.trim() : null,
+                          product_name: newProductName.trim() ? newProductName.trim() : null,
+                          zusatz: newProductZusatz.trim() ? newProductZusatz.trim() : null,
+                          short_name: newProductShortName.trim()
+                            ? newProductShortName.trim()
+                            : null,
+                          barcode: unknownBarcode,
+                          list_category: newListCategory,
                         });
-                        qtyInputs.current[created.id]?.focus();
-                      }, 80);
-                      setTimeout(() => setHighlightId(null), 1400);
-                    }
-                  } catch (e: unknown) {
-                    setScanError(errorMessage(e, "Produkt konnte nicht erstellt werden."));
-                  }
-                }}
-              >
-                Produkt anlegen
-              </Button>
-              <ButtonSecondary
-                className="w-full h-14 text-lg"
-                onClick={() => {
-                  setUnknownBarcode(null);
-                  setNewProductBrand("");
-                  setNewProductName("");
-                  setNewProductZusatz("");
-                  setNewProductShortName("");
-                  setNewShortTouched(false);
-                }}
-              >
-                Abbrechen
-              </ButtonSecondary>
-              </div>
+                        const prods = await listProductsWithInventoryForLocation(locationId);
+                        setProducts(prods);
+                        setQuantities((prev) => {
+                          const next = { ...prev };
+                          for (const pr of prods) if (next[pr.id] === undefined) next[pr.id] = 0;
+                          return next;
+                        });
+                        const created = prods.find((pr) => pr.barcode === unknownBarcode);
+                        setProductListTab(newListCategory);
+                        resetUnknownBarcodeFlow();
+                        if (created) {
+                          setHighlightId(created.id);
+                          setTimeout(() => {
+                            rowRefs.current[created.id]?.scrollIntoView({
+                              block: "center",
+                              behavior: "smooth",
+                            });
+                            qtyInputs.current[created.id]?.focus();
+                          }, 80);
+                          setTimeout(() => setHighlightId(null), 2000);
+                        }
+                      } catch (e: unknown) {
+                        setScanError(errorMessage(e, "Produkt konnte nicht erstellt werden."));
+                      }
+                    }}
+                  >
+                    Produkt anlegen
+                  </Button>
+                  <ButtonSecondary className="w-full h-12" onClick={() => resetUnknownBarcodeFlow()}>
+                    Abbrechen
+                  </ButtonSecondary>
+                </div>
+              </>
             ) : null}
           </div>
         </div>

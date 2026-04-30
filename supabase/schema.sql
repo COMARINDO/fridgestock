@@ -950,15 +950,13 @@ as $$
   group by d.location_id, d.product_id;
 $$;
 
--- Usage + coverage (early-stage support + 10-Tage-Rueckblick, normalisiert auf 7)
--- Adds `days_covered` based on the earliest history row per (location, product), capped to 7.
+-- Usage + coverage (early-stage support; min. 14-Tage-Rueckblick, normalisiert auf 14)
+-- `days_covered` = Tage seit erstem History-Eintrag, gedeckelt auf 14 (Early-Stage im Client).
 --
--- Wichtig (seit usage_10d_normalize.sql):
---  - Intern wird mindestens 10 Tage zurueckgeschaut (auch wenn p_since = now()-7d).
---  - `usage` = 7-Tage-AEquivalent: round( raw_usage * 7 / observed_days ),
---    wobei observed_days = min(10, Tage seit erstem History-Eintrag) ∈ [1..10].
---  - So fliessen auch Inventuren, die 8–10 Tage zurueckliegen, korrekt in
---    die Bestellvorschlaege ein — ohne die Basisfunktion zu aendern.
+-- Wichtig:
+--  - Intern wird mindestens 14 Tage zurueckgeschaut (auch wenn p_since = now()-14d).
+--  - `usage` = 14-Tage-Aequivalent: round( raw_usage * 14 / observed_days ),
+--    wobei observed_days = min(14, Tage seit erstem History-Eintrag) ∈ [1..14].
 drop function if exists public.usage_by_location_product_since_with_coverage(timestamptz);
 create or replace function public.usage_by_location_product_since_with_coverage(
   p_since timestamptz
@@ -972,7 +970,7 @@ language sql
 stable
 as $$
   with bounds as (
-    select least(p_since, now() - interval '10 days') as effective_since
+    select least(p_since, now() - interval '14 days') as effective_since
   ),
   raw as (
     select
@@ -993,17 +991,17 @@ as $$
     r.location_id,
     r.product_id,
     round(
-      r.raw_usage::numeric * 7.0 /
+      r.raw_usage::numeric * 14.0 /
       greatest(
         1.0::numeric,
         least(
-          10.0::numeric,
+          14.0::numeric,
           extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0
         )
       )
     )::integer as usage,
     least(
-      7::numeric,
+      14::numeric,
       greatest(
         0::numeric,
         extract(epoch from (now() - coalesce(fs.first_ts, now()))) / 86400.0

@@ -144,8 +144,8 @@ describe("computeCentralWarehouseOrder (full coverage path)", () => {
       usageFiliale7d: 30,
       stockRabenstein: 10,
       stockTeich: 5,
-      daysCoveredTeich: 7,
-      daysCoveredFiliale: 7,
+      daysCoveredTeich: 14,
+      daysCoveredFiliale: 14,
     });
     expect(r.totalUsage7d).toBe(50);
     expect(r.orderQuantity).toBe(35);
@@ -157,8 +157,8 @@ describe("computeCentralWarehouseOrder (full coverage path)", () => {
       usageFiliale7d: 5,
       stockRabenstein: 50,
       stockTeich: 0,
-      daysCoveredTeich: 7,
-      daysCoveredFiliale: 7,
+      daysCoveredTeich: 14,
+      daysCoveredFiliale: 14,
     });
     expect(r.orderQuantity).toBe(0);
   });
@@ -166,7 +166,7 @@ describe("computeCentralWarehouseOrder (full coverage path)", () => {
 
 describe("computeCentralWarehouseOrder (early-stage smoothing)", () => {
   it("returns 0 when no usage observed at all (safety cap = 0)", () => {
-    // Wenn nichts beobachtet wurde (usage_7d = 0), greift der Cap usage*maxMult = 0,
+    // Wenn nichts beobachtet wurde (usage = 0), greift der Cap usage*maxMult = 0,
     // damit nicht aus Fallback heraus „blind" bestellt wird.
     const r = computeCentralWarehouseOrder({
       usageTeich7d: 0,
@@ -180,9 +180,7 @@ describe("computeCentralWarehouseOrder (early-stage smoothing)", () => {
   });
 
   it("blends observed daily usage with fallback when coverage is partial and usage > 0", () => {
-    // observed 14/7d über 3 Tage → täglicher Schnitt im Fenster ~4.67/d.
-    // Confidence sqrt(3/7) ≈ 0.65; fallback 3/d. Demand7d ≈ etwas mehr als usage_7d.
-    // Cap = usage * 2 = 28. Result wird positiv aber ≤ 28 sein.
+    // Confidence sqrt(3/14); Cap = usage * 2 = 28.
     const r = computeCentralWarehouseOrder({
       usageTeich7d: 14,
       usageFiliale7d: 0,
@@ -212,17 +210,17 @@ describe("computeCentralWarehouseOrder (early-stage smoothing)", () => {
 describe("computeLocalOutletOrder", () => {
   it("returns 0 when stock covers usage (full coverage)", () => {
     expect(
-      computeLocalOutletOrder({ usage7d: 5, stock: 10, daysCovered: 7 }).orderQuantity
+      computeLocalOutletOrder({ usage7d: 5, stock: 10, daysCovered: 14 }).orderQuantity
     ).toBe(0);
   });
 
   it("subtracts stock from usage at full coverage", () => {
     expect(
-      computeLocalOutletOrder({ usage7d: 14, stock: 4, daysCovered: 7 }).orderQuantity
+      computeLocalOutletOrder({ usage7d: 14, stock: 4, daysCovered: 14 }).orderQuantity
     ).toBe(10);
   });
 
-  it("uses early-stage smoothing when coverage < 7 days", () => {
+  it("uses early-stage smoothing when coverage < 14 days", () => {
     const partial = computeLocalOutletOrder({
       usage7d: 7,
       stock: 0,
@@ -243,29 +241,29 @@ describe("computeOrderSuggestion (snapshot-based)", () => {
     });
     expect(r.estimatedStock).toBe(5);
     expect(r.calculatedOrder).toBe(9);
-    expect(r.dailyUsage).toBeCloseTo(2);
+    expect(r.dailyUsage).toBeCloseTo(1);
   });
 
   it("decays estimated stock by daily usage over time", () => {
     const now = new Date("2026-04-19T12:00:00Z");
     const last = new Date("2026-04-12T12:00:00Z"); // 7 days ago
     const r = computeOrderSuggestion({
-      usage7d: 14, // 2/day
+      usage7d: 14, // 1/day (14d window total)
       lastQuantity: 20,
       lastCountAt: last,
       now,
     });
-    // 20 - 7*2 = 6
-    expect(r.estimatedStock).toBeCloseTo(6);
-    // order = max(0, 14 - 6) = 8
-    expect(r.calculatedOrder).toBe(8);
+    // 20 - 7*1 = 13
+    expect(r.estimatedStock).toBeCloseTo(13);
+    // order = max(0, 14 - 13) = 1
+    expect(r.calculatedOrder).toBe(1);
   });
 
   it("clamps estimated stock to 0 when fully consumed", () => {
     const now = new Date("2026-04-19T12:00:00Z");
     const last = new Date("2026-04-01T12:00:00Z"); // 18 days ago, should consume all
     const r = computeOrderSuggestion({
-      usage7d: 14, // 2/day → 36 over 18 days, more than stock
+      usage7d: 14, // 1/day → würde 18 Stück in 18 Tagen verbrauchen, mehr als stock 10
       lastQuantity: 10,
       lastCountAt: last,
       now,
